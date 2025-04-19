@@ -1,0 +1,7 @@
+mvn versions:display-dependency-updates
+mvn versions:display-plugin-updates
+
+mvn -DskipTests clean install && \
+mvn test -pl trex-paxe -Dtest=com.github.trex_paxos.paxe.PaxeNetworkTest#testStartup
+
+npx repomix@latest --include "README.md,trex-lib/src/main/**"
