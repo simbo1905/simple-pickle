@@ -16,36 +16,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 /// Interface for serializing and deserializing objects record protocols.
 ///
-/// The record types may:
-///  - contain primitives or strings
-///  - optional of primitive or string
-///  - arrays of primitives or strings
-///
-/// ```mermaid
-/// classDiagram
-///     class Pickler {
-///         <<interface>>
-///         +serialize(object, buffer)
-///         +deserialize(buffer)
-///         +static picklerForRecord(recordClass)
-///         +static picklerForSealedTrait(sealedClass)
-///}
-///
-///     class PicklerBase {
-///         <<abstract>>
-///#MethodHandle[] componens
-///#MethodHandle constructorHandle
-///         +serialize(object, buffer)
-///         +deserialize(buffer)
-///#abstract staticGets(record)
-///#abstract staticCreateFromComts(components)
-///}
-///
-///     PicklerBase ..|> Pickler
-///     AnonymousPickler --|> PicklerBase
-///     note for Pickler "Registry of picklers\nto avoid edundant creation"
-///```
-///
 /// TODO manufacture an estimate size of the object to be pickled
 /// @param <T> The type of object to be pickled which can be a record or a sealed trait of records.
 public interface Pickler<T> {
