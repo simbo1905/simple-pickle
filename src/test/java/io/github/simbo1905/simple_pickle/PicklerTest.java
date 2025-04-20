@@ -85,6 +85,20 @@ class PicklerTest {
   ) {
   }
 
+  /// Define a sealed interface for testing
+  sealed interface Shape permits Circle, Rectangle, Triangle {
+  }
+
+  /// Record implementations of the sealed interface
+  record Circle(double radius) implements Shape {
+  }
+
+  record Rectangle(double width, double height) implements Shape {
+  }
+
+  record Triangle(double a, double b, double c) implements Shape {
+  }
+
   /**
    * Utility method to check array record equality by comparing each component
    * @param expected The expected array record
@@ -398,5 +412,64 @@ class PicklerTest {
 
     // Replace direct equality check with component-by-component nested array comparison
     assertNestedArrayRecordEquals(original, deserialized);
+  }
+
+  @Test
+  void testSealedInterface() {
+    // Create instances of different Shape implementations
+    Shape circle = new Circle(5.0);
+    Shape rectangle = new Rectangle(4.0, 6.0);
+    Shape triangle = new Triangle(3.0, 4.0, 5.0);
+
+    // Get a pickler for the Shape sealed interface
+    Pickler<Shape> pickler = Pickler.picklerForSealedTrait(Shape.class);
+
+    // Test circle
+    ByteBuffer circleBuffer = ByteBuffer.allocate(1024);
+    pickler.serialize(circle, circleBuffer);
+    circleBuffer.flip();
+    Shape deserializedCircle = pickler.deserialize(circleBuffer);
+
+    assertInstanceOf(Circle.class, deserializedCircle);
+    assertEquals(circle, deserializedCircle);
+    assertEquals(5.0, ((Circle) deserializedCircle).radius());
+
+    // Test rectangle
+    ByteBuffer rectangleBuffer = ByteBuffer.allocate(1024);
+    pickler.serialize(rectangle, rectangleBuffer);
+    rectangleBuffer.flip();
+    Shape deserializedRectangle = pickler.deserialize(rectangleBuffer);
+
+    assertInstanceOf(Rectangle.class, deserializedRectangle);
+    assertEquals(rectangle, deserializedRectangle);
+    assertEquals(4.0, ((Rectangle) deserializedRectangle).width());
+    assertEquals(6.0, ((Rectangle) deserializedRectangle).height());
+
+    // Test triangle
+    ByteBuffer triangleBuffer = ByteBuffer.allocate(1024);
+    pickler.serialize(triangle, triangleBuffer);
+    triangleBuffer.flip();
+    Shape deserializedTriangle = pickler.deserialize(triangleBuffer);
+
+    assertInstanceOf(Triangle.class, deserializedTriangle);
+    assertEquals(triangle, deserializedTriangle);
+    assertEquals(3.0, ((Triangle) deserializedTriangle).a());
+    assertEquals(4.0, ((Triangle) deserializedTriangle).b());
+    assertEquals(5.0, ((Triangle) deserializedTriangle).c());
+  }
+
+  @Test
+  void testNullSealedInterface() {
+    // Get a pickler for the Shape sealed interface
+    Pickler<Shape> pickler = Pickler.picklerForSealedTrait(Shape.class);
+
+    // Serialize null
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    pickler.serialize(null, buffer);
+    buffer.flip();
+
+    // Deserialize null
+    Shape deserialized = pickler.deserialize(buffer);
+    assertNull(deserialized);
   }
 }

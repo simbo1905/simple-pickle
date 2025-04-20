@@ -14,10 +14,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-/// Interface for serializing and deserializing objects.
+/// Interface for serializing and deserializing objects record protocols.
 ///
-/// @param <T> The type of object to be pickled
+/// The record types may:
+///  - contain primitives or strings
+///  - optional of primitive or string
+///  - arrays of primitives or strings
 /// TODO manufacture an estimate size of the object to be pickled
+/// @param <T> The type of object to be pickled which can be a record or a sealed trait of records.
 public interface Pickler<T> {
   /// Registry to store Picklers by class to avoid redundant creation and infinite recursion
   ConcurrentHashMap<Class<?>, Pickler<?>> PICKLER_REGISTRY = new ConcurrentHashMap<>();
@@ -42,7 +46,7 @@ public interface Pickler<T> {
   }
 
   /// Internal method to create a new Pickler for a record class
-  private static <R extends Record> Pickler<R> createPicklerForRecord(Class<R> recordClass) {
+  static <R extends Record> Pickler<R> createPicklerForRecord(Class<R> recordClass) {
     return new PicklerBase<>() {
       @Override
       Object[] staticGetComponents(R record) {
@@ -317,5 +321,82 @@ public interface Pickler<T> {
         default -> Class.forName(name);
       };
     }
+  }
+
+  static <T> Pickler<T> picklerForSealedTrait(Class<T> sealedClass) {
+    // Check if we already have a Pickler for this sealed class
+    @SuppressWarnings("unchecked")
+    Pickler<T> existingPickler = (Pickler<T>) PICKLER_REGISTRY.get(sealedClass);
+    if (existingPickler != null) {
+      return existingPickler;
+    }
+
+    // Pre-register all subclass picklers
+    Class<?>[] subclasses = sealedClass.getPermittedSubclasses();
+    //noinspection unchecked
+    Arrays.stream(subclasses)
+        .filter(Record.class::isAssignableFrom)
+        .forEach(permitted -> picklerForRecord((Class<? extends Record>) permitted));
+
+    // Create an anonymous dispatcher pickler for the sealed trait
+    Pickler<T> sealedPickler = new Pickler<>() {
+      @Override
+      public void serialize(T object, ByteBuffer buffer) {
+        if (object == null) {
+          buffer.put((byte) 11); // 11 is for null values
+          return;
+        }
+
+        // Write the class name for deserialization
+        String className = object.getClass().getName();
+        byte[] classNameBytes = className.getBytes(UTF_8);
+        buffer.put((byte) classNameBytes.length);
+        buffer.put(classNameBytes);
+
+        // Get the appropriate pickler for this concrete type
+        @SuppressWarnings("unchecked")
+        Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord((Class<? extends Record>) object.getClass());
+
+        // Use that pickler to serialize the object
+        concretePickler.serialize((Record) object, buffer);
+      }
+
+      @Override
+      public T deserialize(ByteBuffer buffer) {
+        // Check if the value is null (type marker 11)
+        byte firstByte = buffer.get(buffer.position());
+        if (firstByte == 11) {
+          buffer.get(); // Consume the null marker
+          return null;
+        }
+
+        // Read the class name
+        byte classNameLength = buffer.get();
+        byte[] classNameBytes = new byte[classNameLength];
+        buffer.get(classNameBytes);
+        String className = new String(classNameBytes, UTF_8);
+
+        try {
+          // Load the class
+          @SuppressWarnings("unchecked")
+          Class<? extends Record> concreteClass = (Class<? extends Record>) Class.forName(className);
+
+          // Get the pickler for this concrete class
+          @SuppressWarnings("unchecked")
+          Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord(concreteClass);
+
+          // Deserialize using the concrete pickler
+          @SuppressWarnings("unchecked")
+          T result = (T) concretePickler.deserialize(buffer);
+
+          return result;
+        } catch (ClassNotFoundException e) {
+          throw new RuntimeException("Failed to load class: " + className, e);
+        }
+      }
+    };
+
+    PICKLER_REGISTRY.put(sealedClass, sealedPickler);
+    return sealedPickler;
   }
 }
