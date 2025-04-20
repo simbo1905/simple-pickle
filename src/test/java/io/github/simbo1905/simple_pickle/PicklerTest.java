@@ -11,8 +11,7 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 /// Test class for the Pickler functionality.
 /// Demonstrates basic serialization and deserialization of records.
@@ -66,6 +65,74 @@ class PicklerTest {
 
   /// A record with multiple levels of nesting (modified to not use arrays)
   record Department(String name, Employee manager, Employee employee) {
+  }
+
+  /// A record with arrays for testing
+  record ArrayExample(
+      int[] intArray,
+      String[] stringArray,
+      boolean[] booleanArray,
+      Person[] personArray,
+      Integer[] boxedIntArray,
+      Object[] mixedArray
+  ) {
+  }
+
+  /// A record with nested arrays
+  record NestedArrayExample(
+      int[][] nestedIntArray,
+      Object[][] nestedObjectArray
+  ) {
+  }
+
+  /**
+   * Utility method to check array record equality by comparing each component
+   * @param expected The expected array record
+   * @param actual The actual array record
+   */
+  private void assertArrayRecordEquals(ArrayExample expected, ArrayExample actual) {
+    assertArrayEquals(expected.intArray(), actual.intArray());
+    assertArrayEquals(expected.stringArray(), actual.stringArray());
+    assertArrayEquals(expected.booleanArray(), actual.booleanArray());
+    assertDeepArrayEquals(expected.personArray(), actual.personArray());
+    assertArrayEquals(expected.boxedIntArray(), actual.boxedIntArray());
+    assertDeepArrayEquals(expected.mixedArray(), actual.mixedArray());
+  }
+
+  /**
+   * Utility method to check nested array record equality
+   * @param expected The expected nested array record
+   * @param actual The actual nested array record
+   */
+  private void assertNestedArrayRecordEquals(NestedArrayExample expected, NestedArrayExample actual) {
+    assertEquals(expected.nestedIntArray().length, actual.nestedIntArray().length);
+    java.util.stream.IntStream.range(0, expected.nestedIntArray().length)
+        .forEach(i -> assertArrayEquals(expected.nestedIntArray()[i], actual.nestedIntArray()[i]));
+
+    assertEquals(expected.nestedObjectArray().length, actual.nestedObjectArray().length);
+    java.util.stream.IntStream.range(0, expected.nestedObjectArray().length)
+        .forEach(i -> assertDeepArrayEquals(expected.nestedObjectArray()[i], actual.nestedObjectArray()[i]));
+  }
+
+  /**
+   * Utility method for deep array comparison that handles objects properly
+   * @param expected Expected object array
+   * @param actual Actual object array
+   */
+  private void assertDeepArrayEquals(Object[] expected, Object[] actual) {
+    assertEquals(expected.length, actual.length);
+    java.util.stream.IntStream.range(0, expected.length)
+        .forEach(i -> {
+          if (expected[i] == null) {
+            assertNull(actual[i]);
+          } else if (expected[i].getClass().isArray()) {
+            // Handle nested arrays
+            assertTrue(actual[i].getClass().isArray());
+            assertDeepArrayEquals((Object[]) expected[i], (Object[]) actual[i]);
+          } else {
+            assertEquals(expected[i], actual[i]);
+          }
+        });
   }
 
   @Test
@@ -186,7 +253,7 @@ class PicklerTest {
   void testNestedRecord() {
     // Create nested records
     Person person = new Person("John Doe", 35);
-    Address address = new Address("123 Main St", "Anytown", "12345");
+    Address address = new Address("123 Main St", "Any Town", "12345");
     Employee employee = new Employee("E12345", person, address);
 
     // Get a pickler for the Employee record
@@ -208,7 +275,7 @@ class PicklerTest {
     assertEquals(35, deserialized.person().age());
     assertEquals(address, deserialized.address());
     assertEquals("123 Main St", deserialized.address().street());
-    assertEquals("Anytown", deserialized.address().city());
+    assertEquals("Any Town", deserialized.address().city());
     assertEquals("12345", deserialized.address().zipCode());
   }
 
@@ -216,11 +283,11 @@ class PicklerTest {
   void testMultiLevelNestedRecord() {
     // Create nested records with multiple levels
     Person person1 = new Person("John Manager", 45);
-    Address address1 = new Address("555 Boss Ave", "Managertown", "54321");
+    Address address1 = new Address("555 Boss Ave", "Manager Town", "54321");
     Employee manager = new Employee("M98765", person1, address1);
 
     Person person2 = new Person("Jane Employee", 30);
-    Address address2 = new Address("123 Work St", "Employeeville", "12345");
+    Address address2 = new Address("123 Work St", "Employee Ville", "12345");
     Employee employee = new Employee("E12345", person2, address2);
 
     Department department = new Department("Engineering", manager, employee);
@@ -243,5 +310,93 @@ class PicklerTest {
     assertEquals("John Manager", deserialized.manager().person().name());
     assertEquals(employee, deserialized.employee());
     assertEquals("Jane Employee", deserialized.employee().person().name());
+  }
+
+  @Test
+  void testArrays() {
+    // Create a record with different array types
+    final var original = new ArrayExample(
+        new int[]{1, 2, 3, 4, 5},
+        new String[]{"apple", "banana", "cherry"},
+        new boolean[]{true, false, true},
+        new Person[]{new Person("Alice", 30), new Person("Bob", 25)},
+        new Integer[]{10, 20, null, 40},
+        new Object[]{42, "mixed", true, null}
+    );
+
+    Pickler<ArrayExample> pickler = Pickler.picklerForRecord(ArrayExample.class);
+
+    // Serialize the record
+    final var buffer = ByteBuffer.allocate(2048);
+    pickler.serialize(original, buffer);
+    buffer.flip(); // Prepare buffer for reading
+
+    // Deserialize from the byte buffer
+    final var deserialized = pickler.deserialize(buffer);
+
+    // Replace direct equality check with component-by-component array comparison
+    assertArrayRecordEquals(original, deserialized);
+
+    // Individual array checks are already handled by assertArrayRecordEquals
+  }
+
+  @Test
+  void testEmptyArrays() {
+    // Create a record with empty arrays
+    final var original = new ArrayExample(
+        new int[]{},
+        new String[]{},
+        new boolean[]{},
+        new Person[]{},
+        new Integer[]{},
+        new Object[]{}
+    );
+
+    Pickler<ArrayExample> pickler = Pickler.picklerForRecord(ArrayExample.class);
+
+    // Serialize the record
+    final var buffer = ByteBuffer.allocate(1024);
+    pickler.serialize(original, buffer);
+    buffer.flip(); // Prepare buffer for reading
+
+    // Deserialize from the byte buffer
+    final var deserialized = pickler.deserialize(buffer);
+
+    // Replace direct equality check with component-by-component array comparison
+    assertArrayRecordEquals(original, deserialized);
+
+    // Verify empty array handling (redundant with assertArrayRecordEquals but keeping for clarity)
+    assertEquals(0, deserialized.intArray().length);
+    assertEquals(0, deserialized.stringArray().length);
+    assertEquals(0, deserialized.personArray().length);
+  }
+
+  @Test
+  void testNestedArrays() {
+    // Create a record with nested arrays
+    final var original = new NestedArrayExample(
+        new int[][]{
+            new int[]{1, 2, 3},
+            new int[]{4, 5},
+            new int[]{6}
+        },
+        new Object[][]{
+            new Object[]{"a", 1, true},
+            new Object[]{new Person("Charlie", 40), null}
+        }
+    );
+
+    Pickler<NestedArrayExample> pickler = Pickler.picklerForRecord(NestedArrayExample.class);
+
+    // Serialize the record
+    final var buffer = ByteBuffer.allocate(2048);
+    pickler.serialize(original, buffer);
+    buffer.flip(); // Prepare buffer for reading
+
+    // Deserialize from the byte buffer
+    final var deserialized = pickler.deserialize(buffer);
+
+    // Replace direct equality check with component-by-component nested array comparison
+    assertNestedArrayRecordEquals(original, deserialized);
   }
 }
