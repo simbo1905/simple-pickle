@@ -472,4 +472,96 @@ class PicklerTest {
     Shape deserialized = pickler.deserialize(buffer);
     assertNull(deserialized);
   }
+
+  /// Tests the protocol example from the README
+  @Test
+  void testProtocolExample() {
+
+    // Get picklers for the protocol interfaces
+    Pickler<Command> commandPickler = Pickler.picklerForSealedTrait(Command.class);
+    Pickler<Response> responsePickler = Pickler.picklerForSealedTrait(Response.class);
+
+    // Test Command serialization/deserialization
+    Command[] commands = {
+        new Push("test-item"),
+        new Pop(),
+        new Peek()
+    };
+
+    for (Command command : commands) {
+      ByteBuffer buffer = ByteBuffer.allocate(1024);
+      commandPickler.serialize(command, buffer);
+      buffer.flip();
+      Command deserializedCommand = commandPickler.deserialize(buffer);
+      assertEquals(command, deserializedCommand);
+    }
+
+    // Test Response serialization/deserialization
+    Response[] responses = {
+        new Success(Optional.of("item-value")),
+        new Success(Optional.empty()),
+        new Failure("operation failed")
+    };
+
+    for (Response response : responses) {
+      ByteBuffer buffer = ByteBuffer.allocate(1024);
+      responsePickler.serialize(response, buffer);
+      buffer.flip();
+      Response deserializedResponse = responsePickler.deserialize(buffer);
+      assertEquals(response, deserializedResponse);
+      assertEquals(response.payload(), deserializedResponse.payload());
+    }
+
+    // Simulate a client-server interaction
+    // Client sends a Push command
+    Command clientCommand = new Push("important-data");
+    ByteBuffer commandBuffer = ByteBuffer.allocate(1024);
+    commandPickler.serialize(clientCommand, commandBuffer);
+    commandBuffer.flip();
+
+    // Server receives and processes the command
+    Command receivedCommand = commandPickler.deserialize(commandBuffer);
+    assertInstanceOf(Push.class, receivedCommand);
+    assertEquals("important-data", ((Push) receivedCommand).item());
+
+    // Server sends back a success response
+    Response serverResponse = new Success(Optional.of("operation successful"));
+    ByteBuffer responseBuffer = ByteBuffer.allocate(1024);
+    responsePickler.serialize(serverResponse, responseBuffer);
+    responseBuffer.flip();
+
+    // Client receives and processes the response
+    Response receivedResponse = responsePickler.deserialize(responseBuffer);
+    assertInstanceOf(Success.class, receivedResponse);
+    assertEquals("operation successful", receivedResponse.payload());
+  }
+}
+
+// Define the protocol classes
+sealed interface Command permits Push, Pop, Peek {
+}
+
+record Push(String item) implements Command {
+}
+
+record Pop() implements Command {
+}
+
+record Peek() implements Command {
+}
+
+sealed interface Response permits Success, Failure {
+  String payload();
+}
+
+record Success(Optional<String> value) implements Response {
+  public String payload() {
+    return value.orElse(null);
+  }
+}
+
+record Failure(String errorMessage) implements Response {
+  public String payload() {
+    return errorMessage;
+  }
 }

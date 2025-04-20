@@ -1,77 +1,56 @@
 # Simple Pickler
 
-Simple Pickler is a lightweight Java serialization library that dynamically generates serializers for Java records to
-support type-safe message protocols. The library focuses on efficient binary serialization of immutable data structures.
+Simple Pickler is a lightweight Java serialization library that dynamically generates serializers for Java records to support type-safe message protocols avoiding reflection. It works with:
 
-## Overview
-
-Simple Pickler provides a minimalist approach to serializing Java records and sealed interfaces. It works with:
-
-- Records containing primitive types
-- Strings
-- Optional values
-- Nested records
+- Records containing primitive types or String
+- Optional of primitive types or String
 - Arrays (including primitive arrays, object arrays, and nested arrays)
-- Sealed interfaces with record implementations
+- Nested records that only contain the above type 
+- Sealed interfaces with record implementations that only contain the above types
 
-The library dynamically generates serializers at runtime, caching them for reuse to avoid redundant creation and
-infinite recursion.
+The library dynamically generates serializers at runtime, caching them for reuse to avoid redundant creation and infinite recursion.
 
-## Features
+## Support Types And Their Type Markers
 
-- **Zero Dependencies**: Pure Java implementation with no external dependencies
-- **Binary Serialization**: Compact binary format for efficient data transfer
-- **Type Safety**: Preserves the type information during serialization/deserialization
-- **Support for Sealed Interfaces**: Enables polymorphic serialization
-- **Nested Structure Support**: Handles complex data structures with nested records
-- **Array Support**: Handles arrays of primitives, objects, and nested arrays
-- **Optional Field Support**: Properly handles Optional values
-- **Null Handling**: Safely serializes and deserializes null values
+| Type      | Type Marker |
+|-----------|---|
+| Integer   | 0 |
+| Long      | 1 |
+| Short     | 2 |
+| Byte      | 3 |
+| Double    | 4 |
+| Float     | 5 |
+| Character | 6 |
+| Boolean   | 7 |
+| String    | 8 |
+| Optional  | 9 |
+| Record    | 10 |
+| null      | 11 |
+| Array     | 12 |
 
-## Architecture
+## Example Protocol
 
-```mermaid
-classDiagram
-    class Pickler {
-        <<interface>>
-        +serialize(object, buffer)
-        +deserialize(buffer)
-        +static picklerForRecord(recordClass)
-        +static picklerForSealedTrait(sealedClass)
-    }
+An example protocol could look like this: :
 
-    class PicklerBase {
-        <<abstract>>
-        #MethodHandle[] componentAccessors
-        #MethodHandle constructorHandle
-        +serialize(object, buffer)
-        +deserialize(buffer)
-        #abstract staticGetComponents(record)
-        #abstract staticCreateFromComponents(components)
-    }
-
-    PicklerBase ..|> Pickler
-    AnonymousPickler --|> PicklerBase
-    note for Pickler "Registry of picklers\nto avoid redundant creation"
+```java
+// Client to server messages
+sealed interface Command permits Push, Pop, Peek {}
+record Push(String item) implements Command {}
+record Pop() implements Command {}
+record Peek() implements Command {}
+// Server responses
+sealed interface Response permits Success, Failure {
+  String payload();
+}
+record Success(Optional<String> value) implements Response {
+  public String payload() { return value.orElse(null); }
+}
+record Failure(String errorMessage) implements Response {
+  public String payload() { return errorMessage;}
+}
 ```
 
-## Type Support
-
-| Type      | Supported | Type Marker |
-|-----------|-----------|-------------|
-| Integer   | ✅         | 0           |
-| Long      | ✅         | 1           |
-| Short     | ✅         | 2           |
-| Byte      | ✅         | 3           |
-| Double    | ✅         | 4           |
-| Float     | ✅         | 5           |
-| Character | ✅         | 6           |
-| Boolean   | ✅         | 7           |
-| String    | ✅         | 8           |
-| Optional  | ✅         | 9           |
-| Record    | ✅         | 10          |
-| null      | ✅         | 11          |
-| Array     | ✅         | 12          |
+You can find a complete test of this protocol in the `testProtocolExample()` method in `PicklerTest.java`, which demonstrates serialization and deserialization of commands and responses, including a simulated client-server interaction.
 
 ## Usage Examples
 
@@ -90,12 +69,8 @@ Pickler<Person> pickler = Pickler.picklerForRecord(Person.class);
 
 // Serialize to a ByteBuffer
 ByteBuffer buffer = ByteBuffer.allocate(1024);
-pickler.
-
-serialize(person, buffer);
-buffer.
-
-flip();
+pickler.serialize(person, buffer);
+buffer.flip();
 
 // Deserialize from the ByteBuffer
 Person deserializedPerson = pickler.deserialize(buffer);
@@ -120,12 +95,8 @@ Pickler<Shape> pickler = Pickler.picklerForSealedTrait(Shape.class);
 // Serialize a specific implementation
 Shape circle = new Circle(5.0);
 ByteBuffer buffer = ByteBuffer.allocate(1024);
-pickler.
-
-serialize(circle, buffer);
-buffer.
-
-flip();
+pickler.serialize(circle, buffer);
+buffer.flip();
 
 // Deserialize back to the correct implementation
 Shape deserializedShape = pickler.deserialize(buffer);
@@ -152,35 +123,11 @@ Pickler<Employee> pickler = Pickler.picklerForRecord(Employee.class);
 
 // Serialize and deserialize
 ByteBuffer buffer = ByteBuffer.allocate(1024);
-pickler.
-
-serialize(employee, buffer);
-buffer.
-
-flip();
+pickler.serialize(employee, buffer);
+buffer.flip();
 
 Employee deserializedEmployee = pickler.deserialize(buffer);
 ```
-
-## Implementation Analysis
-
-The implementation appears to match the description with some additional features:
-
-1. **Core Functionality**: Dynamically generates serializers for Java records as described
-2. **Additional Features**:
-    - Support for arrays (including nested arrays)
-    - Support for null values
-    - Registry of picklers to avoid redundant creation
-
-The library focuses on records containing primitive types, Strings, Optionals, and other records as described, but also
-extends support to arrays and sealed interfaces, making it more versatile than the initial description suggests.
-
-## Limitations
-
-- Works only with records and sealed interfaces
-- Does not support arbitrary object graphs
-- No versioning support for schema evolution
-- Not designed for cross-language serialization
 
 ## License
 
