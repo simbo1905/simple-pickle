@@ -8,12 +8,16 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.concurrent.ConcurrentHashMap;
 
 /// Interface for serializing and deserializing objects.
 ///
 /// @param <T> The type of object to be pickled
 /// TODO manufacture an estimate size of the object to be pickled
 public interface Pickler<T> {
+  /// Registry to store Picklers by class to avoid redundant creation and infinite recursion
+  ConcurrentHashMap<Class<?>, Pickler<?>> PICKLER_REGISTRY = new ConcurrentHashMap<>();
+
   /// Serializes an object into a byte buffer.
   ///
   /// @param object The object to serialize
@@ -26,7 +30,17 @@ public interface Pickler<T> {
   /// @return The deserialized object
   T deserialize(ByteBuffer buffer);
 
+  /// Get a Pickler for a record class, creating one if it doesn't exist in the registry
+  @SuppressWarnings("unchecked")
   static <R extends Record> Pickler<R> picklerForRecord(Class<R> recordClass) {
+    // Check if we already have a Pickler for this record class
+    return (Pickler<R>) PICKLER_REGISTRY.computeIfAbsent(recordClass, clazz -> {
+      return createPicklerForRecord((Class<R>) clazz);
+    });
+  }
+
+  /// Internal method to create a new Pickler for a record class
+  private static <R extends Record> Pickler<R> createPicklerForRecord(Class<R> recordClass) {
     return new PicklerBase<>() {
       @Override
       Object[] staticGetComponents(R record) {
@@ -57,17 +71,15 @@ public interface Pickler<T> {
         try {
           MethodHandles.Lookup lookup = MethodHandles.lookup();
 
-          // Use streams to transform record components into method handles
-          // TODO convert to Arrays.setAll
-          componentAccessors = Arrays.stream(recordClass.getRecordComponents())
-              .map(component -> {
-                try {
-                  return lookup.unreflect(component.getAccessor());
-                } catch (IllegalAccessException e) {
-                  throw new RuntimeException("Failed to access component: " + component.getName(), e);
-                }
-              })
-              .toArray(MethodHandle[]::new);
+          RecordComponent[] components = recordClass.getRecordComponents();
+          componentAccessors = new MethodHandle[components.length];
+          Arrays.setAll(componentAccessors, i -> {
+            try {
+              return lookup.unreflect(components[i].getAccessor());
+            } catch (IllegalAccessException e) {
+              throw new RuntimeException("Failed to access component: " + components[i].getName(), e);
+            }
+          });
         } catch (Exception e) {
           throw new RuntimeException("Failed to create accessor method handles for record components", e);
         }
@@ -94,4 +106,3 @@ public interface Pickler<T> {
     };
   }
 }
-

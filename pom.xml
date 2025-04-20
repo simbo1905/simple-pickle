@@ -8,9 +8,10 @@
     <version>0.1.0-SNAPSHOT</version>
 
     <description>
-        Simple Pickle the Java 24 Class-File API to lazily generate classes that serialize and deserialize sealed traits.
-        This library intentionally only works with records that only hold primitive types, Strings, or other records.
-        Sealed traits made up of such simple records are perfect for modeling message protocols.
+        Simple Pickle is designed dynamically generate classes that serialize java sealed traits to model message
+        protocols in a type-safe way.
+        This library intentionally only works with records that only hold primitive types, Strings, Optional or other
+        such records.
     </description>
 
     <properties>
