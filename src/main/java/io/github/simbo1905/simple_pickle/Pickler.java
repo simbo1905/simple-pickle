@@ -280,58 +280,48 @@ public interface Pickler<T> {
       };
     }
 
-    /// Internal static method to create a new Pickler for a record class. This is the secret sauce that uses an
-    /// instance initialization block to create the method handles for the record's component accessors and the canonical
-    /// constructor.
+    /// Internal static method to create a new Pickler for a record class. This that creates the method handles for the
+    /// record's component accessors and the canonical constructor.
     static <R extends Record> Pickler<R> createPicklerForRecord(Class<R> recordClass) {
-      return new PicklerBase<>() {
-        final MethodHandle[] componentAccessors;
-        final MethodHandle constructorHandle;
-
-        // object initialization block initializes this unique pickler with all the method handles that we need to
-        // access all the components and also to invoke the canonical constructor of the record
-        {
-          // first we get the accessor method handles for the record components and add them to the array used
-          // that is used by the base class to pull all the components out of the record to load into the byte buffer
+      MethodHandle[] componentAccessors;
+      MethodHandle constructorHandle;
+      // Get lookup object
+      MethodHandles.Lookup lookup = MethodHandles.lookup();
+      // first we get the accessor method handles for the record components and add them to the array used
+      // that is used by the base class to pull all the components out of the record to load into the byte buffer
+      try {
+        RecordComponent[] components = recordClass.getRecordComponents();
+        componentAccessors = new MethodHandle[components.length];
+        Arrays.setAll(componentAccessors, i -> {
           try {
-            MethodHandles.Lookup lookup = MethodHandles.lookup();
-
-            RecordComponent[] components = recordClass.getRecordComponents();
-            componentAccessors = new MethodHandle[components.length];
-            Arrays.setAll(componentAccessors, i -> {
-              try {
-                return lookup.unreflect(components[i].getAccessor());
-              } catch (IllegalAccessException e) {
-                throw new RuntimeException("Failed to access component: " + components[i].getName(), e);
-              }
-            });
-          } catch (Exception e) {
-            Throwable inner = e;
-            while (inner.getCause() != null) {
-              inner = inner.getCause();
-            }
-            throw new RuntimeException(inner.getMessage(), inner);
+            return lookup.unreflect(components[i].getAccessor());
+          } catch (IllegalAccessException e) {
+            throw new RuntimeException("Failed to access component: " + components[i].getName(), e);
           }
-          // final we get the canonical constructor method handle for the record that will be used to create a new
-          // instance from the components that the base class will pull out of the byte buffer
-          try {
-            // Get the record components
-            RecordComponent[] components = recordClass.getRecordComponents();
-            // Extract component types for the constructor
-            Class<?>[] paramTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
-            // Create method type for the canonical constructor
-            MethodType constructorType = MethodType.methodType(void.class, paramTypes);
-
-            // Get lookup object
-            MethodHandles.Lookup lookup = MethodHandles.lookup();
-
-            constructorHandle = lookup.findConstructor(recordClass, constructorType);
-
-          } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new RuntimeException("Failed to access constructor for record: " + recordClass.getName(), e);
-          }
+        });
+      } catch (Exception e) {
+        Throwable inner = e;
+        while (inner.getCause() != null) {
+          inner = inner.getCause();
         }
+        throw new RuntimeException(inner.getMessage(), inner);
+      }
+      // final we get the canonical constructor method handle for the record that will be used to create a new
+      // instance from the components that the base class will pull out of the byte buffer
+      try {
+        // Get the record components
+        RecordComponent[] components = recordClass.getRecordComponents();
+        // Extract component types for the constructor
+        Class<?>[] paramTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
+        // Create method type for the canonical constructor
+        MethodType constructorType = MethodType.methodType(void.class, paramTypes);
 
+        constructorHandle = lookup.findConstructor(recordClass, constructorType);
+      } catch (NoSuchMethodException | IllegalAccessException e) {
+        throw new RuntimeException("Failed to access constructor for record: " + recordClass.getName(), e);
+      }
+
+      return new PicklerBase<>() {
         @Override
         Object[] staticGetComponents(R record) {
           Object[] result = new Object[componentAccessors.length];
@@ -355,7 +345,6 @@ public interface Pickler<T> {
           }
         }
       };
-
     }
 
     /// Creates an anonymous dispatcher pickler for a sealed interface. This will create a pickler for each permitted
