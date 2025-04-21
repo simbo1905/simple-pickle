@@ -1,6 +1,6 @@
 # Simple Pickler
 
-Simple Pickler is a lightweight Java serialization library that dynamically generates serializers for Java records to support type-safe message protocols avoiding reflection. It works with:
+Simple Pickler is a lightweight Java serialization library that dynamically generates type-safe serializers for Java records and sealed traits. It avoids excessive reflection when working with objects by caching MethodHandle. It works with nested sealed traits that permit nested simple records of simple types: 
 
 - Records containing primitive types or String
 - Optional of primitive types or String
@@ -9,29 +9,9 @@ Simple Pickler is a lightweight Java serialization library that dynamically gene
 - Sealed interfaces with record implementations that only contain the above types
 - Nested sealed interfaces that only contain the above types
 
-The library dynamically generates serializers at runtime, caching them for reuse to avoid redundant creation and infinite recursion.
+Those restrictions are rich enough to build a message protocol suitable for pattern-matching destructuring switch expressions. 
 
-## Support Types And Their Type Markers
-
-| Type      | Type Marker |
-|-----------|---|
-| Integer   | 0 |
-| Long      | 1 |
-| Short     | 2 |
-| Byte      | 3 |
-| Double    | 4 |
-| Float     | 5 |
-| Character | 6 |
-| Boolean   | 7 |
-| String    | 8 |
-| Optional  | 9 |
-| Record    | 10 |
-| null      | 11 |
-| Array     | 12 |
-
-## Example Protocol
-
-An example protocol could look like this: :
+An example protocol could look like this:
 
 ```java
 // Client to server messages
@@ -51,7 +31,25 @@ record Failure(String errorMessage) implements Response {
 }
 ```
 
-You can find a complete test of this protocol in the `testProtocolExample()` method in `PicklerTest.java`, which demonstrates serialization and deserialization of commands and responses, including a simulated client-server interaction.
+The library dynamically generates serializers once at runtime, caching them for reuse to avoid redundant creation and infinite recursion.
+
+## Support Types And Their Type Markers
+
+| Type      | Type Marker |
+|-----------|---|
+| Integer   | 0 |
+| Long      | 1 |
+| Short     | 2 |
+| Byte      | 3 |
+| Double    | 4 |
+| Float     | 5 |
+| Character | 6 |
+| Boolean   | 7 |
+| String    | 8 |
+| Optional  | 9 |
+| Record    | 10 |
+| null      | 11 |
+| Array     | 12 |
 
 ## Usage Examples
 
