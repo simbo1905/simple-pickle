@@ -41,25 +41,7 @@ Pickler<StackCommand> commandPickler = Pickler.picklerForSealedTrait(StackComman
 Pickler<StackResponse> responsePickler = Pickler.picklerForSealedTrait(StackResponse.class);
 ```
 
-See the unit tests for lots of examples of how to use the library.
-
-## Support Types And Their Type Markers
-
-| Type      | Type Marker |
-|-----------|---|
-| Integer   | 0 |
-| Long      | 1 |
-| Short     | 2 |
-| Byte      | 3 |
-| Double    | 4 |
-| Float     | 5 |
-| Character | 6 |
-| Boolean   | 7 |
-| String    | 8 |
-| Optional  | 9 |
-| Record    | 10 |
-| null      | 11 |
-| Array     | 12 |
+See the unit tests for many examples of using the library.
 
 ## Usage Examples
 
@@ -133,6 +115,72 @@ System.out.println("Alicorn serialized and deserialized correctly");
     throw new AssertionError("Alicorn serialization failed");
 }
 ```
+
+## Wire Protocol
+
+Support Types And Their Type Markers
+
+| Type      | Type Marker |
+|-----------|---|
+| Integer   | 0 |
+| Long      | 1 |
+| Short     | 2 |
+| Byte      | 3 |
+| Double    | 4 |
+| Float     | 5 |
+| Character | 6 |
+| Boolean   | 7 |
+| String    | 8 |
+| Optional  | 9 |
+| Record    | 10 |
+| null      | 11 |
+| Array     | 12 |
+
+The wire protocol is explained in this diagram: 
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Pickler
+    participant ByteBuffer
+    
+    Note over Client, ByteBuffer: Serialization Process
+    Client->>Pickler: serialize(object, buffer)
+    alt Object is null
+        Pickler->>ByteBuffer: put(NULL_MARKER)
+    else Object is Record
+        Pickler->>ByteBuffer: put(RECORD_MARKER)
+        Pickler->>ByteBuffer: put(className.length)
+        Pickler->>ByteBuffer: put(className.bytes)
+        Pickler->>ByteBuffer: put(serialized component data)
+    else Object is Array
+        Pickler->>ByteBuffer: put(ARRAY_MARKER)
+        Pickler->>ByteBuffer: put(componentType.length)
+        Pickler->>ByteBuffer: put(componentType.bytes)
+        Pickler->>ByteBuffer: put(array.length)
+        loop For each array element
+            Pickler->>ByteBuffer: put(serialized element)
+        end
+    else Object implements SealedInterface
+        Pickler->>ByteBuffer: put(className.length)
+        Pickler->>ByteBuffer: put(className.bytes)
+        Pickler->>ByteBuffer: put(serialized object data)
+    end
+    
+    Note over Client, ByteBuffer: Deserialization Process
+    Client->>Pickler: deserialize(buffer)
+    alt Read NULL_MARKER
+        Pickler->>Client: return null
+    else Read normal type
+        Pickler->>ByteBuffer: get(className.length)
+        Pickler->>ByteBuffer: get(className.bytes)
+        Pickler->>Client: Class.forName(className)
+        Pickler->>ByteBuffer: get(serialized data)
+        Pickler->>Client: return reconstructed object
+    end
+```
+
+
 
 ## License
 
