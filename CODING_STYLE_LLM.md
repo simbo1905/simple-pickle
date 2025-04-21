@@ -54,7 +54,7 @@ IMPORTANT: We do TDD so all code must include targeted unit tests.
 * Support immutability throughout processing
 * Example: `IntStream.range(0, 100).filter(i -> i % 2 == 0).sum()` instead of counting loops
 
-## Documentation
+## Documentation using JEP 467 Markdown documentation
 
 IMPORTANT: You must not write JavaDoc comments that start with `/**` and end with `*/`
 IMPORTANT: You must "JEP 467: Markdown Documentation Comments" that start all lines with `///`

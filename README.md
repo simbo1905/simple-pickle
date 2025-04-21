@@ -7,6 +7,7 @@ Simple Pickler is a lightweight Java serialization library that dynamically gene
 - Arrays (including primitive arrays, object arrays, and nested arrays)
 - Nested records that only contain the above type 
 - Sealed interfaces with record implementations that only contain the above types
+- Nested sealed interfaces that only contain the above types
 
 The library dynamically generates serializers at runtime, caching them for reuse to avoid redundant creation and infinite recursion.
 
@@ -57,8 +58,9 @@ You can find a complete test of this protocol in the `testProtocolExample()` met
 ### Basic Record Serialization
 
 ```java
-// Define a simple record
-record Person(String name, int age) {
+/// Define a simple record
+/// The constructor must be public so that we can invoke the canonical constructor form the pickler package
+public record Person(String name, int age) {
 }
 
 // Create an instance
@@ -76,59 +78,55 @@ buffer.flip();
 Person deserializedPerson = pickler.deserialize(buffer);
 ```
 
-### Working with Sealed Interfaces
+### Complex Example Nested Sealed Interfaces
 
 ```java
-// Define a sealed interface hierarchy
-sealed interface Shape permits Circle, Rectangle {
+sealed interface Animal permits Mammal, Bird, Alicorn {
 }
 
-record Circle(double radius) implements Shape {
+sealed interface Mammal extends Animal permits Dog, Cat {
 }
 
-record Rectangle(double width, double height) implements Shape {
+sealed interface Bird extends Animal permits Eagle, Penguin {
 }
 
-// Get a pickler for the sealed interface
-Pickler<Shape> pickler = Pickler.picklerForSealedTrait(Shape.class);
-
-// Serialize a specific implementation
-Shape circle = new Circle(5.0);
-ByteBuffer buffer = ByteBuffer.allocate(1024);
-pickler.serialize(circle, buffer);
-buffer.flip();
-
-// Deserialize back to the correct implementation
-Shape deserializedShape = pickler.deserialize(buffer);
-// deserializedShape will be a Circle instance
-```
-
-### Complex Nested Structures
-
-```java
-// Define nested records
-record Address(String street, String city, String zipCode) {
+public record Alicorn(String name, String[] magicPowers) implements Animal {
 }
 
-record Employee(String id, Person person, Address address) {
+public record Dog(String name, int age) implements Mammal {
 }
 
-// Create a nested structure
-Person person = new Person("John Doe", 35);
-Address address = new Address("123 Main St", "Any Town", "12345");
-Employee employee = new Employee("E12345", person, address);
+public record Cat(String name, boolean purrs) implements Mammal {
+}
 
-// Get a pickler for the Employee record
-Pickler<Employee> pickler = Pickler.picklerForRecord(Employee.class);
+public record Eagle(double wingspan) implements Bird {
+}
 
-// Serialize and deserialize
-ByteBuffer buffer = ByteBuffer.allocate(1024);
-pickler.serialize(employee, buffer);
-buffer.flip();
+record Penguin(boolean canSwim) implements Bird {
+}
 
-Employee deserializedEmployee = pickler.deserialize(buffer);
+Dog dog = new Dog("Buddy", 3);
+Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
+
+var dogBuffer = ByteBuffer.allocate(64);
+animalPickler.serialize(dog, dogBuffer);
+dogBuffer.flip();
+var returnedDog = animalPickler.deserialize(dogBuffer);
+
+Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
+
+var alicornBuffer = ByteBuffer.allocate(256);
+animalPickler.serialize(alicorn, alicornBuffer);
+alicornBuffer.flip();
+var returnedAlicorn = (Alicorn) animalPickler.deserialize(alicornBuffer);
+if (Arrays.equals(alicorn.magicPowers(), returnedAlicorn.magicPowers())) {
+System.out.println("Alicorn serialized and deserialized correctly");
+} else {
+    throw new AssertionError("Alicorn serialization failed");
+}
 ```
 
 ## License
 
-Apache-2.0
+SPDX-FileCopyrightText: 2025 Simon Massey
+SPDX-License-Identifier: Apache-2.0

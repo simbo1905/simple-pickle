@@ -17,7 +17,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 /// Interface for serializing and deserializing objects record protocols.
 ///
 /// TODO manufacture an estimate size of the object to be pickled
-/// @param <T> The type of object to be pickled which can be a record or a sealed trait of records.
+/// @param <T> The type of object to be pickled which can be a record or a sealed interface of records.
 public interface Pickler<T> {
   /// Registry to store Picklers by class to avoid redundant creation and infinite recursion
   ConcurrentHashMap<Class<?>, Pickler<?>> PICKLER_REGISTRY = new ConcurrentHashMap<>();
@@ -25,7 +25,7 @@ public interface Pickler<T> {
   /// Serializes an object into a byte buffer.
   ///
   /// @param object The object to serialize
-  /// @param buffer The buffer to write to
+  /// @param buffer The pre-allocated buffer to write to
   void serialize(T object, ByteBuffer buffer);
 
   /// Deserializes an object from a byte buffer.
@@ -38,85 +38,44 @@ public interface Pickler<T> {
   @SuppressWarnings("unchecked")
   static <R extends Record> Pickler<R> picklerForRecord(Class<R> recordClass) {
     // Check if we already have a Pickler for this record class
-    return (Pickler<R>) PICKLER_REGISTRY.computeIfAbsent(recordClass, clazz -> createPicklerForRecord((Class<R>) clazz));
+    return (Pickler<R>) PICKLER_REGISTRY.computeIfAbsent(recordClass, clazz -> PicklerBase.createPicklerForRecord((Class<R>) clazz));
   }
 
-  /// Internal method to create a new Pickler for a record class
-  static <R extends Record> Pickler<R> createPicklerForRecord(Class<R> recordClass) {
-    return new PicklerBase<>() {
-      @Override
-      Object[] staticGetComponents(R record) {
-        Object[] result = new Object[componentAccessors.length];
-        Arrays.setAll(result, i -> {
-          try {
-            return componentAccessors[i].invokeWithArguments(record);
-          } catch (Throwable e) {
-            throw new RuntimeException("Failed to access component: " + i, e);
-          }
-        });
-        return result;
-      }
-
-      @Override
-      R staticCreateFromComponents(Object[] components) {
-        try {
-          //noinspection unchecked
-          return (R) super.constructorHandle.invokeWithArguments(components);
-        } catch (Throwable e) {
-          throw new RuntimeException(e);
-        }
-      }
-
-      // object initialization block
-      {
-        // first we get the accessor method handles for the record components used to serialize it
-        try {
-          MethodHandles.Lookup lookup = MethodHandles.lookup();
-
-          RecordComponent[] components = recordClass.getRecordComponents();
-          componentAccessors = new MethodHandle[components.length];
-          Arrays.setAll(componentAccessors, i -> {
-            try {
-              return lookup.unreflect(components[i].getAccessor());
-            } catch (IllegalAccessException e) {
-              throw new RuntimeException("Failed to access component: " + components[i].getName(), e);
-            }
-          });
-        } catch (Exception e) {
-          throw new RuntimeException("Failed to create accessor method handles for record components", e);
-        }
-        // Then we get the constructor method handle for the record
-        try {
-          // Get the record components
-          RecordComponent[] components = recordClass.getRecordComponents();
-          // Extract component types for the constructor
-          Class<?>[] paramTypes = Arrays.stream(components)
-              .map(RecordComponent::getType)
-              .toArray(Class<?>[]::new);
-          // Create method type for the canonical constructor
-          MethodType constructorType = MethodType.methodType(void.class, paramTypes);
-
-          // Get lookup object
-          MethodHandles.Lookup lookup = MethodHandles.lookup();
-
-          constructorHandle = lookup.findConstructor(recordClass, constructorType);
-
-        } catch (NoSuchMethodException | IllegalAccessException e) {
-          throw new RuntimeException("Failed to access constructor for record: " + recordClass.getName(), e);
-        }
-      }
-    };
+  /// Get a Pickler for a record class, creating one if it doesn't exist in the registry
+  /// The returned pickler creates record picklers for the permitted subclasses of the sealed interface
+  @SuppressWarnings("unchecked")
+  static <T> Pickler<T> picklerForSealedTrait(Class<T> sealedClass) {
+    return (Pickler<T>) PICKLER_REGISTRY.computeIfAbsent(sealedClass, clazz -> PicklerBase.createPicklerForSealedTrait((Class<T>) clazz));
   }
 
+  /// Base class for picklers that handle serialization and deserialization of Java records.
+  /// Subclasses implement specific serialization logic for different data types while
+  /// this base class provides common machinery for packing and unpacking to byte buffers.
+  ///
+  /// The machinery in this class is deliberately limited to the following simple "message protocol" types:
+  ///
+  /// - Primitive types
+  /// - Strings
+  /// - Optionals
+  /// - Records that only contain the things above
+  /// - Other records that only contain the things above
+  /// - Arrays (primitive and object arrays or records that only match the things above)
+  /// - Sealed interface hierarchies that only contain records that match the things above
+  /// - Nested sealed interface hierarchies that only contain the things above
+  ///
+  /// Subclasses implement specific serialization logic for different data types while
+  /// this base class provides common machinery for packing and unpacking to byte buffers.
+  ///
+  /// @see Pickler
+  /// @see Record
   abstract class PicklerBase<R extends Record> implements Pickler<R> {
-    protected MethodHandle[] componentAccessors;
-
-    protected MethodHandle constructorHandle;
 
     abstract Object[] staticGetComponents(R record);
 
     abstract R staticCreateFromComponents(Object[] record);
 
+    /// The uses the abstract method to get the components of the record where we generated at runtime the method handles
+    /// to all the accessor the record components using an anonymous subclass of PicklerBase.
     @Override
     public void serialize(R object, ByteBuffer buffer) {
       final var components = staticGetComponents(object);
@@ -124,7 +83,7 @@ public interface Pickler<T> {
       Arrays.stream(components).forEach(c -> write(buffer, c));
     }
 
-    public static byte typeMarker(Object c) {
+    static byte typeMarker(Object c) {
       if (c == null) {
         return 11; // 11 is for null values
       }
@@ -147,7 +106,7 @@ public interface Pickler<T> {
       };
     }
 
-    public static void write(ByteBuffer buffer, Object c) {
+    static void write(ByteBuffer buffer, Object c) {
       if (c == null) {
         buffer.put((byte) 11); // 11 is for null values
         return;
@@ -216,6 +175,8 @@ public interface Pickler<T> {
       }
     }
 
+    /// The uses the abstract method to call the canonical constructor of the record via a method handle
+    /// captured at runtime within an anonymous subclass of PicklerBase.
     @Override
     public R deserialize(ByteBuffer buffer) {
       final var length = buffer.get();
@@ -224,7 +185,7 @@ public interface Pickler<T> {
       return this.staticCreateFromComponents(components);
     }
 
-    private Object deserializeValue(ByteBuffer buffer) {
+    Object deserializeValue(ByteBuffer buffer) {
       final byte type = buffer.get();
       return switch (type) {
         case 0 -> buffer.getInt();
@@ -303,6 +264,7 @@ public interface Pickler<T> {
       };
     }
 
+    /// Class.forName cannot handle primitive types directly, so we need to map them to their wrapper classes.
     Class<?> getClassForName(String name) throws ClassNotFoundException {
       // Handle primitive types which can't be loaded directly with Class.forName
       return switch (name) {
@@ -317,82 +279,174 @@ public interface Pickler<T> {
         default -> Class.forName(name);
       };
     }
-  }
 
-  static <T> Pickler<T> picklerForSealedTrait(Class<T> sealedClass) {
-    // Check if we already have a Pickler for this sealed class
-    @SuppressWarnings("unchecked")
-    Pickler<T> existingPickler = (Pickler<T>) PICKLER_REGISTRY.get(sealedClass);
-    if (existingPickler != null) {
-      return existingPickler;
+    /// Internal static method to create a new Pickler for a record class. This is the secret sauce that uses an
+    /// instance initialization block to create the method handles for the record's component accessors and the canonical
+    /// constructor.
+    static <R extends Record> Pickler<R> createPicklerForRecord(Class<R> recordClass) {
+      return new PicklerBase<>() {
+        final MethodHandle[] componentAccessors;
+        final MethodHandle constructorHandle;
+
+        // object initialization block initializes this unique pickler with all the method handles that we need to
+        // access all the components and also to invoke the canonical constructor of the record
+        {
+          // first we get the accessor method handles for the record components and add them to the array used
+          // that is used by the base class to pull all the components out of the record to load into the byte buffer
+          try {
+            MethodHandles.Lookup lookup = MethodHandles.lookup();
+
+            RecordComponent[] components = recordClass.getRecordComponents();
+            componentAccessors = new MethodHandle[components.length];
+            Arrays.setAll(componentAccessors, i -> {
+              try {
+                return lookup.unreflect(components[i].getAccessor());
+              } catch (IllegalAccessException e) {
+                throw new RuntimeException("Failed to access component: " + components[i].getName(), e);
+              }
+            });
+          } catch (Exception e) {
+            Throwable inner = e;
+            while (inner.getCause() != null) {
+              inner = inner.getCause();
+            }
+            throw new RuntimeException(inner.getMessage(), inner);
+          }
+          // final we get the canonical constructor method handle for the record that will be used to create a new
+          // instance from the components that the base class will pull out of the byte buffer
+          try {
+            // Get the record components
+            RecordComponent[] components = recordClass.getRecordComponents();
+            // Extract component types for the constructor
+            Class<?>[] paramTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
+            // Create method type for the canonical constructor
+            MethodType constructorType = MethodType.methodType(void.class, paramTypes);
+
+            // Get lookup object
+            MethodHandles.Lookup lookup = MethodHandles.lookup();
+
+            constructorHandle = lookup.findConstructor(recordClass, constructorType);
+
+          } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new RuntimeException("Failed to access constructor for record: " + recordClass.getName(), e);
+          }
+        }
+
+        @Override
+        Object[] staticGetComponents(R record) {
+          Object[] result = new Object[componentAccessors.length];
+          Arrays.setAll(result, i -> {
+            try {
+              return componentAccessors[i].invokeWithArguments(record);
+            } catch (Throwable e) {
+              throw new RuntimeException("Failed to access component: " + i, e);
+            }
+          });
+          return result;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        R staticCreateFromComponents(Object[] components) {
+          try {
+            return (R) constructorHandle.invokeWithArguments(components);
+          } catch (Throwable e) {
+            throw new RuntimeException(e);
+          }
+        }
+      };
+
     }
 
-    // Pre-register all subclass picklers
-    Class<?>[] subclasses = sealedClass.getPermittedSubclasses();
-    //noinspection unchecked
-    Arrays.stream(subclasses)
-        .filter(Record.class::isAssignableFrom)
-        .forEach(permitted -> picklerForRecord((Class<? extends Record>) permitted));
-
-    // Create an anonymous dispatcher pickler for the sealed trait
-    Pickler<T> sealedPickler = new Pickler<>() {
-      @Override
-      public void serialize(T object, ByteBuffer buffer) {
-        if (object == null) {
-          buffer.put((byte) 11); // 11 is for null values
-          return;
-        }
-
-        // Write the class name for deserialization
-        String className = object.getClass().getName();
-        byte[] classNameBytes = className.getBytes(UTF_8);
-        buffer.put((byte) classNameBytes.length);
-        buffer.put(classNameBytes);
-
-        // Get the appropriate pickler for this concrete type
-        @SuppressWarnings("unchecked")
-        Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord((Class<? extends Record>) object.getClass());
-
-        // Use that pickler to serialize the object
-        concretePickler.serialize((Record) object, buffer);
+    /// Creates an anonymous dispatcher pickler for a sealed interface. This will create a pickler for each permitted
+    /// record.
+    ///
+    /// This method handles serialization and deserialization of null values and
+    /// concrete type instances. Here's the step-by-step process:
+    ///
+    /// 1. Creates a pickler that handles the sealed interface type
+    /// 2. Special handling for null values (type marker 11)
+    /// 3. Writes the class name for proper deserialization
+    /// 4. Retrieves the appropriate pickler for the concrete type
+    /// 5. Uses the specific pickler to serialize the object
+    /// 6. Checks for null values and consumes the null marker (11)
+    /// 7. Reads and loads the class name for deserialization
+    /// 8. Loads the concrete class and gets its pickler
+    /// 9. Deserializes the object using the concrete pickler
+    ///
+    /// *Important*: Handles null values and type safety through class name tracking
+    ///
+    /// @return a new pickler instance for the sealed interface type
+    ///
+    /// Example usage:
+    /// ```java
+    /// Pickler<Object> pickler = new Pickler<Object>(){
+    ///     // Implementation
+    ///};
+    ///```
+    static <T> Pickler<?> createPicklerForSealedTrait(Class<T> sealedClass) {
+      @SuppressWarnings("unchecked") Pickler<T> existingPickler = (Pickler<T>) PICKLER_REGISTRY.get(sealedClass);
+      if (existingPickler != null) {
+        return existingPickler;
       }
 
-      @Override
-      public T deserialize(ByteBuffer buffer) {
-        // Check if the value is null (type marker 11)
-        byte firstByte = buffer.get(buffer.position());
-        if (firstByte == 11) {
-          buffer.get(); // Consume the null marker
-          return null;
+      // Pre-register all subclass picklers
+      Class<?>[] subclasses = sealedClass.getPermittedSubclasses();
+      //noinspection unchecked
+      Arrays.stream(subclasses).filter(Record.class::isAssignableFrom).forEach(permitted -> createPicklerForRecord((Class<? extends Record>) permitted));
+
+      return new Pickler<T>() {
+        @Override
+        public void serialize(T object, ByteBuffer buffer) {
+          if (object == null) {
+            buffer.put((byte) 11); // 11 is for null values
+            return;
+          }
+
+          // Write the class name for deserialization
+          String className = object.getClass().getName();
+          byte[] classNameBytes = className.getBytes(UTF_8);
+          buffer.put((byte) classNameBytes.length);
+          buffer.put(classNameBytes);
+
+          // Get the appropriate pickler for this concrete type
+          @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord((Class<? extends Record>) object.getClass());
+
+          // Use that pickler to serialize the object
+          concretePickler.serialize((Record) object, buffer);
         }
 
-        // Read the class name
-        byte classNameLength = buffer.get();
-        byte[] classNameBytes = new byte[classNameLength];
-        buffer.get(classNameBytes);
-        String className = new String(classNameBytes, UTF_8);
+        @Override
+        public T deserialize(ByteBuffer buffer) {
+          // Check if the value is null (type marker 11)
+          byte firstByte = buffer.get(buffer.position());
+          if (firstByte == 11) {
+            buffer.get(); // Consume the null marker
+            return null;
+          }
 
-        try {
-          // Load the class
-          @SuppressWarnings("unchecked")
-          Class<? extends Record> concreteClass = (Class<? extends Record>) Class.forName(className);
+          // Read the class name
+          byte classNameLength = buffer.get();
+          byte[] classNameBytes = new byte[classNameLength];
+          buffer.get(classNameBytes);
+          String className = new String(classNameBytes, UTF_8);
 
-          // Get the pickler for this concrete class
-          @SuppressWarnings("unchecked")
-          Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord(concreteClass);
+          try {
+            // Load the class
+            @SuppressWarnings("unchecked") Class<? extends Record> concreteClass = (Class<? extends Record>) Class.forName(className);
 
-          // Deserialize using the concrete pickler
-          @SuppressWarnings("unchecked")
-          T result = (T) concretePickler.deserialize(buffer);
+            // Get the pickler for this concrete class
+            @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord(concreteClass);
 
-          return result;
-        } catch (ClassNotFoundException e) {
-          throw new RuntimeException("Failed to load class: " + className, e);
+            // Deserialize using the concrete pickler
+            @SuppressWarnings("unchecked") T result = (T) concretePickler.deserialize(buffer);
+
+            return result;
+          } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load class: " + className, e);
+          }
         }
-      }
-    };
-
-    PICKLER_REGISTRY.put(sealedClass, sealedPickler);
-    return sealedPickler;
+      };
+    }
   }
 }

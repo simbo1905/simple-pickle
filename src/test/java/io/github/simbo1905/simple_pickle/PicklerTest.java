@@ -99,6 +99,67 @@ class PicklerTest {
   record Triangle(double a, double b, double c) implements Shape {
   }
 
+
+  /// Define the protocol classes
+  sealed interface Command permits Push, Pop, Peek {
+  }
+
+  /// This must be public if it is not in the picker package
+  record Push(String item) implements Command {
+  }
+
+  /// This must be public if it is not in the picker package
+  record Pop() implements Command {
+  }
+
+  /// This must be public if it is not in the picker package
+  record Peek() implements Command {
+  }
+
+  sealed interface Response permits Success, Failure {
+    String payload();
+  }
+
+  /// This must be public if it is not in the picker package
+  record Success(Optional<String> value) implements Response {
+    public String payload() {
+      return value.orElse(null);
+    }
+  }
+
+  /// This must be public if it is not in the picker package
+  record Failure(String errorMessage) implements Response {
+    public String payload() {
+      return errorMessage;
+    }
+  }
+
+
+  /// Define a hierarchy of nested sealed interfaces for testing
+  sealed interface Animal permits Mammal, Bird, Alicorn {
+  }
+
+  sealed interface Mammal extends Animal permits Dog, Cat {
+  }
+
+  sealed interface Bird extends Animal permits Eagle, Penguin {
+  }
+
+  record Alicorn(String name, String[] magicPowers) implements Animal {
+  }
+
+  record Dog(String name, int age) implements Mammal {
+  }
+
+  record Cat(String name, boolean purrs) implements Mammal {
+  }
+
+  record Eagle(double wingspan) implements Bird {
+  }
+
+  record Penguin(boolean canSwim) implements Bird {
+  }
+
   /**
    * Utility method to check array record equality by comparing each component
    * @param expected The expected array record
@@ -473,6 +534,69 @@ class PicklerTest {
     assertNull(deserialized);
   }
 
+  @Test
+  void testNestedSealedInterfaces() {
+    // Create instances of different Animal implementations
+    Animal dog = new Dog("Buddy", 3);
+    Animal cat = new Cat("Whiskers", true);
+    Animal eagle = new Eagle(2.1);
+    Animal penguin = new Penguin(true);
+    Animal alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
+
+    // Get a pickler for the top-level Animal sealed interface
+    Pickler<Animal> pickler = Pickler.picklerForSealedTrait(Animal.class);
+
+    // Test dog serialization/deserialization
+    ByteBuffer dogBuffer = ByteBuffer.allocate(1024);
+    pickler.serialize(dog, dogBuffer);
+    dogBuffer.flip();
+    Animal deserializedDog = pickler.deserialize(dogBuffer);
+
+    assertInstanceOf(Dog.class, deserializedDog);
+    assertEquals(dog, deserializedDog);
+    assertEquals("Buddy", ((Dog) deserializedDog).name());
+    assertEquals(3, ((Dog) deserializedDog).age());
+
+    // Test cat serialization/deserialization
+    ByteBuffer catBuffer = ByteBuffer.allocate(1024);
+    pickler.serialize(cat, catBuffer);
+    catBuffer.flip();
+    Animal deserializedCat = pickler.deserialize(catBuffer);
+
+    assertInstanceOf(Cat.class, deserializedCat);
+    assertEquals(cat, deserializedCat);
+    assertEquals("Whiskers", ((Cat) deserializedCat).name());
+    assertTrue(((Cat) deserializedCat).purrs());
+
+    // Test eagle serialization/deserialization
+    ByteBuffer eagleBuffer = ByteBuffer.allocate(1024);
+    pickler.serialize(eagle, eagleBuffer);
+    eagleBuffer.flip();
+    Animal deserializedEagle = pickler.deserialize(eagleBuffer);
+
+    assertInstanceOf(Eagle.class, deserializedEagle);
+    assertEquals(eagle, deserializedEagle);
+    assertEquals(2.1, ((Eagle) deserializedEagle).wingspan());
+
+    // Test penguin serialization/deserialization
+    ByteBuffer penguinBuffer = ByteBuffer.allocate(1024);
+    pickler.serialize(penguin, penguinBuffer);
+    penguinBuffer.flip();
+    Animal deserializedPenguin = pickler.deserialize(penguinBuffer);
+
+    assertInstanceOf(Penguin.class, deserializedPenguin);
+    assertEquals(penguin, deserializedPenguin);
+    assertTrue(((Penguin) deserializedPenguin).canSwim());
+
+    // Test alicorn serialization/deserialization
+    ByteBuffer alicornBuffer = ByteBuffer.allocate(1024);
+    pickler.serialize(alicorn, alicornBuffer);
+    alicornBuffer.flip();
+    Animal deserializedAlicorn = pickler.deserialize(alicornBuffer);
+    assertInstanceOf(Alicorn.class, deserializedAlicorn);
+    assertArrayEquals(new String[]{"elements of harmony", "wings of a pegasus"}, ((Alicorn) deserializedAlicorn).magicPowers());
+  }
+
   /// Tests the protocol example from the README
   @Test
   void testProtocolExample() {
@@ -534,34 +658,5 @@ class PicklerTest {
     Response receivedResponse = responsePickler.deserialize(responseBuffer);
     assertInstanceOf(Success.class, receivedResponse);
     assertEquals("operation successful", receivedResponse.payload());
-  }
-}
-
-// Define the protocol classes
-sealed interface Command permits Push, Pop, Peek {
-}
-
-record Push(String item) implements Command {
-}
-
-record Pop() implements Command {
-}
-
-record Peek() implements Command {
-}
-
-sealed interface Response permits Success, Failure {
-  String payload();
-}
-
-record Success(Optional<String> value) implements Response {
-  public String payload() {
-    return value.orElse(null);
-  }
-}
-
-record Failure(String errorMessage) implements Response {
-  public String payload() {
-    return errorMessage;
   }
 }
