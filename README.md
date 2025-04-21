@@ -15,23 +15,33 @@ An example protocol could look like this:
 
 ```java
 // Client to server messages
-sealed interface Command permits Push, Pop, Peek {}
-record Push(String item) implements Command {}
-record Pop() implements Command {}
-record Peek() implements Command {}
+sealed interface StackCommand permits Push, Pop, Peek {}
+record Push(String item) implements StackCommand {}
+record Pop() implements StackCommand {}
+record Peek() implements StackCommand {}
 // Server responses
-sealed interface Response permits Success, Failure {
+sealed interface StackResponse permits Success, Failure {
   String payload();
 }
-record Success(Optional<String> value) implements Response {
+record Success(Optional<String> value) implements StackResponse {
   public String payload() { return value.orElse(null); }
 }
-record Failure(String errorMessage) implements Response {
+record Failure(String errorMessage) implements StackResponse {
   public String payload() { return errorMessage;}
 }
 ```
 
-The library dynamically generates serializers once at runtime, caching them for reuse to avoid redundant creation and infinite recursion.
+Note that there is deliberately no common interface between the client and server protocols. This means that we would 
+create two type-safe picklers, one for the client and one for the server. This is a deliberate design choice to avoid 
+needing to do unchecked casts when deserializing: 
+
+```java
+// Get picklers for the protocol interfaces
+Pickler<StackCommand> commandPickler = Pickler.picklerForSealedTrait(StackCommand.class);
+Pickler<StackResponse> responsePickler = Pickler.picklerForSealedTrait(StackResponse.class);
+```
+
+See the unit tests for lots of examples of how to use the library.
 
 ## Support Types And Their Type Markers
 
