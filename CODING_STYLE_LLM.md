@@ -2,6 +2,8 @@
 
 This file is a Gen AI summary of CODEING_STYLE.md to use less tokens of context window. Read the original file for full details.
 
+IMPORTANT: We do TDD so all code must include targeted unit tests. 
+
 ## Core Principles
 
 * Use Records for all data structures. Use sealed interfaces for protocols.
