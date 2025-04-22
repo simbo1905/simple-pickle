@@ -18,6 +18,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 ///
 /// @param <T> The type of object to be pickled which can be a record or a sealed interface of records.
 public interface Pickler<T> {
+
+
   /// Registry to store Picklers by class to avoid redundant creation and infinite recursion
   ConcurrentHashMap<Class<?>, Pickler<?>> PICKLER_REGISTRY = new ConcurrentHashMap<>();
 
@@ -76,6 +78,8 @@ public interface Pickler<T> {
   /// @see Pickler
   /// @see Record
   abstract class PicklerBase<R extends Record> implements Pickler<R> {
+    public static final java.util.logging.Logger LOGGER =
+        java.util.logging.Logger.getLogger(Pickler.class.getName());
 
     abstract Object[] staticGetComponents(R record);
 
@@ -96,6 +100,8 @@ public interface Pickler<T> {
       int size = 1; // Start with 1 byte for the type of the component
       for (Object c : components) {
         size += staticSizeOf(c);
+        int finalSize = size;
+        LOGGER.finer(() -> "Size of " + c.getClass().getSimpleName() + " '" + c + "' is " + finalSize);
       }
       return size;
     }
@@ -115,14 +121,14 @@ public interface Pickler<T> {
         case Boolean _ -> 1; // we write the byte 0 or 1
         default -> 0;
       };
-      int size = 1;
+      int size = 1; // Type marker byte
       if (c.getClass().isArray()) {
         // Component type name size
         String componentTypeName = c.getClass().getComponentType().getName();
         byte[] componentTypeBytes = componentTypeName.getBytes(UTF_8);
 
-        // Size includes: component type name length byte + name bytes + array length (4 bytes)
-        int arrayHeaderSize = 1 + componentTypeBytes.length + 4;
+        // Size includes: component type name length (4 bytes) + name bytes + array length (4 bytes)
+        int arrayHeaderSize = 4 + componentTypeBytes.length + 4;
 
         // Calculate size of all array elements using streams
         int length = Array.getLength(c);
@@ -132,7 +138,7 @@ public interface Pickler<T> {
 
         size += arrayHeaderSize + elementsSize;
       } else if (c instanceof String) {
-        size += ((String) c).getBytes(UTF_8).length + 1; // 1 byte for the length of the string
+        size += ((String) c).getBytes(UTF_8).length + 4; // 4 bytes for the length of the string
       } else if (c instanceof Optional<?> opt) {
         // 1 byte for the presence marker when empty
         // 1 byte for marker + size of contained value
@@ -141,7 +147,7 @@ public interface Pickler<T> {
         // Add size for class name
         String className = record.getClass().getName();
         byte[] classNameBytes = className.getBytes(UTF_8);
-        size += 1; // Length byte
+        size += 4; // Length int (4 bytes)
         size += classNameBytes.length; // Class name bytes
 
         // Get the appropriate pickler for this record type
@@ -189,7 +195,7 @@ public interface Pickler<T> {
         // Write the component type as a string
         String componentTypeName = c.getClass().getComponentType().getName();
         byte[] componentTypeBytes = componentTypeName.getBytes(UTF_8);
-        buffer.put((byte) componentTypeBytes.length);
+        buffer.putInt(componentTypeBytes.length);
         buffer.put(componentTypeBytes);
 
         // Write the array length
@@ -214,7 +220,7 @@ public interface Pickler<T> {
         case String str -> {
           buffer.put(typeMarker(c));
           final var bytes = str.getBytes(UTF_8);
-          buffer.put((byte) bytes.length); // FIXME this is too small!
+          buffer.putInt(bytes.length); // Using full int instead of byte
           buffer.put(bytes);
         }
         case Optional<?> opt -> {
@@ -232,7 +238,7 @@ public interface Pickler<T> {
           // Write the class name for deserialization
           String className = record.getClass().getName();
           byte[] classNameBytes = className.getBytes(UTF_8);
-          buffer.put((byte) classNameBytes.length);
+          buffer.putInt(classNameBytes.length);
           buffer.put(classNameBytes);
 
           // Get the appropriate pickler for this record type
@@ -268,7 +274,7 @@ public interface Pickler<T> {
         case 6 -> buffer.getChar();
         case 7 -> buffer.get() == 1;
         case 8 -> {
-          final var strLength = buffer.get();
+          final var strLength = buffer.getInt();
           final byte[] bytes = new byte[strLength];
           buffer.get(bytes);
           yield new String(bytes, UTF_8);
@@ -284,7 +290,7 @@ public interface Pickler<T> {
         }
         case 10 -> { // Handle nested record
           // Read the class name
-          byte classNameLength = buffer.get();
+          int classNameLength = buffer.getInt();
           byte[] classNameBytes = new byte[classNameLength];
           buffer.get(classNameBytes);
           String className = new String(classNameBytes, UTF_8);
@@ -307,7 +313,7 @@ public interface Pickler<T> {
         case 11 -> null; // Handle null values
         case 12 -> { // Handle arrays
           // Read component type
-          byte componentTypeLength = buffer.get();
+          int componentTypeLength = buffer.getInt();
           byte[] componentTypeBytes = new byte[componentTypeLength];
           buffer.get(componentTypeBytes);
           String componentTypeName = new String(componentTypeBytes, UTF_8);
@@ -377,7 +383,7 @@ public interface Pickler<T> {
         }
         throw new RuntimeException(inner.getMessage(), inner);
       }
-      // final we get the canonical constructor method handle for the record that will be used to create a new
+      // Then we get the canonical constructor method handle for the record that will be used to create a new
       // instance from the components that the base class will pull out of the byte buffer
       try {
         // Get the record components
@@ -466,7 +472,7 @@ public interface Pickler<T> {
           // Write the class name for deserialization
           String className = object.getClass().getName();
           byte[] classNameBytes = className.getBytes(UTF_8);
-          buffer.put((byte) classNameBytes.length);
+          buffer.putInt(classNameBytes.length);
           buffer.put(classNameBytes);
 
           // Get the appropriate pickler for this concrete type
@@ -478,7 +484,7 @@ public interface Pickler<T> {
 
         @Override
         public int sizeOf(T value) {
-          if (value == null) return 0;
+          if (value == null) return 1;
 
           // Get the class name length
           String className = value.getClass().getName();
@@ -489,7 +495,8 @@ public interface Pickler<T> {
           @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord((Class<? extends Record>) value.getClass());
 
           // Calculate the size using the concrete pickler
-          return 1 + classNameLength + concretePickler.sizeOf((Record) value);
+          // 1 byte for type marker + 4 bytes for class name length + class name bytes + concrete size
+          return 4 + classNameLength + concretePickler.sizeOf((Record) value);
         }
 
         @Override
@@ -502,7 +509,7 @@ public interface Pickler<T> {
           }
 
           // Read the class name
-          byte classNameLength = buffer.get();
+          int classNameLength = buffer.getInt();
           byte[] classNameBytes = new byte[classNameLength];
           buffer.get(classNameBytes);
           String className = new String(classNameBytes, UTF_8);

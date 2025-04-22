@@ -11,34 +11,36 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static io.github.simbo1905.simple_pickle.Pickler.PicklerBase.LOGGER;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Test class for the Pickler functionality.
 /// Demonstrates basic serialization and deserialization of records.
 class PicklerTest {
 
-  /// Set up logging before all tests
   @BeforeAll
   static void setupLogging() {
-    // Configure the root logger to use FINE level
-    Logger rootLogger = Logger.getLogger("");
-    rootLogger.setLevel(Level.FINE);
+    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
+    final Level level = Level.parse(logLevel);
 
-    // Make sure the console handler also uses FINE level
-    for (java.util.logging.Handler handler : rootLogger.getHandlers()) {
-      if (handler instanceof ConsoleHandler) {
-        handler.setLevel(Level.FINE);
-      }
-    }
+    LOGGER.setLevel(level);
+    ConsoleHandler consoleHandler = new ConsoleHandler();
+    consoleHandler.setLevel(level);
+    LOGGER.addHandler(consoleHandler);
 
-    // Configure the PicklerGenerator logger specifically
-    Logger picklerLogger = Logger.getLogger("io.github.simbo1905.simple_pickle.PicklerGenerator");
-    picklerLogger.setLevel(Level.FINE);
+    // Configure SessionKeyManager logger
+    Logger logger = Logger.getLogger(Pickler.class.getName());
+    logger.setLevel(level);
+    ConsoleHandler skmHandler = new ConsoleHandler();
+    skmHandler.setLevel(level);
+    logger.addHandler(skmHandler);
 
-    // Set java.lang package logging to INFO or higher to hide shutdown messages
-    Logger.getLogger("java.lang").setLevel(Level.INFO);
+    // Optionally disable parent handlers if needed
+    LOGGER.setUseParentHandlers(false);
+    logger.setUseParentHandlers(false);
+
+    LOGGER.info("Logging initialized at level: " + level);
   }
-
   /// A simple record for testing purposes
   record Person(String name, int age) {
   }
@@ -552,7 +554,7 @@ class PicklerTest {
     ByteBuffer dogBuffer = ByteBuffer.allocate(1024);
     pickler.serialize(dog, dogBuffer);
     int bytesWritten = dogBuffer.position();
-    assertEquals(pickler.sizeOf(dog), bytesWritten);
+    assertEquals(bytesWritten, pickler.sizeOf(dog));
     dogBuffer.flip();
     Animal deserializedDog = pickler.deserialize(dogBuffer);
 
@@ -637,7 +639,7 @@ class PicklerTest {
       ByteBuffer buffer = ByteBuffer.allocate(1024);
       responsePickler.serialize(response, buffer);
       int bytesWritten = buffer.position();
-      assertEquals(responsePickler.sizeOf(response), bytesWritten);
+      assertEquals(bytesWritten, responsePickler.sizeOf(response));
       buffer.flip();
       StackResponse deserializedResponse = responsePickler.deserialize(buffer);
       assertEquals(response, deserializedResponse);
