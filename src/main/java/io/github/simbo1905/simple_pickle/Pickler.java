@@ -16,7 +16,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 /// Interface for serializing and deserializing objects record protocols.
 ///
-/// TODO manufacture an estimate size of the object to be pickled
 /// @param <T> The type of object to be pickled which can be a record or a sealed interface of records.
 public interface Pickler<T> {
   /// Registry to store Picklers by class to avoid redundant creation and infinite recursion
