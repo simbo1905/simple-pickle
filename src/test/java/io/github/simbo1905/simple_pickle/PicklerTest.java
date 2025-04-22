@@ -337,6 +337,8 @@ class PicklerTest {
     // Serialize the record with nested records
     final var buffer = ByteBuffer.allocate(1024);
     pickler.serialize(employee, buffer);
+    int bytesWritten = buffer.position();
+    assertEquals(bytesWritten, pickler.sizeOf(employee));
     buffer.flip(); // Prepare buffer for reading
 
     // Deserialize from the byte buffer
@@ -549,6 +551,8 @@ class PicklerTest {
     // Test dog serialization/deserialization
     ByteBuffer dogBuffer = ByteBuffer.allocate(1024);
     pickler.serialize(dog, dogBuffer);
+    int bytesWritten = dogBuffer.position();
+    assertEquals(pickler.sizeOf(dog), bytesWritten);
     dogBuffer.flip();
     Animal deserializedDog = pickler.deserialize(dogBuffer);
 
@@ -591,6 +595,8 @@ class PicklerTest {
     // Test alicorn serialization/deserialization
     ByteBuffer alicornBuffer = ByteBuffer.allocate(1024);
     pickler.serialize(alicorn, alicornBuffer);
+    int alicornBytesWritten = alicornBuffer.position();
+    assertEquals(alicornBytesWritten, pickler.sizeOf(alicorn));
     alicornBuffer.flip();
     Animal deserializedAlicorn = pickler.deserialize(alicornBuffer);
     assertInstanceOf(Alicorn.class, deserializedAlicorn);
@@ -630,6 +636,8 @@ class PicklerTest {
     for (StackResponse response : responses) {
       ByteBuffer buffer = ByteBuffer.allocate(1024);
       responsePickler.serialize(response, buffer);
+      int bytesWritten = buffer.position();
+      assertEquals(responsePickler.sizeOf(response), bytesWritten);
       buffer.flip();
       StackResponse deserializedResponse = responsePickler.deserialize(buffer);
       assertEquals(response, deserializedResponse);

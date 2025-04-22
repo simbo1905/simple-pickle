@@ -96,29 +96,61 @@ public interface Pickler<T> {
       final var components = staticGetComponents(object);
       int size = 1; // Start with 1 byte for the type of the component
       for (Object c : components) {
-        if (c == null) {
-          continue;
-        }
-        int sizeOfEach = switch (c) {
-          case Integer _ -> Integer.BYTES;
-          case Long _ -> Long.BYTES;
-          case Short _ -> Short.BYTES;
-          case Byte _ -> Byte.BYTES;
-          case Double _ -> Double.BYTES;
-          case Float _ -> Float.BYTES;
-          case Character _ -> Character.BYTES;
-          case Boolean _ -> 1; // we write the byte 0 or 1
-          // FIXME below this point we are not using the size of the object add to if/elseif below
-          case String _ -> 8;
-          case Optional<?> _ -> 9;
-          case Record _ -> 10; // 10 is for nested records
-          default -> 0;
-        };
-        if (c.getClass().isArray()) {
-          size += Array.getLength(c) * sizeOfEach;
-        } else {
-          size += sizeOfEach;
-        }
+        size += staticSizeOf(c);
+      }
+      return size;
+    }
+
+    int staticSizeOf(Object c) {
+      if (c == null) {
+        return 1;
+      }
+      int plainSize = switch (c) {
+        case Integer _ -> Integer.BYTES;
+        case Long _ -> Long.BYTES;
+        case Short _ -> Short.BYTES;
+        case Byte _ -> Byte.BYTES;
+        case Double _ -> Double.BYTES;
+        case Float _ -> Float.BYTES;
+        case Character _ -> Character.BYTES;
+        case Boolean _ -> 1; // we write the byte 0 or 1
+        default -> 0;
+      };
+      int size = 1;
+      if (c.getClass().isArray()) {
+        // Component type name size
+        String componentTypeName = c.getClass().getComponentType().getName();
+        byte[] componentTypeBytes = componentTypeName.getBytes(UTF_8);
+
+        // Size includes: component type name length byte + name bytes + array length (4 bytes)
+        int arrayHeaderSize = 1 + componentTypeBytes.length + 4;
+
+        // Calculate size of all array elements using streams
+        int length = Array.getLength(c);
+        int elementsSize = java.util.stream.IntStream.range(0, length)
+            .map(i -> staticSizeOf(Array.get(c, i)))
+            .sum();
+
+        size += arrayHeaderSize + elementsSize;
+      } else if (c instanceof String) {
+        size += ((String) c).getBytes(UTF_8).length + 1; // 1 byte for the length of the string
+      } else if (c instanceof Optional<?> opt) {
+        // 1 byte for the presence marker when empty
+        // 1 byte for marker + size of contained value
+        size += opt.map(o -> 1 + staticSizeOf(o)).orElse(1);
+      } else if (c instanceof Record record) {
+        // Add size for class name
+        String className = record.getClass().getName();
+        byte[] classNameBytes = className.getBytes(UTF_8);
+        size += 1; // Length byte
+        size += classNameBytes.length; // Class name bytes
+
+        // Get the appropriate pickler for this record type
+        @SuppressWarnings("unchecked")
+        Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.picklerForRecord(record.getClass());
+        size += nestedPickler.sizeOf((Record) c);
+      } else {
+        size += plainSize;
       }
       return size;
     }
@@ -183,7 +215,7 @@ public interface Pickler<T> {
         case String str -> {
           buffer.put(typeMarker(c));
           final var bytes = str.getBytes(UTF_8);
-          buffer.put((byte) bytes.length);
+          buffer.put((byte) bytes.length); // FIXME this is too small!
           buffer.put(bytes);
         }
         case Optional<?> opt -> {
