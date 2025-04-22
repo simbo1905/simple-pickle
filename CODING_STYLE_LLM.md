@@ -2,7 +2,7 @@
 
 This file is a Gen AI summary of CODEING_STYLE.md to use less tokens of context window. Read the original file for full details.
 
-IMPORTANT: We do TDD so all code must include targeted unit tests. 
+IMPORTANT: We do TDD so all code must include targeted unit tests.
 
 ## Core Principles
 
@@ -35,9 +35,9 @@ IMPORTANT: We do TDD so all code must include targeted unit tests.
 
 ## Package Structure
 
-* Use default (package-private) access as the standard
+* Use default (package-private) access as the standard. Do not use 'private' or 'public' by default.
 * Limit public to genuine cross-package APIs
-* Prefer package-private static methods
+* Prefer package-private static methods. Do not use 'private' or 'public' by default.
 * Limit private to security-related code
 * Avoid anti-patterns: boilerplate OOP, excessive layering, dependency injection overuse
 

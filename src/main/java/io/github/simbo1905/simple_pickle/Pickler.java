@@ -34,6 +34,14 @@ public interface Pickler<T> {
   /// @return The deserialized object
   T deserialize(ByteBuffer buffer);
 
+  /// Calculates the size in bytes required to serialize the given object
+  ///
+  /// This allows for pre-allocating buffers of the correct size without
+  /// having to serialize the object first.
+  ///
+  /// @param value The object to calculate the size for
+  /// @return The number of bytes required to serialize the object
+  int sizeOf(T value);
   /// Get a Pickler for a record class, creating one if it doesn't exist in the registry
   @SuppressWarnings("unchecked")
   static <R extends Record> Pickler<R> picklerForRecord(Class<R> recordClass) {
@@ -81,6 +89,38 @@ public interface Pickler<T> {
       final var components = staticGetComponents(object);
       buffer.put((byte) components.length);
       Arrays.stream(components).forEach(c -> write(buffer, c));
+    }
+
+    @Override
+    public int sizeOf(R object) {
+      final var components = staticGetComponents(object);
+      int size = 1; // Start with 1 byte for the type of the component
+      for (Object c : components) {
+        if (c == null) {
+          continue;
+        }
+        int sizeOfEach = switch (c) {
+          case Integer _ -> Integer.BYTES;
+          case Long _ -> Long.BYTES;
+          case Short _ -> Short.BYTES;
+          case Byte _ -> Byte.BYTES;
+          case Double _ -> Double.BYTES;
+          case Float _ -> Float.BYTES;
+          case Character _ -> Character.BYTES;
+          case Boolean _ -> 1; // we write the byte 0 or 1
+          // FIXME below this point we are not using the size of the object add to if/elseif below
+          case String _ -> 8;
+          case Optional<?> _ -> 9;
+          case Record _ -> 10; // 10 is for nested records
+          default -> 0;
+        };
+        if (c.getClass().isArray()) {
+          size += Array.getLength(c) * sizeOfEach;
+        } else {
+          size += sizeOfEach;
+        }
+      }
+      return size;
     }
 
     static byte typeMarker(Object c) {
@@ -403,6 +443,22 @@ public interface Pickler<T> {
 
           // Use that pickler to serialize the object
           concretePickler.serialize((Record) object, buffer);
+        }
+
+        @Override
+        public int sizeOf(T value) {
+          if (value == null) return 0;
+
+          // Get the class name length
+          String className = value.getClass().getName();
+          byte[] classNameBytes = className.getBytes(UTF_8);
+          int classNameLength = classNameBytes.length;
+
+          // Get the pickler for this concrete type
+          @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord((Class<? extends Record>) value.getClass());
+
+          // Calculate the size using the concrete pickler
+          return 1 + classNameLength + concretePickler.sizeOf((Record) value);
         }
 
         @Override

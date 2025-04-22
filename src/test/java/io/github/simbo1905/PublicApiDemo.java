@@ -42,6 +42,7 @@ public class PublicApiDemo {
 
     var dogBuffer = ByteBuffer.allocate(64);
     animalPickler.serialize(dog, dogBuffer);
+    int bytesWritten = dogBuffer.position();
     dogBuffer.flip();
     var returnedDog = animalPickler.deserialize(dogBuffer);
 
@@ -51,6 +52,10 @@ public class PublicApiDemo {
       throw new AssertionError("""
           ¯\\_(ツ)_/¯
           """);
+    }
+
+    if (bytesWritten != animalPickler.sizeOf(dog)) {
+      throw new AssertionError("wrong number of bytes written");
     }
 
     // Demo Eagle serialization/deserialization
