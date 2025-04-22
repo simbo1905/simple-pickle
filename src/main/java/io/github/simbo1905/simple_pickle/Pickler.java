@@ -148,7 +148,7 @@ public interface Pickler<T> {
         // Get the appropriate pickler for this record type
         @SuppressWarnings("unchecked")
         Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.picklerForRecord(record.getClass());
-        size += nestedPickler.sizeOf((Record) c);
+        size += nestedPickler.sizeOf(record);
       } else {
         size += plainSize;
       }

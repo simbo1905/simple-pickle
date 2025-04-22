@@ -7,29 +7,17 @@ import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedTrait;
 
 
 public class PublicApiDemo {
-  sealed interface Animal permits Mammal, Bird, Alicorn {
-  }
 
-  sealed interface Mammal extends Animal permits Dog, Cat {
-  }
-
-  sealed interface Bird extends Animal permits Eagle, Penguin {
-  }
-
-  public record Alicorn(String name, String[] magicPowers) implements Animal {
-  }
-
-  public record Dog(String name, int age) implements Mammal {
-  }
-
-  public record Cat(String name, boolean purrs) implements Mammal {
-  }
-
-  public record Eagle(double wingspan) implements Bird {
-  }
-
-  record Penguin(boolean canSwim) implements Bird {
-  }
+  // @formatter:off
+  sealed interface Animal permits Mammal, Bird, Alicorn {}
+  sealed interface Mammal extends Animal permits Dog, Cat { }
+  sealed interface Bird extends Animal permits Eagle, Penguin {}
+  public record Alicorn(String name, String[] magicPowers) implements Animal {}
+  public record Dog(String name, int age) implements Mammal {}
+  public record Cat(String name, boolean purrs) implements Mammal {}
+  public record Eagle(double wingspan) implements Bird {}
+  record Penguin(boolean canSwim) implements Bird {}
+  // @formatter:on
 
   public static void main(String[] args) {
     // Create instances of different Animal implementations
@@ -37,9 +25,10 @@ public class PublicApiDemo {
     Animal eagle = new Eagle(2.1);
     Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
 
-    // Get a pickler for the record
+    // Get a pickler for the sealed trait Animal
     var animalPickler = picklerForSealedTrait(Animal.class);
 
+    // Serialize and deserialize the Dog instance
     var dogBuffer = ByteBuffer.allocate(64);
     animalPickler.serialize(dog, dogBuffer);
     int bytesWritten = dogBuffer.position();
