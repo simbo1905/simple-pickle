@@ -162,35 +162,35 @@ public interface Pickler<T> {
 
     static byte typeMarker(Object c) {
       if (c == null) {
-        return (byte) Constants.NULL.getTypeMarker();
+        return Constants.NULL.getTypeMarker();
       }
       if (c.getClass().isArray()) {
-        return (byte) Constants.ARRAY.getTypeMarker();
+        return Constants.ARRAY.getTypeMarker();
       }
       return switch (c) {
-        case Integer _ -> (byte) Constants.INTEGER.getTypeMarker();
-        case Long _ -> (byte) Constants.LONG.getTypeMarker();
-        case Short _ -> (byte) Constants.SHORT.getTypeMarker();
-        case Byte _ -> (byte) Constants.BYTE.getTypeMarker();
-        case Double _ -> (byte) Constants.DOUBLE.getTypeMarker();
-        case Float _ -> (byte) Constants.FLOAT.getTypeMarker();
-        case Character _ -> (byte) Constants.CHARACTER.getTypeMarker();
-        case Boolean _ -> (byte) Constants.BOOLEAN.getTypeMarker();
-        case String _ -> (byte) Constants.STRING.getTypeMarker();
-        case Optional<?> _ -> (byte) Constants.OPTIONAL.getTypeMarker();
-        case Record _ -> (byte) Constants.RECORD.getTypeMarker();
+        case Integer _ -> Constants.INTEGER.getTypeMarker();
+        case Long _ -> Constants.LONG.getTypeMarker();
+        case Short _ -> Constants.SHORT.getTypeMarker();
+        case Byte _ -> Constants.BYTE.getTypeMarker();
+        case Double _ -> Constants.DOUBLE.getTypeMarker();
+        case Float _ -> Constants.FLOAT.getTypeMarker();
+        case Character _ -> Constants.CHARACTER.getTypeMarker();
+        case Boolean _ -> Constants.BOOLEAN.getTypeMarker();
+        case String _ -> Constants.STRING.getTypeMarker();
+        case Optional<?> _ -> Constants.OPTIONAL.getTypeMarker();
+        case Record _ -> Constants.RECORD.getTypeMarker();
         default -> throw new UnsupportedOperationException("Unsupported type: " + c.getClass());
       };
     }
 
     static void write(ByteBuffer buffer, Object c) {
       if (c == null) {
-        buffer.put((byte) Constants.NULL.getTypeMarker());
+        buffer.put(Constants.NULL.getTypeMarker());
         return;
       }
 
       if (c.getClass().isArray()) {
-        buffer.put((byte) Constants.ARRAY.getTypeMarker());
+        buffer.put(Constants.ARRAY.getTypeMarker());
 
         // Write the component type as a string
         String componentTypeName = c.getClass().getComponentType().getName();
@@ -265,21 +265,21 @@ public interface Pickler<T> {
     Object deserializeValue(ByteBuffer buffer) {
       final byte type = buffer.get();
       return switch (type) {
-        case (byte) Constants.INTEGER.getTypeMarker() -> buffer.getInt();
-        case (byte) Constants.LONG.getTypeMarker() -> buffer.getLong();
-        case (byte) Constants.SHORT.getTypeMarker() -> buffer.getShort();
-        case (byte) Constants.BYTE.getTypeMarker() -> buffer.get();
-        case (byte) Constants.DOUBLE.getTypeMarker() -> buffer.getDouble();
-        case (byte) Constants.FLOAT.getTypeMarker() -> buffer.getFloat();
-        case (byte) Constants.CHARACTER.getTypeMarker() -> buffer.getChar();
-        case (byte) Constants.BOOLEAN.getTypeMarker() -> buffer.get() == 1;
-        case (byte) Constants.STRING.getTypeMarker() -> {
+        case Constants.INTEGER.getTypeMarker() -> buffer.getInt();
+        case Constants.LONG.getTypeMarker() -> buffer.getLong();
+        case Constants.SHORT.getTypeMarker() -> buffer.getShort();
+        case Constants.BYTE.getTypeMarker() -> buffer.get();
+        case Constants.DOUBLE.getTypeMarker() -> buffer.getDouble();
+        case Constants.FLOAT.getTypeMarker() -> buffer.getFloat();
+        case Constants.CHARACTER.getTypeMarker() -> buffer.getChar();
+        case Constants.BOOLEAN.getTypeMarker() -> buffer.get() == 1;
+        case Constants.STRING.getTypeMarker() -> {
           final var strLength = buffer.getInt();
           final byte[] bytes = new byte[strLength];
           buffer.get(bytes);
           yield new String(bytes, UTF_8);
         }
-        case (byte) Constants.OPTIONAL.getTypeMarker() -> {
+        case Constants.OPTIONAL.getTypeMarker() -> {
           byte isPresent = buffer.get();
           if (isPresent == 0) {
             yield Optional.empty();
@@ -288,7 +288,7 @@ public interface Pickler<T> {
             yield Optional.ofNullable(value);
           }
         }
-        case (byte) Constants.RECORD.getTypeMarker() -> { // Handle nested record
+        case Constants.RECORD.getTypeMarker() -> { // Handle nested record
           // Read the class name
           int classNameLength = buffer.getInt();
           byte[] classNameBytes = new byte[classNameLength];
@@ -310,8 +310,8 @@ public interface Pickler<T> {
             throw new RuntimeException("Failed to load class: " + className, e);
           }
         }
-        case (byte) Constants.NULL.getTypeMarker() -> null; // Handle null values
-        case (byte) Constants.ARRAY.getTypeMarker() -> { // Handle arrays
+        case Constants.NULL.getTypeMarker() -> null; // Handle null values
+        case Constants.ARRAY.getTypeMarker() -> { // Handle arrays
           // Read component type
           int componentTypeLength = buffer.getInt();
           byte[] componentTypeBytes = new byte[componentTypeLength];
@@ -465,7 +465,7 @@ public interface Pickler<T> {
         @Override
         public void serialize(T object, ByteBuffer buffer) {
           if (object == null) {
-            buffer.put((byte) Constants.NULL.getTypeMarker());
+            buffer.put(Constants.NULL.getTypeMarker());
             return;
           }
 
@@ -535,31 +535,31 @@ public interface Pickler<T> {
   
   /// Enum containing constants used throughout the Pickler implementation
   enum Constants {
-    INTEGER(0, Integer.BYTES, int.class),
-    LONG(1, Long.BYTES, long.class),
-    SHORT(2, Short.BYTES, short.class),
-    BYTE(3, Byte.BYTES, byte.class),
-    DOUBLE(4, Double.BYTES, double.class),
-    FLOAT(5, Float.BYTES, float.class),
-    CHARACTER(6, Character.BYTES, char.class),
-    BOOLEAN(7, 1, boolean.class),
-    STRING(8, 0, String.class),
-    OPTIONAL(9, 0, Optional.class),
-    RECORD(10, 0, Record.class),
-    NULL(11, 0, null),
-    ARRAY(12, 0, null);
+    INTEGER((byte)0, Integer.BYTES, int.class),
+    LONG((byte)1, Long.BYTES, long.class),
+    SHORT((byte)2, Short.BYTES, short.class),
+    BYTE((byte)3, Byte.BYTES, byte.class),
+    DOUBLE((byte)4, Double.BYTES, double.class),
+    FLOAT((byte)5, Float.BYTES, float.class),
+    CHARACTER((byte)6, Character.BYTES, char.class),
+    BOOLEAN((byte)7, 1, boolean.class),
+    STRING((byte)8, 0, String.class),
+    OPTIONAL((byte)9, 0, Optional.class),
+    RECORD((byte)10, 0, Record.class),
+    NULL((byte)11, 0, null),
+    ARRAY((byte)12, 0, null);
 
-    private final int typeMarker;
+    private final byte typeMarker;
     private final int sizeInBytes;
     private final Class<?> primitiveClass;
 
-    Constants(int typeMarker, int sizeInBytes, Class<?> primitiveClass) {
+    Constants(byte typeMarker, int sizeInBytes, Class<?> primitiveClass) {
       this.typeMarker = typeMarker;
       this.sizeInBytes = sizeInBytes;
       this.primitiveClass = primitiveClass;
     }
 
-    public int getTypeMarker() {
+    public byte getTypeMarker() {
       return typeMarker;
     }
 
@@ -571,7 +571,7 @@ public interface Pickler<T> {
       return primitiveClass;
     }
 
-    public static Constants fromTypeMarker(int marker) {
+    public static Constants fromTypeMarker(byte marker) {
       for (Constants c : values()) {
         if (c.typeMarker == marker) {
           return c;
