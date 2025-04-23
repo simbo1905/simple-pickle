@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package io.github.simbo1905.simple_pickle;
 
+import io.github.simbo1905.simple_pickle.animal.*;
+import io.github.simbo1905.simple_pickle.model.*;
+import io.github.simbo1905.simple_pickle.protocol.*;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -40,126 +43,6 @@ class PicklerTest {
     logger.setUseParentHandlers(false);
 
     LOGGER.info("Logging initialized at level: " + level);
-  }
-  /// A simple record for testing purposes
-  record Person(String name, int age) {
-  }
-
-  /// A record with Optional fields for testing
-  record OptionalExample(Optional<Object> objectOpt, Optional<Integer> intOpt, Optional<String> stringOpt) {
-  }
-
-  /// An empty record with no components for testing
-  record Empty() {
-  }
-
-  /// A record with nullable fields for testing
-  record NullableFieldsExample(String stringField, Integer integerField, Double doubleField, Object objectField) {
-  }
-
-  /// A record with a nested record for testing
-  record Address(String street, String city, String zipCode) {
-  }
-
-  /// A record containing another record
-  record Employee(String id, Person person, Address address) {
-  }
-
-  /// A record with multiple levels of nesting (modified to not use arrays)
-  record Department(String name, Employee manager, Employee employee) {
-  }
-
-  /// A record with arrays for testing
-  record ArrayExample(
-      int[] intArray,
-      String[] stringArray,
-      boolean[] booleanArray,
-      Person[] personArray,
-      Integer[] boxedIntArray,
-      Object[] mixedArray
-  ) {
-  }
-
-  /// A record with nested arrays
-  record NestedArrayExample(
-      int[][] nestedIntArray,
-      Object[][] nestedObjectArray
-  ) {
-  }
-
-  /// Define a sealed interface for testing
-  sealed interface Shape permits Circle, Rectangle, Triangle {
-  }
-
-  /// Record implementations of the sealed interface
-  record Circle(double radius) implements Shape {
-  }
-
-  record Rectangle(double width, double height) implements Shape {
-  }
-
-  record Triangle(double a, double b, double c) implements Shape {
-  }
-
-
-  /// Define the protocol classes
-  sealed interface StackCommand permits Push, Pop, Peek {
-  }
-
-  /// This must be public if it is not in the picker package
-  record Push(String item) implements StackCommand {
-  }
-
-  /// This must be public if it is not in the picker package
-  record Pop() implements StackCommand {
-  }
-
-  /// This must be public if it is not in the picker package
-  record Peek() implements StackCommand {
-  }
-
-  sealed interface StackResponse permits Success, Failure {
-    String payload();
-  }
-
-  /// This must be public if it is not in the picker package
-  record Success(Optional<String> value) implements StackResponse {
-    public String payload() {
-      return value.orElse(null);
-    }
-  }
-
-  /// This must be public if it is not in the picker package
-  record Failure(String errorMessage) implements StackResponse {
-    public String payload() {
-      return errorMessage;
-    }
-  }
-
-
-  /// Define a hierarchy of nested sealed interfaces for testing
-  sealed interface Animal permits Mammal, Bird, Alicorn {
-  }
-
-  sealed interface Mammal extends Animal permits Dog, Cat {
-  }
-
-  sealed interface Bird extends Animal permits Eagle, Penguin {
-  }
-
-  record Alicorn(String name, String[] magicPowers) implements Animal {
-  }
-
-  record Dog(String name, int age) implements Mammal {
-  }
-
-  record Cat(String name, boolean purrs) implements Mammal {
-  }
-
-  record Eagle(double wingspan) implements Bird {
-  }
-
-  record Penguin(boolean canSwim) implements Bird {
   }
 
   /**
@@ -233,8 +116,6 @@ class PicklerTest {
     assertEquals(30, deserialized.age());
   }
 
-  record Simple(int value) {
-  }
 
   /// Tests manual implementation of Simple record serialization
   @Test
