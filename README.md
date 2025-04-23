@@ -68,7 +68,7 @@ buffer.flip();
 Person deserializedPerson = pickler.deserialize(buffer);
 ```
 
-### Complex Example Nested Sealed Interfaces
+### Complex Nested Sealed Interfaces
 
 ```java
 // Protocol
@@ -81,31 +81,37 @@ public record Cat(String name, boolean purrs) implements Mammal {}
 public record Eagle(double wingspan) implements Bird {}
 record Penguin(boolean canSwim) implements Bird {}
 
-// Create instances of different Animal implementations
-Dog dog = new Dog("Buddy", 3);
-Animal eagle = new Eagle(2.1);
-Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
+// Create instances of all animal types
+final var dog = new Dog("Buddy", 3);
+final var cat = new Cat("Whiskers", true);
+final var eagle = new Eagle(2.1);
+final var penguin = new Penguin(true);
+final var alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
 
-// Get a pickler for the sealed trait Animal
-var animalPickler = picklerForSealedTrait(Animal.class);
+// Create an array of all animals
+final var originalAnimals = new Animal[]{dog, cat, eagle, penguin, alicorn};
 
-// Serialize and deserialize the Dog instance
-var dogBuffer = ByteBuffer.allocate(64);
-animalPickler.serialize(dog, dogBuffer);
-dogBuffer.flip();
-var returnedDog = animalPickler.deserialize(dogBuffer);
+// Get a pickler for the Animal sealed interface
+final var pickler = picklerForSealedTrait(Animal.class);
 
-// equality is true for all fields
-assert dog.equals(returnedDog);
+// Calculate total buffer size needed using streams
+final var totalSize = Arrays.stream(originalAnimals)
+    .mapToInt(pickler::sizeOf)
+    .sum();
 
-// Alicorns have magic powers
-var alicornBuffer = ByteBuffer.allocate(256);
-animalPickler.serialize(alicorn, alicornBuffer);
-alicornBuffer.flip();
-var returnedAlicorn = (Alicorn) animalPickler.deserialize(alicornBuffer);
+// Allocate a single buffer to hold all animals
+final var buffer = ByteBuffer.allocate(totalSize);
 
-// nested arrays of string are supported
-assert Arrays.equals(alicorn.magicPowers(), returnedAlicorn.magicPowers();
+// Serialize all animals into the buffer using streams
+        Arrays.stream(originalAnimals)
+            .forEach(animal -> pickler.serialize(animal, buffer));
+
+    // Prepare buffer for reading
+    buffer.flip();
+
+// Deserialize all animals from the buffer
+final var deserializedAnimals = new Animal[originalAnimals.length];
+        Arrays.setAll(deserializedAnimals, i -> pickler.deserialize(buffer));
 ```
 
 ## Wire Protocol
