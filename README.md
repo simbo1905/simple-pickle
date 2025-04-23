@@ -113,20 +113,20 @@ assert Arrays.equals(alicorn.magicPowers(), returnedAlicorn.magicPowers();
 Support Types And Their Type Markers
 
 | Type      | Type Marker |
-|-----------|---|
-| Integer   | 0 |
-| Long      | 1 |
-| Short     | 2 |
-| Byte      | 3 |
-| Double    | 4 |
-| Float     | 5 |
-| Character | 6 |
-| Boolean   | 7 |
-| String    | 8 |
-| Optional  | 9 |
-| Record    | 10 |
-| null      | 11 |
-| Array     | 12 |
+|-----------|-------------|
+| null | 	1          |
+| Boolean | 	2          |
+| Byte | 	 3         |
+| Short | 	 4         |
+| Character | 	5          |
+| Integer | 6           |
+| Long | 	 7         |
+| Float | 	 8         |
+| Double | 	 9         |
+| String | 	10         |
+| Optional | 	11         |
+| Record | 	12         |
+| Array | 	13         |
 
 The wire protocol is explained in this diagram: 
 
