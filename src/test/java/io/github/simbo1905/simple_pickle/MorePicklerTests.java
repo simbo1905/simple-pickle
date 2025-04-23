@@ -88,8 +88,11 @@ class MorePicklerTests {
                 assertArrayEquals(origAlicorn.magicPowers(), deserAlicorn.magicPowers());
             }
             
-            // General equality check
-            assertEquals(original, deserialized);
+            // General equality check - skip Alicorn since we've already checked its fields individually
+            // (arrays don't properly implement equals, so the default Record equals won't work correctly)
+            if (!(original instanceof Alicorn)) {
+                assertEquals(original, deserialized);
+            }
         }
         
         // Verify buffer is fully consumed
