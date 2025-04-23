@@ -13,89 +13,87 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MorePicklerTests {
 
+    /// Tests serialization and deserialization of all animal types in a single buffer
     @Test
     void allAnimalsInBuffer() {
         // Create instances of all animal types
-        Dog dog = new Dog("Buddy", 3);
-        Cat cat = new Cat("Whiskers", true);
-        Eagle eagle = new Eagle(2.1);
-        Penguin penguin = new Penguin(true);
-        Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
+        final var dog = new Dog("Buddy", 3);
+        final var cat = new Cat("Whiskers", true);
+        final var eagle = new Eagle(2.1);
+        final var penguin = new Penguin(true);
+        final var alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
         
         // Create an array of all animals
-        Animal[] originalAnimals = {dog, cat, eagle, penguin, alicorn};
+        final var originalAnimals = new Animal[]{dog, cat, eagle, penguin, alicorn};
         
         // Get a pickler for the Animal sealed interface
-        Pickler<Animal> pickler = picklerForSealedTrait(Animal.class);
+        final var pickler = picklerForSealedTrait(Animal.class);
         
-        // Calculate total buffer size needed
-        int totalSize = 0;
-        for (Animal animal : originalAnimals) {
-            totalSize += pickler.sizeOf(animal);
-        }
+        // Calculate total buffer size needed using streams
+        final var totalSize = Arrays.stream(originalAnimals)
+            .mapToInt(pickler::sizeOf)
+            .sum();
         
         // Allocate a single buffer to hold all animals
-        ByteBuffer buffer = ByteBuffer.allocate(totalSize);
+        final var buffer = ByteBuffer.allocate(totalSize);
         
-        // Serialize all animals into the buffer
-        for (Animal animal : originalAnimals) {
-            pickler.serialize(animal, buffer);
-        }
+        // Serialize all animals into the buffer using streams
+        Arrays.stream(originalAnimals)
+            .forEach(animal -> pickler.serialize(animal, buffer));
         
         // Prepare buffer for reading
         buffer.flip();
         
         // Deserialize all animals from the buffer
-        Animal[] deserializedAnimals = new Animal[originalAnimals.length];
-        for (int i = 0; i < originalAnimals.length; i++) {
-            deserializedAnimals[i] = pickler.deserialize(buffer);
-        }
+        final var deserializedAnimals = new Animal[originalAnimals.length];
+        Arrays.setAll(deserializedAnimals, i -> pickler.deserialize(buffer));
         
         // Verify all animals were correctly deserialized
         assertEquals(originalAnimals.length, deserializedAnimals.length);
         
-        // Check each animal individually
-        for (int i = 0; i < originalAnimals.length; i++) {
-            Animal original = originalAnimals[i];
-            Animal deserialized = deserializedAnimals[i];
-            
-            // Check type and equality
-            assertEquals(original.getClass(), deserialized.getClass());
-            
-            // Type-specific checks
-            if (original instanceof Dog) {
-                Dog origDog = (Dog) original;
-                Dog deserDog = (Dog) deserialized;
-                assertEquals(origDog.name(), deserDog.name());
-                assertEquals(origDog.age(), deserDog.age());
-            } else if (original instanceof Cat) {
-                Cat origCat = (Cat) original;
-                Cat deserCat = (Cat) deserialized;
-                assertEquals(origCat.name(), deserCat.name());
-                assertEquals(origCat.purrs(), deserCat.purrs());
-            } else if (original instanceof Eagle) {
-                Eagle origEagle = (Eagle) original;
-                Eagle deserEagle = (Eagle) deserialized;
-                assertEquals(origEagle.wingspan(), deserEagle.wingspan());
-            } else if (original instanceof Penguin) {
-                Penguin origPenguin = (Penguin) original;
-                Penguin deserPenguin = (Penguin) deserialized;
-                assertEquals(origPenguin.canSwim(), deserPenguin.canSwim());
-            } else if (original instanceof Alicorn) {
-                Alicorn origAlicorn = (Alicorn) original;
-                Alicorn deserAlicorn = (Alicorn) deserialized;
-                assertEquals(origAlicorn.name(), deserAlicorn.name());
-                assertArrayEquals(origAlicorn.magicPowers(), deserAlicorn.magicPowers());
-            }
-            
-            // General equality check - skip Alicorn since we've already checked its fields individually
-            // (arrays don't properly implement equals, so the default Record equals won't work correctly)
-            if (!(original instanceof Alicorn)) {
-                assertEquals(original, deserialized);
-            }
-        }
+        // Check each animal pair using streams and switch expressions
+        java.util.stream.IntStream.range(0, originalAnimals.length)
+            .forEach(i -> {
+                final var original = originalAnimals[i];
+                final var deserialized = deserializedAnimals[i];
+                
+                // Check type equality
+                assertEquals(original.getClass(), deserialized.getClass());
+                
+                // Type-specific checks using switch expression
+                switch (original) {
+                    case Dog origDog -> {
+                        final var deserDog = (Dog) deserialized;
+                        assertEquals(origDog.name(), deserDog.name());
+                        assertEquals(origDog.age(), deserDog.age());
+                        assertEquals(original, deserialized);
+                    }
+                    case Cat origCat -> {
+                        final var deserCat = (Cat) deserialized;
+                        assertEquals(origCat.name(), deserCat.name());
+                        assertEquals(origCat.purrs(), deserCat.purrs());
+                        assertEquals(original, deserialized);
+                    }
+                    case Eagle origEagle -> {
+                        final var deserEagle = (Eagle) deserialized;
+                        assertEquals(origEagle.wingspan(), deserEagle.wingspan());
+                        assertEquals(original, deserialized);
+                    }
+                    case Penguin origPenguin -> {
+                        final var deserPenguin = (Penguin) deserialized;
+                        assertEquals(origPenguin.canSwim(), deserPenguin.canSwim());
+                        assertEquals(original, deserialized);
+                    }
+                    case Alicorn origAlicorn -> {
+                        final var deserAlicorn = (Alicorn) deserialized;
+                        assertEquals(origAlicorn.name(), deserAlicorn.name());
+                        assertArrayEquals(origAlicorn.magicPowers(), deserAlicorn.magicPowers());
+                        // Skip equality check for Alicorn due to array field
+                    }
+                }
+            });
         
         // Verify buffer is fully consumed
-        assertEquals(buffer.remaining(), 0, "Buffer should be fully consumed");
+        assertEquals(0, buffer.remaining(), "Buffer should be fully consumed");
     }
 }
