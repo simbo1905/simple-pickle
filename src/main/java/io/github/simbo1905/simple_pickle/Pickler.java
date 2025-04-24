@@ -19,6 +19,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 ///
 /// @param <T> The type of object to be pickled which can be a record or a sealed interface of records.
 public interface Pickler<T> {
+  /// Logger for the Pickler interface
+  java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(Pickler.class.getName());
 
 
   /// Registry to store Picklers by class to avoid redundant creation and infinite recursion
@@ -57,6 +59,83 @@ public interface Pickler<T> {
   static <T> Pickler<T> picklerForSealedTrait(Class<T> sealedClass) {
     return (Pickler<T>) PICKLER_REGISTRY.computeIfAbsent(sealedClass, clazz -> PicklerBase.createPicklerForSealedTrait((Class<T>) clazz));
   }
+  
+  /**
+   * Helper method to write a class name to a buffer with deduplication.
+   * If the class has been seen before, writes a negative reference instead of the full name.
+   * 
+   * @param buffer The buffer to write to
+   * @param clazz The class to write
+   * @param class2BufferOffset Map tracking class to buffer position
+   */
+  static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz, 
+                                             java.util.Map<Class<?>, Integer> class2BufferOffset) {
+    // Check if we've seen this class before
+    Integer existingOffset = class2BufferOffset.get(clazz);
+    if (existingOffset != null) {
+      // We've seen this class before, write a negative reference
+      buffer.putInt(~existingOffset); // Using bitwise complement for negative reference
+      LOGGER.finer(() -> "Writing class reference: " + clazz.getName() + " at offset " + existingOffset);
+    } else {
+      // First time seeing this class, write the full name
+      String className = clazz.getName();
+      byte[] classNameBytes = className.getBytes(UTF_8);
+      int classNameLength = classNameBytes.length;
+      
+      // Store current position before writing
+      int currentPosition = buffer.position();
+      
+      // Write positive length and class name
+      buffer.putInt(classNameLength);
+      buffer.put(classNameBytes);
+      
+      // Store the position where we wrote this class
+      class2BufferOffset.put(clazz, currentPosition);
+      LOGGER.finer(() -> "Writing class name: " + className + " at offset " + currentPosition);
+    }
+  }
+  
+  /**
+   * Helper method to read a class name from a buffer with deduplication support.
+   * 
+   * @param buffer The buffer to read from
+   * @param bufferOffset2Class Map tracking buffer position to class
+   * @return The loaded class
+   */
+  static Class<?> readClassNameWithDeduplication(ByteBuffer buffer, 
+                                               java.util.Map<Integer, Class<?>> bufferOffset2Class) 
+      throws ClassNotFoundException {
+    // Read the class name length or reference
+    int value = buffer.getInt();
+    
+    if (value < 0) {
+      // This is a reference to a previously seen class
+      int offset = ~value; // Decode the reference using bitwise complement
+      Class<?> referencedClass = bufferOffset2Class.get(offset);
+      if (referencedClass == null) {
+        throw new RuntimeException("Invalid class reference at offset: " + offset);
+      }
+      LOGGER.finer(() -> "Read class reference at offset " + offset + ": " + referencedClass.getName());
+      return referencedClass;
+    } else {
+      // This is a new class name
+      int currentPosition = buffer.position() - 4; // Position before reading the length
+      
+      // Read the class name
+      byte[] classNameBytes = new byte[value];
+      buffer.get(classNameBytes);
+      String className = new String(classNameBytes, UTF_8);
+      
+      // Load the class
+      Class<?> loadedClass = Class.forName(className);
+      
+      // Store in our map for future references
+      bufferOffset2Class.put(currentPosition, loadedClass);
+      LOGGER.finer(() -> "Read class name at offset " + currentPosition + ": " + className);
+      
+      return loadedClass;
+    }
+  }
 
   /// Base class for picklers that handle serialization and deserialization of Java records.
   /// Subclasses implement specific serialization logic for different data types while
@@ -79,8 +158,6 @@ public interface Pickler<T> {
   /// @see Pickler
   /// @see Record
   abstract class PicklerBase<R extends Record> implements Pickler<R> {
-    public static final java.util.logging.Logger LOGGER =
-        java.util.logging.Logger.getLogger(Pickler.class.getName());
 
     abstract Object[] staticGetComponents(R record);
 
@@ -238,11 +315,13 @@ public interface Pickler<T> {
         }
         case Record record -> {
           buffer.put(typeMarker(c));
-          // Write the class name for deserialization
-          String className = record.getClass().getName();
-          byte[] classNameBytes = className.getBytes(UTF_8);
-          buffer.putInt(classNameBytes.length);
-          buffer.put(classNameBytes);
+          
+          // Create a map for class deduplication if not already passed in
+          java.util.Map<Class<?>, Integer> class2BufferOffset = 
+              java.util.Collections.synchronizedMap(new java.util.HashMap<>());
+              
+          // Write the class name with deduplication
+          writeClassNameWithDeduplication(buffer, record.getClass(), class2BufferOffset);
 
           // Get the appropriate pickler for this record type
           @SuppressWarnings("unchecked")
@@ -293,25 +372,22 @@ public interface Pickler<T> {
           }
         }
         case RECORD -> { // Handle nested record
-          // Read the class name
-          int classNameLength = buffer.getInt();
-          byte[] classNameBytes = new byte[classNameLength];
-          buffer.get(classNameBytes);
-          String className = new String(classNameBytes, UTF_8);
-
           try {
-            // Load the class
-            @SuppressWarnings("unchecked")
-            Class<? extends Record> recordClass = (Class<? extends Record>) Class.forName(className);
+            // Create a map for class deduplication if not already passed in
+            java.util.Map<Integer, Class<?>> bufferOffset2Class = 
+                java.util.Collections.synchronizedMap(new java.util.HashMap<>());
+                
+            // Read the class with deduplication support
+            Class<?> recordClass = readClassNameWithDeduplication(buffer, bufferOffset2Class);
 
             // Get or create the pickler for this class
             @SuppressWarnings("unchecked")
-            Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.picklerForRecord(recordClass);
+            Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.picklerForRecord((Class<? extends Record>) recordClass);
 
             // Deserialize the nested record
             yield nestedPickler.deserialize(buffer);
           } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load class: " + className, e);
+            throw new RuntimeException("Failed to load class", e);
           }
         }
         case NULL -> null; // Handle null values
@@ -467,22 +543,28 @@ public interface Pickler<T> {
       return new Pickler<T>() {
         @Override
         public void serialize(T object, ByteBuffer buffer) {
+          // Create a map to track class name positions for this serialization session
+          java.util.Map<Class<?>, Integer> class2BufferOffset = new java.util.HashMap<>();
+          serializeWithDeduplication(object, buffer, class2BufferOffset);
+        }
+        
+        private void serializeWithDeduplication(T object, ByteBuffer buffer, 
+                                               java.util.Map<Class<?>, Integer> class2BufferOffset) {
           if (object == null) {
             LOGGER.fine(() -> "Serializing null object");
             buffer.put(NULL.marker());
             return;
           }
 
-          // Write the class name for deserialization
-          String className = object.getClass().getName();
-          byte[] classNameBytes = className.getBytes(UTF_8);
-          buffer.putInt(classNameBytes.length);
-          buffer.put(classNameBytes);
+          // Write the class name with deduplication
+          writeClassNameWithDeduplication(buffer, object.getClass(), class2BufferOffset);
 
           // Get the appropriate pickler for this concrete type
-          @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord((Class<? extends Record>) object.getClass());
+          @SuppressWarnings("unchecked") Pickler<Record> concretePickler = 
+              (Pickler<Record>) picklerForRecord((Class<? extends Record>) object.getClass());
 
-          LOGGER.fine(() -> "Serializing " + className + " with pickler: " + concretePickler.hashCode());
+          LOGGER.fine(() -> "Serializing " + object.getClass().getName() + 
+                     " with pickler: " + concretePickler.hashCode());
 
           // Use that pickler to serialize the object
           concretePickler.serialize((Record) object, buffer);
@@ -490,6 +572,13 @@ public interface Pickler<T> {
 
         @Override
         public T deserialize(ByteBuffer buffer) {
+          // Create a map to track class positions for this deserialization session
+          java.util.Map<Integer, Class<?>> bufferOffset2Class = new java.util.HashMap<>();
+          return deserializeWithDeduplication(buffer, bufferOffset2Class);
+        }
+        
+        private T deserializeWithDeduplication(ByteBuffer buffer, 
+                                              java.util.Map<Integer, Class<?>> bufferOffset2Class) {
           // Check if the value is null
           byte firstByte = buffer.get(buffer.position());
           if (firstByte == NULL.marker()) {
@@ -498,27 +587,23 @@ public interface Pickler<T> {
             return null;
           }
 
-          // Read the class name
-          int classNameLength = buffer.getInt();
-          byte[] classNameBytes = new byte[classNameLength];
-          buffer.get(classNameBytes);
-          String className = new String(classNameBytes, UTF_8);
-
           try {
-            // Load the class
-            @SuppressWarnings("unchecked") Class<? extends Record> concreteClass = (Class<? extends Record>) Class.forName(className);
+            // Read the class name with deduplication support
+            Class<?> concreteClass = readClassNameWithDeduplication(buffer, bufferOffset2Class);
 
             // Get the pickler for this concrete class
-            @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord(concreteClass);
+            @SuppressWarnings("unchecked") Pickler<Record> concretePickler = 
+                (Pickler<Record>) picklerForRecord((Class<? extends Record>) concreteClass);
 
-            LOGGER.fine(() -> "Deserializing " + className + " with pickler: " + concretePickler.hashCode());
+            LOGGER.fine(() -> "Deserializing " + concreteClass.getName() + 
+                       " with pickler: " + concretePickler.hashCode());
 
             // Deserialize using the concrete pickler
             @SuppressWarnings("unchecked") T result = (T) concretePickler.deserialize(buffer);
 
             return result;
           } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load class: " + className, e);
+            throw new RuntimeException("Failed to load class", e);
           }
         }
 
@@ -526,17 +611,41 @@ public interface Pickler<T> {
         public int sizeOf(T value) {
           if (value == null) return 1;
 
-          // Get the class name length
-          String className = value.getClass().getName();
-          byte[] classNameBytes = className.getBytes(UTF_8);
-          int classNameLength = classNameBytes.length;
+          // Create a map to track class name positions for this size calculation
+          java.util.Map<Class<?>, Integer> class2BufferOffset = new java.util.HashMap<>();
+          return sizeOfWithDeduplication(value, class2BufferOffset);
+        }
+        
+        private int sizeOfWithDeduplication(T value, java.util.Map<Class<?>, Integer> class2BufferOffset) {
+          if (value == null) return 1;
+          
+          int size = 0;
+          
+          // Check if we've seen this class before
+          if (class2BufferOffset.containsKey(value.getClass())) {
+            // We've seen this class before, just need 4 bytes for the reference
+            size += 4;
+          } else {
+            // First time seeing this class, need full class name
+            String className = value.getClass().getName();
+            byte[] classNameBytes = className.getBytes(UTF_8);
+            int classNameLength = classNameBytes.length;
+            
+            // 4 bytes for length + class name bytes
+            size += 4 + classNameLength;
+            
+            // Mark this class as seen
+            class2BufferOffset.put(value.getClass(), 0); // Dummy value, we don't need actual offset here
+          }
 
           // Get the pickler for this concrete type
-          @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord((Class<? extends Record>) value.getClass());
+          @SuppressWarnings("unchecked") Pickler<Record> concretePickler = 
+              (Pickler<Record>) picklerForRecord((Class<? extends Record>) value.getClass());
 
-          // Calculate the size using the concrete pickler
-          // 1 byte for type marker + 4 bytes for class name length + class name bytes + concrete size
-          return 4 + classNameLength + concretePickler.sizeOf((Record) value);
+          // Add the size of the concrete object
+          size += concretePickler.sizeOf((Record) value);
+          
+          return size;
         }
       };
     }
