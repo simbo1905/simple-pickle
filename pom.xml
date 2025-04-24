@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.simbo1905</groupId>
-    <artifactId>simple-pickle</artifactId>
+    <artifactId>java-record-pickler</artifactId>
     <version>0.1.0-SNAPSHOT</version>
 
     <description>
@@ -36,6 +36,6 @@
     </dependencies>
 
     <build>
-        <finalName>simple-pickler</finalName>
+        <finalName>java-record-pickler</finalName>
     </build>
 </project>

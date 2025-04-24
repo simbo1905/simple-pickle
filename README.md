@@ -1,6 +1,6 @@
-# Simple Pickler
+# Java Record Pickler
 
-Simple Pickler is a lightweight Java serialization library that dynamically generates type-safe serializers for simple 
+Java Record Pickler is a lightweight Java serialization library that dynamically generates type-safe serializers for simple 
 Java records and sealed traits that represent pure data transfer objects. 
 It avoids excessive reflection when working with objects by caching MethodHandle. 
 It works with nested sealed traits that permit nested simple records of simple types: 
