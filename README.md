@@ -1,6 +1,9 @@
 # Simple Pickler
 
-Simple Pickler is a lightweight Java serialization library that dynamically generates type-safe serializers for Java records and sealed traits. It avoids excessive reflection when working with objects by caching MethodHandle. It works with nested sealed traits that permit nested simple records of simple types: 
+Simple Pickler is a lightweight Java serialization library that dynamically generates type-safe serializers for simple 
+Java records and sealed traits that represent pure data transfer objects. 
+It avoids excessive reflection when working with objects by caching MethodHandle. 
+It works with nested sealed traits that permit nested simple records of simple types: 
 
 - Records containing primitive types or String
 - Optional of primitive types or String
@@ -9,7 +12,8 @@ Simple Pickler is a lightweight Java serialization library that dynamically gene
 - Sealed interfaces with record implementations that only contain the above types
 - Nested sealed interfaces that only contain the above types
 
-Those restrictions are rich enough to build a message protocol suitable for pattern-matching destructuring switch expressions. 
+Those restrictions are rich enough to build a message protocol suitable for using with record patterns in switch statements. 
+Those are a Java 21 feature that makes working with message protocols much safer and easier. 
 
 An example protocol could look like this:
 
@@ -42,6 +46,26 @@ Pickler<StackResponse> responsePickler = Pickler.picklerForSealedTrait(StackResp
 ```
 
 See the unit tests for many examples of using the library.
+
+## Project Goals
+
+The challenge with using record patterns in switch statements for message protocols are:
+
+- The built-in Java Serialization mechanism is university loathed. Even if was magically fixed in future Java versions no-one will ever trust it
+- Standard formats like Protobuf, Avro or JSON require 3rd party libraries dependencies that insist on adding security vulnerability due to "CV Driven Engineering"
+- Java 8 boilerplate programming forces the use of kitchen sink frameworks that use the standard 3rd party libraries which then maximises to a certainly future critical security vulnerabilities
+
+The goals of this codebase is to:
+
+1. Write one piece of stable code that is a single Java source file
+2. Never add features only fix any bugs
+3. Never have any third party dependencies
+4. Be good good enough to use for the internal communication between software. Remember perfection is the enemy of good. 
+
+In order to use this code safely you need to ensure that payloads have not been tempered with. If you are not
+doing that already then you are toast anyway due to all the future zero-day vulnerabilities of using popular 3rd party 
+alternatives. Often just using properly using https between your services is "good enough" to ensure no tampering. You 
+are already doing that, right? 
 
 ## Usage Examples
 
@@ -217,8 +241,6 @@ sequenceDiagram
         Pickler->>Client: return reconstructed object
     end
 ```
-
-
 
 ## License
 
