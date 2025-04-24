@@ -75,7 +75,7 @@ class MorePicklerTests {
 
     // Deserialize all animals from the buffer
     final var deserializedAnimals = new Animal[originalAnimals.length];
-    Arrays.setAll(deserializedAnimals, _ -> pickler.deserialize(buffer));
+    Arrays.setAll(deserializedAnimals, ignored -> pickler.deserialize(buffer));
 
     // Verify all animals were correctly deserialized
     assertEquals(originalAnimals.length, deserializedAnimals.length);
@@ -158,7 +158,7 @@ class MorePicklerTests {
 
     // Deserialize all nodes from the buffer
     final var deserializedNodes = new TreeNode[originalNodes.length];
-    Arrays.setAll(deserializedNodes, _ -> pickler.deserialize(buffer));
+    Arrays.setAll(deserializedNodes, ignored -> pickler.deserialize(buffer));
 
     // Verify all nodes were correctly deserialized
     assertEquals(originalNodes.length, deserializedNodes.length);

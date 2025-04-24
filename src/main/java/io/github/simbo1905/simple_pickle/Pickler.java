@@ -191,14 +191,14 @@ public interface Pickler<T> {
         return 1;
       }
       int plainSize = switch (c) {
-        case Integer _ -> INTEGER.getSizeInBytes();
-        case Long _ -> LONG.getSizeInBytes();
-        case Short _ -> SHORT.getSizeInBytes();
-        case Byte _ -> BYTE.getSizeInBytes();
-        case Double _ -> DOUBLE.getSizeInBytes();
-        case Float _ -> FLOAT.getSizeInBytes();
-        case Character _ -> CHARACTER.getSizeInBytes();
-        case Boolean _ -> BOOLEAN.getSizeInBytes();
+        case Integer ignored -> INTEGER.getSizeInBytes();
+        case Long ignored -> LONG.getSizeInBytes();
+        case Short ignored -> SHORT.getSizeInBytes();
+        case Byte ignored -> BYTE.getSizeInBytes();
+        case Double ignored -> DOUBLE.getSizeInBytes();
+        case Float ignored -> FLOAT.getSizeInBytes();
+        case Character ignored -> CHARACTER.getSizeInBytes();
+        case Boolean ignored -> BOOLEAN.getSizeInBytes();
         default -> 0;
       };
       int size = 1; // Type marker byte
@@ -248,17 +248,17 @@ public interface Pickler<T> {
         return ARRAY.marker();
       }
       return switch (c) {
-        case Integer _ -> INTEGER.marker();
-        case Long _ -> LONG.marker();
-        case Short _ -> SHORT.marker();
-        case Byte _ -> BYTE.marker();
-        case Double _ -> DOUBLE.marker();
-        case Float _ -> FLOAT.marker();
-        case Character _ -> CHARACTER.marker();
-        case Boolean _ -> BOOLEAN.marker();
-        case String _ -> STRING.marker();
-        case Optional<?> _ -> OPTIONAL.marker();
-        case Record _ -> RECORD.marker();
+        case Integer ignored -> INTEGER.marker();
+        case Long ignored -> LONG.marker();
+        case Short ignored -> SHORT.marker();
+        case Byte ignored -> BYTE.marker();
+        case Double ignored -> DOUBLE.marker();
+        case Float ignored -> FLOAT.marker();
+        case Character ignored -> CHARACTER.marker();
+        case Boolean ignored -> BOOLEAN.marker();
+        case String ignored -> STRING.marker();
+        case Optional<?> ignored -> OPTIONAL.marker();
+        case Record ignored -> RECORD.marker();
         default -> throw new UnsupportedOperationException("Unsupported type: " + c.getClass());
       };
     }
@@ -340,7 +340,7 @@ public interface Pickler<T> {
     public R deserialize(ByteBuffer buffer) {
       final var length = buffer.get();
       final var components = new Object[length];
-      Arrays.setAll(components, _ -> deserializeValue(buffer));
+      Arrays.setAll(components, ignored -> deserializeValue(buffer));
       return this.staticCreateFromComponents(components);
     }
 
