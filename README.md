@@ -1,7 +1,6 @@
 # Java Record Pickler
 
-Java Record Pickler is a lightweight Java serialization library that dynamically generates type-safe serializers for simple 
-Java records and sealed traits that represent pure data transfer objects. 
+Java Record Pickler: A lightweight, zero-dependency serialization library for Java 21+ that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure, modern message protocols with nested data structures and switch pattern matching.
 It avoids excessive reflection when working with objects by caching MethodHandle. 
 It works with nested sealed traits that permit nested simple records of simple types: 
 

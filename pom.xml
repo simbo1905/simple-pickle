@@ -8,10 +8,9 @@
     <version>0.1.0-SNAPSHOT</version>
 
     <description>
-        Simple Pickle is designed dynamically generate classes that serialize java sealed traits to model message
-        protocols in a type-safe way.
-        This library intentionally only works with records that only hold primitive types, Strings, Optional or other
-        such records.
+        Java Record Pickler: A lightweight, zero-dependency serialization library for Java 21+ that generates
+        type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure,
+        modern message protocols with nested data structures and switch pattern matching.
     </description>
 
     <properties>
