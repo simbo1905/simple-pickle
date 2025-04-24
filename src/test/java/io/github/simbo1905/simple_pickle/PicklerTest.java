@@ -23,7 +23,7 @@ class PicklerTest {
 
   @BeforeAll
   static void setupLogging() {
-    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
+    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "WARNING");
     final Level level = Level.parse(logLevel);
 
     LOGGER.setLevel(level);

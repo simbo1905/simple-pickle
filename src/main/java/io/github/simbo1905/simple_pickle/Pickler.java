@@ -102,7 +102,9 @@ public interface Pickler<T> {
       for (Object c : components) {
         size += staticSizeOf(c);
         int finalSize = size;
-        LOGGER.finer(() -> "Size of " + c.getClass().getSimpleName() + " '" + c + "' is " + finalSize);
+        LOGGER.finer(() -> "Size of " +
+            Optional.ofNullable(c).map(c2 -> c2.getClass().getSimpleName()).orElse("null")
+            + " '" + c + "' is " + finalSize);
       }
       return size;
     }
@@ -466,6 +468,7 @@ public interface Pickler<T> {
         @Override
         public void serialize(T object, ByteBuffer buffer) {
           if (object == null) {
+            LOGGER.fine(() -> "Serializing null object");
             buffer.put(NULL.marker());
             return;
           }
@@ -479,8 +482,44 @@ public interface Pickler<T> {
           // Get the appropriate pickler for this concrete type
           @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord((Class<? extends Record>) object.getClass());
 
+          LOGGER.fine(() -> "Serializing " + className + " with pickler: " + concretePickler.hashCode());
+
           // Use that pickler to serialize the object
           concretePickler.serialize((Record) object, buffer);
+        }
+
+        @Override
+        public T deserialize(ByteBuffer buffer) {
+          // Check if the value is null
+          byte firstByte = buffer.get(buffer.position());
+          if (firstByte == NULL.marker()) {
+            buffer.get(); // Consume the null marker
+            LOGGER.fine(() -> "Deserialized null object");
+            return null;
+          }
+
+          // Read the class name
+          int classNameLength = buffer.getInt();
+          byte[] classNameBytes = new byte[classNameLength];
+          buffer.get(classNameBytes);
+          String className = new String(classNameBytes, UTF_8);
+
+          try {
+            // Load the class
+            @SuppressWarnings("unchecked") Class<? extends Record> concreteClass = (Class<? extends Record>) Class.forName(className);
+
+            // Get the pickler for this concrete class
+            @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord(concreteClass);
+
+            LOGGER.fine(() -> "Deserializing " + className + " with pickler: " + concretePickler.hashCode());
+
+            // Deserialize using the concrete pickler
+            @SuppressWarnings("unchecked") T result = (T) concretePickler.deserialize(buffer);
+
+            return result;
+          } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load class: " + className, e);
+          }
         }
 
         @Override
@@ -498,37 +537,6 @@ public interface Pickler<T> {
           // Calculate the size using the concrete pickler
           // 1 byte for type marker + 4 bytes for class name length + class name bytes + concrete size
           return 4 + classNameLength + concretePickler.sizeOf((Record) value);
-        }
-
-        @Override
-        public T deserialize(ByteBuffer buffer) {
-          // Check if the value is null
-          byte firstByte = buffer.get(buffer.position());
-          if (firstByte == NULL.marker()) {
-            buffer.get(); // Consume the null marker
-            return null;
-          }
-
-          // Read the class name
-          int classNameLength = buffer.getInt();
-          byte[] classNameBytes = new byte[classNameLength];
-          buffer.get(classNameBytes);
-          String className = new String(classNameBytes, UTF_8);
-
-          try {
-            // Load the class
-            @SuppressWarnings("unchecked") Class<? extends Record> concreteClass = (Class<? extends Record>) Class.forName(className);
-
-            // Get the pickler for this concrete class
-            @SuppressWarnings("unchecked") Pickler<Record> concretePickler = (Pickler<Record>) picklerForRecord(concreteClass);
-
-            // Deserialize using the concrete pickler
-            @SuppressWarnings("unchecked") T result = (T) concretePickler.deserialize(buffer);
-
-            return result;
-          } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load class: " + className, e);
-          }
         }
       };
     }

@@ -114,6 +114,46 @@ final var deserializedAnimals = new Animal[originalAnimals.length];
         Arrays.setAll(deserializedAnimals, i -> pickler.deserialize(buffer));
 ```
 
+### Trees Record Serialization
+
+```java
+/// Internal node that may have left and right children
+/// Note the real coded in the unit tests has a null safe equals to compare the nodes with null children
+public sealed interface TreeNode permits RootNode, InternalNode, LeafNode {}
+public record RootNode(TreeNode left, TreeNode right) implements TreeNode {}
+public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {}
+public record LeafNode(int value) implements TreeNode {}
+final var leaf1 = new LeafNode(42);
+final var leaf2 = new LeafNode(99);
+final var leaf3 = new LeafNode(123);
+
+// A lob sided tree
+final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
+final var internal2 = new InternalNode("Branch2", leaf3, null);
+final var root = new RootNode(internal1, internal2);
+
+// Get a pickler for the TreeNode sealed interface
+final var pickler = picklerForSealedTrait(TreeNode.class);
+
+// Calculate buffer size needed for the whole graph reachable from the root node
+final var bufferSize = pickler.sizeOf(originalRoot);
+
+// Allocate a buffer to hold just the root node
+final var buffer = ByteBuffer.allocate(bufferSize);
+
+// Serialize only the root node (which should include the entire graph)
+pickler.serialize(originalRoot, buffer);
+
+// Prepare buffer for reading
+buffer.flip();
+
+// Deserialize the root node (which will reconstruct the entire graph)
+final var deserializedRoot = pickler.deserialize(buffer);
+
+// See junit tests that Validates the entire tree structure was properly deserialized
+validateTreeStructure(deserializedRoot);
+```
+
 ## Wire Protocol
 
 Support Types And Their Type Markers
