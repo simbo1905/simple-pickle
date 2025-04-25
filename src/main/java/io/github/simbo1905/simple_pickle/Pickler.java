@@ -8,9 +8,9 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.IntStream;
 
 import static io.github.simbo1905.simple_pickle.Pickler.Constants.*;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -60,6 +60,109 @@ public interface Pickler<T> {
     return (Pickler<T>) PICKLER_REGISTRY.computeIfAbsent(sealedClass, clazz -> PicklerBase.createPicklerForSealedTrait((Class<T>) clazz));
   }
   
+  /// Serialize an array of records
+  ///
+  /// @param array The array of records to serialize
+  /// @param buffer The buffer to write to
+  /// @param <R> The record type
+  static <R extends Record> void serializeArray(R[] array, ByteBuffer buffer) {
+    // Get the pickler for the component type
+    @SuppressWarnings("unchecked")
+    Pickler<R> pickler = picklerForRecord((Class<R>) array.getClass().getComponentType());
+    
+    // Write array marker
+    buffer.put(Constants.ARRAY.marker());
+    
+    // Write component type
+    Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
+    writeClassNameWithDeduplication(buffer, array.getClass().getComponentType(), class2BufferOffset);
+    
+    // Write array length
+    buffer.putInt(array.length);
+    
+    // Write each element
+    for (R element : array) {
+      pickler.serialize(element, buffer);
+    }
+  }
+  
+  /// Deserialize an array of records
+  ///
+  /// @param buffer The buffer to read from
+  /// @param componentType The component type of the array
+  /// @param <R> The record type
+  /// @return The deserialized array
+  @SuppressWarnings("unchecked")
+  static <R extends Record> R[] deserializeArray(ByteBuffer buffer, Class<R> componentType) {
+    // Skip the array marker if present
+    if (buffer.get(buffer.position()) == Constants.ARRAY.marker()) {
+      buffer.get(); // Consume the marker
+      
+      // Read component type
+      Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
+      try {
+        Class<?> readComponentType = readClassNameWithDeduplication(buffer, bufferOffset2Class);
+        if (!componentType.equals(readComponentType)) {
+          throw new IllegalArgumentException("Component type mismatch: expected " + 
+              componentType.getName() + " but got " + readComponentType.getName());
+        }
+      } catch (ClassNotFoundException e) {
+        throw new RuntimeException("Failed to load component type class", e);
+      }
+    } else {
+      // If no array marker, rewind to original position
+      buffer.position(buffer.position() - 1);
+    }
+    
+    // Read array length
+    int length = buffer.getInt();
+    
+    // Create array of the right type and size
+    R[] array = (R[]) Array.newInstance(componentType, length);
+    
+    // Get the pickler for the component type
+    Pickler<R> pickler = picklerForRecord(componentType);
+    
+    // Deserialize each element
+    for (int i = 0; i < length; i++) {
+      array[i] = pickler.deserialize(buffer);
+    }
+    
+    return array;
+  }
+  
+  /// Calculate the size of an array of records
+  ///
+  /// @param array The array of records
+  /// @param <R> The record type
+  /// @return The size in bytes
+  static <R extends Record> int sizeOfArray(R[] array) {
+    if (array == null) {
+      return 1; // Just the NULL marker
+    }
+    
+    // Start with 1 byte for the ARRAY marker
+    int size = 1;
+    
+    // Add size for component type name (4 bytes for length + name bytes)
+    String componentTypeName = array.getClass().getComponentType().getName();
+    size += 4 + componentTypeName.getBytes(UTF_8).length;
+    
+    // Add 4 bytes for array length
+    size += 4;
+    
+    // Get the pickler for the component type
+    @SuppressWarnings("unchecked")
+    Pickler<R> pickler = picklerForRecord((Class<R>) array.getClass().getComponentType());
+    
+    // Add size of each element
+    for (R element : array) {
+      size += pickler.sizeOf(element);
+    }
+    
+    return size;
+  }
+  
   /**
    * Helper method to write a class name to a buffer with deduplication.
    * If the class has been seen before, writes a negative reference instead of the full name.
@@ -68,14 +171,20 @@ public interface Pickler<T> {
    * @param clazz The class to write
    * @param class2BufferOffset Map tracking class to buffer position
    */
-  static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz, 
-                                             java.util.Map<Class<?>, Integer> class2BufferOffset) {
+  static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz,
+                                              Map<Class<?>, Integer> class2BufferOffset) {
+    LOGGER.finest(() -> "writeClassNameWithDeduplication: class=" + clazz.getName() +
+        ", buffer position=" + buffer.position() +
+        ", map contains class=" + class2BufferOffset.containsKey(clazz));
+
     // Check if we've seen this class before
     Integer existingOffset = class2BufferOffset.get(clazz);
     if (existingOffset != null) {
       // We've seen this class before, write a negative reference
-      buffer.putInt(~existingOffset); // Using bitwise complement for negative reference
-      LOGGER.finer(() -> "Writing class reference: " + clazz.getName() + " at offset " + existingOffset);
+      int reference = ~existingOffset;
+      buffer.putInt(reference); // Using bitwise complement for negative reference
+      LOGGER.finest(() -> "Wrote class reference: " + clazz.getName() +
+          " at offset " + existingOffset + ", value=" + reference);
     } else {
       // First time seeing this class, write the full name
       String className = clazz.getName();
@@ -91,7 +200,10 @@ public interface Pickler<T> {
       
       // Store the position where we wrote this class
       class2BufferOffset.put(clazz, currentPosition);
-      LOGGER.finer(() -> "Writing class name: " + className + " at offset " + currentPosition);
+      LOGGER.finest(() -> "Wrote class name: " + className +
+          " at offset " + currentPosition +
+          ", length=" + classNameLength +
+          ", new buffer position=" + buffer.position());
     }
   }
   
@@ -102,39 +214,78 @@ public interface Pickler<T> {
    * @param bufferOffset2Class Map tracking buffer position to class
    * @return The loaded class
    */
-  static Class<?> readClassNameWithDeduplication(ByteBuffer buffer, 
-                                               java.util.Map<Integer, Class<?>> bufferOffset2Class) 
+  static Class<?> readClassNameWithDeduplication(ByteBuffer buffer,
+                                                 Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
+    int bufferPosition = buffer.position();
+
+    LOGGER.finest(() -> "readClassNameWithDeduplication: buffer position=" + bufferPosition +
+        ", remaining=" + buffer.remaining());
+
     // Read the class name length or reference
-    int value = buffer.getInt();
-    
-    if (value < 0) {
+    int componentTypeLength = buffer.getInt();
+
+    LOGGER.finest(() -> "Read length/reference value: " + componentTypeLength +
+        ", buffer position after read=" + buffer.position());
+
+    if (componentTypeLength < 0) {
       // This is a reference to a previously seen class
-      int offset = ~value; // Decode the reference using bitwise complement
+      int offset = ~componentTypeLength; // Decode the reference using bitwise complement
       Class<?> referencedClass = bufferOffset2Class.get(offset);
+
+      LOGGER.finest(() -> "Reference detected. Offset=" + offset +
+          ", map contains offset=" + bufferOffset2Class.containsKey(offset) +
+          ", referenced class=" + (referencedClass != null ? referencedClass.getName() : "null"));
+
       if (referencedClass == null) {
-        throw new RuntimeException("Invalid class reference at offset: " + offset);
+        throw new RuntimeException("Invalid class reference at offset: " + offset +
+            ", available offsets: " + bufferOffset2Class.keySet());
       }
-      LOGGER.finer(() -> "Read class reference at offset " + offset + ": " + referencedClass.getName());
       return referencedClass;
     } else {
       // This is a new class name
       int currentPosition = buffer.position() - 4; // Position before reading the length
-      
+
+      LOGGER.finest(() -> "New class name detected. Length=" + componentTypeLength +
+          ", stored position=" + currentPosition +
+          ", remaining bytes=" + buffer.remaining());
+
+      if (buffer.remaining() < componentTypeLength) {
+        LOGGER.severe(() -> "Buffer underflow imminent: needed " + componentTypeLength +
+            " bytes but only " + buffer.remaining() + " remaining");
+        throw new IllegalArgumentException("Buffer underflow: class name length (" +
+            componentTypeLength + ") exceeds remaining buffer size (" + buffer.remaining() + ")");
+      }
+
       // Read the class name
-      byte[] classNameBytes = new byte[value];
+      byte[] classNameBytes = new byte[componentTypeLength];
       buffer.get(classNameBytes);
       String className = new String(classNameBytes, UTF_8);
-      
-      // Load the class
-      Class<?> loadedClass = Class.forName(className);
-      
+
+      // Validate class name - add basic validation that allows array type names like `[I`, `[[I`, `[L`java.lang.String;` etc.
+      if (!className.matches("[\\[\\]a-zA-Z0-9_.$;]+")) {
+        LOGGER.severe("Invalid class name format: " + className);
+        throw new IllegalArgumentException("Invalid class name format: " + className);
+      }
+
+      // Load the class using our helper method
+      Class<?> loadedClass = PicklerBase.getClassForName(className);
+
       // Store in our map for future references
       bufferOffset2Class.put(currentPosition, loadedClass);
-      LOGGER.finer(() -> "Read class name at offset " + currentPosition + ": " + className);
-      
+      LOGGER.finest(() -> "Read class name at offset " + currentPosition +
+          ": " + className +
+          ", new buffer position=" + buffer.position());
+
       return loadedClass;
     }
+  }
+  interface PicklerInternal<T> extends Pickler<T> {
+    void serialize(T object, ByteBuffer buffer, Map<Class<?>, Integer> class2BufferOffset);
+
+    T deserialize(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class);
+
+    int sizeOf(T object, Set<Class<?>> classes);
   }
 
   /// Base class for picklers that handle serialization and deserialization of Java records.
@@ -157,7 +308,7 @@ public interface Pickler<T> {
   ///
   /// @see Pickler
   /// @see Record
-  abstract class PicklerBase<R extends Record> implements Pickler<R> {
+  abstract class PicklerBase<R extends Record> implements PicklerInternal<R> {
 
     abstract Object[] staticGetComponents(R record);
 
@@ -167,17 +318,27 @@ public interface Pickler<T> {
     /// to all the accessor the record components using an anonymous subclass of PicklerBase.
     @Override
     public void serialize(R object, ByteBuffer buffer) {
+      serialize(object, buffer, new HashMap<>());
+    }
+
+    @Override
+    public void serialize(R object, ByteBuffer buffer, Map<Class<?>, Integer> class2BufferOffset) {
       final var components = staticGetComponents(object);
       buffer.put((byte) components.length);
-      Arrays.stream(components).forEach(c -> write(buffer, c));
+      Arrays.stream(components).forEach(c -> write(class2BufferOffset, buffer, c));
     }
 
     @Override
     public int sizeOf(R object) {
+      return sizeOf(object, new HashSet<>());
+    }
+
+    @Override
+    public int sizeOf(R object, Set<Class<?>> classes) {
       final var components = staticGetComponents(object);
       int size = 1; // Start with 1 byte for the type of the component
       for (Object c : components) {
-        size += staticSizeOf(c);
+        size += staticSizeOf(c, classes);
         int finalSize = size;
         LOGGER.finer(() -> "Size of " +
             Optional.ofNullable(c).map(c2 -> c2.getClass().getSimpleName()).orElse("null")
@@ -186,7 +347,7 @@ public interface Pickler<T> {
       return size;
     }
 
-    int staticSizeOf(Object c) {
+    int staticSizeOf(Object c, Set<Class<?>> classes) {
       if (c == null) {
         return 1;
       }
@@ -203,17 +364,20 @@ public interface Pickler<T> {
       };
       int size = 1; // Type marker byte
       if (c.getClass().isArray()) {
-        // Component type name size
-        String componentTypeName = c.getClass().getComponentType().getName();
-        byte[] componentTypeBytes = componentTypeName.getBytes(UTF_8);
+        int arrayHeaderSize = 4 + 4; // 4 bytes for length + 4 bytes for type name length
 
-        // Size includes: component type name length (4 bytes) + name bytes + array length (4 bytes)
-        int arrayHeaderSize = 4 + componentTypeBytes.length + 4;
+        if (!classes.contains(c.getClass())) {
+          // Component type name size
+          String componentTypeName = c.getClass().getComponentType().getName();
+          byte[] componentTypeBytes = componentTypeName.getBytes(UTF_8);
+          arrayHeaderSize += componentTypeBytes.length;
+          classes.add(c.getClass());
+        }
 
         // Calculate size of all array elements using streams
         int length = Array.getLength(c);
-        int elementsSize = java.util.stream.IntStream.range(0, length)
-            .map(i -> staticSizeOf(Array.get(c, i)))
+        int elementsSize = IntStream.range(0, length)
+            .map(i -> staticSizeOf(Array.get(c, i), classes))
             .sum();
 
         size += arrayHeaderSize + elementsSize;
@@ -222,18 +386,22 @@ public interface Pickler<T> {
       } else if (c instanceof Optional<?> opt) {
         // 1 byte for the presence marker when empty
         // 1 byte for marker + size of contained value
-        size += opt.map(o -> 1 + staticSizeOf(o)).orElse(1);
+        size += opt.map(o -> 1 + staticSizeOf(o, classes)).orElse(1);
       } else if (c instanceof Record record) {
-        // Add size for class name
-        String className = record.getClass().getName();
-        byte[] classNameBytes = className.getBytes(UTF_8);
         size += 4; // Length int (4 bytes)
-        size += classNameBytes.length; // Class name bytes
+
+        if (!classes.contains(record.getClass())) {
+          // Add size for class name
+          String className = record.getClass().getName();
+          byte[] classNameBytes = className.getBytes(UTF_8);
+          size += classNameBytes.length; // Class name bytes
+          classes.add(record.getClass()); // Add class to seen classes
+        }
 
         // Get the appropriate pickler for this record type
         @SuppressWarnings("unchecked")
-        Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.picklerForRecord(record.getClass());
-        size += nestedPickler.sizeOf(record);
+        PicklerInternal<Record> nestedPickler = (PicklerInternal<Record>) Pickler.picklerForRecord(record.getClass());
+        size += nestedPickler.sizeOf(record, classes); // Size of the record itself
       } else {
         size += plainSize;
       }
@@ -263,7 +431,7 @@ public interface Pickler<T> {
       };
     }
 
-    static void write(ByteBuffer buffer, Object c) {
+    static void write(Map<Class<?>, Integer> class2BufferOffset, ByteBuffer buffer, Object c) {
       if (c == null) {
         buffer.put(NULL.marker());
         return;
@@ -272,19 +440,13 @@ public interface Pickler<T> {
       if (c.getClass().isArray()) {
         buffer.put(ARRAY.marker());
 
-        // Write the component type as a string
-        String componentTypeName = c.getClass().getComponentType().getName();
-        byte[] componentTypeBytes = componentTypeName.getBytes(UTF_8);
-        buffer.putInt(componentTypeBytes.length);
-        buffer.put(componentTypeBytes);
+        writeClassNameWithDeduplication(buffer, c.getClass().getComponentType(), class2BufferOffset);
 
         // Write the array length
         int length = Array.getLength(c);
         buffer.putInt(length);
 
-        // Write each element using IntStream instead of for loop
-        java.util.stream.IntStream.range(0, length)
-            .forEach(i -> write(buffer, Array.get(c, i)));
+        IntStream.range(0, length).forEach(i -> write(class2BufferOffset, buffer, Array.get(c, i)));
         return;
       }
 
@@ -310,25 +472,21 @@ public interface Pickler<T> {
           } else {
             buffer.put((byte) 1); // 1 = present
             Object value = opt.get();
-            write(buffer, value);
+            write(class2BufferOffset, buffer, value);
           }
         }
         case Record record -> {
           buffer.put(typeMarker(c));
-          
-          // Create a map for class deduplication if not already passed in
-          java.util.Map<Class<?>, Integer> class2BufferOffset = 
-              java.util.Collections.synchronizedMap(new java.util.HashMap<>());
               
           // Write the class name with deduplication
           writeClassNameWithDeduplication(buffer, record.getClass(), class2BufferOffset);
 
           // Get the appropriate pickler for this record type
           @SuppressWarnings("unchecked")
-          Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.picklerForRecord(record.getClass());
+          PicklerInternal<Record> nestedPickler = (PicklerInternal<Record>) Pickler.picklerForRecord(record.getClass());
 
           // Use that pickler to serialize the nested record
-          nestedPickler.serialize(record, buffer);
+          nestedPickler.serialize(record, buffer, class2BufferOffset);
         }
         default -> throw new UnsupportedOperationException("Unsupported type: " + c.getClass());
       }
@@ -338,13 +496,18 @@ public interface Pickler<T> {
     /// captured at runtime within an anonymous subclass of PicklerBase.
     @Override
     public R deserialize(ByteBuffer buffer) {
+      return deserialize(buffer, new HashMap<>());
+    }
+
+    @Override
+    public R deserialize(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
       final var length = buffer.get();
       final var components = new Object[length];
-      Arrays.setAll(components, ignored -> deserializeValue(buffer));
+      Arrays.setAll(components, ignored -> deserializeValue(bufferOffset2Class, buffer));
       return this.staticCreateFromComponents(components);
     }
 
-    Object deserializeValue(ByteBuffer buffer) {
+    Object deserializeValue(Map<Integer, Class<?>> bufferOffset2Class, ByteBuffer buffer) {
       final byte type = buffer.get();
       final Constants typeEnum = fromMarker(type);
       return switch (typeEnum) {
@@ -367,61 +530,51 @@ public interface Pickler<T> {
           if (isPresent == 0) {
             yield Optional.empty();
           } else {
-            Object value = deserializeValue(buffer);
+            Object value = deserializeValue(bufferOffset2Class, buffer);
             yield Optional.ofNullable(value);
           }
         }
         case RECORD -> { // Handle nested record
           try {
-            // Create a map for class deduplication if not already passed in
-            java.util.Map<Integer, Class<?>> bufferOffset2Class = 
-                java.util.Collections.synchronizedMap(new java.util.HashMap<>());
-                
             // Read the class with deduplication support
             Class<?> recordClass = readClassNameWithDeduplication(buffer, bufferOffset2Class);
 
             // Get or create the pickler for this class
             @SuppressWarnings("unchecked")
-            Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.picklerForRecord((Class<? extends Record>) recordClass);
+            PicklerInternal<Record> nestedPickler = (PicklerInternal<Record>) Pickler.picklerForRecord((Class<? extends Record>) recordClass);
 
             // Deserialize the nested record
-            yield nestedPickler.deserialize(buffer);
+            yield nestedPickler.deserialize(buffer, bufferOffset2Class);
           } catch (ClassNotFoundException e) {
             throw new RuntimeException("Failed to load class", e);
           }
         }
         case NULL -> null; // Handle null values
         case ARRAY -> { // Handle arrays
-          // Read component type
-          int componentTypeLength = buffer.getInt();
-          byte[] componentTypeBytes = new byte[componentTypeLength];
-          buffer.get(componentTypeBytes);
-          String componentTypeName = new String(componentTypeBytes, UTF_8);
-
-          // Read array length
-          int length = buffer.getInt();
-
           try {
             // Get the component class
-            Class<?> componentType = getClassForName(componentTypeName);
+            Class<?> componentType = readClassNameWithDeduplication(buffer, bufferOffset2Class);
+            
+            // Read array length
+            int length = buffer.getInt();
 
             // Create array of the right type and size
             Object array = Array.newInstance(componentType, length);
 
             // Deserialize each element using IntStream instead of for loop
-            java.util.stream.IntStream.range(0, length)
-                .forEach(i -> Array.set(array, i, deserializeValue(buffer)));
+            IntStream.range(0, length)
+                .forEach(i -> Array.set(array, i, deserializeValue(bufferOffset2Class, buffer)));
 
             yield array;
           } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load component type class: " + componentTypeName, e);
+            throw new RuntimeException("Failed to load component type class: ", e);
           }
         }
       };
     }
 
     /// Class.forName cannot handle primitive types directly, so we need to map them to their wrapper classes.
-    Class<?> getClassForName(String name) throws ClassNotFoundException {
+    static Class<?> getClassForName(String name) throws ClassNotFoundException {
       // Handle primitive types which can't be loaded directly with Class.forName
       return switch (name) {
         case "boolean" -> BOOLEAN._class();
@@ -438,7 +591,7 @@ public interface Pickler<T> {
 
     /// Internal static method to create a new Pickler for a record class. This that creates the method handles for the
     /// record's component accessors and the canonical constructor.
-    static <R extends Record> Pickler<R> createPicklerForRecord(Class<R> recordClass) {
+    static <R extends Record> PicklerInternal<R> createPicklerForRecord(Class<R> recordClass) {
       MethodHandle[] componentAccessors;
       MethodHandle constructorHandle;
       // Get lookup object
@@ -540,16 +693,16 @@ public interface Pickler<T> {
       //noinspection unchecked
       Arrays.stream(subclasses).filter(Record.class::isAssignableFrom).forEach(permitted -> createPicklerForRecord((Class<? extends Record>) permitted));
 
-      return new Pickler<T>() {
+      return new PicklerInternal<T>() {
         @Override
         public void serialize(T object, ByteBuffer buffer) {
           // Create a map to track class name positions for this serialization session
-          java.util.Map<Class<?>, Integer> class2BufferOffset = new java.util.HashMap<>();
-          serializeWithDeduplication(object, buffer, class2BufferOffset);
+          Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
+          serialize(object, buffer, class2BufferOffset);
         }
-        
-        private void serializeWithDeduplication(T object, ByteBuffer buffer, 
-                                               java.util.Map<Class<?>, Integer> class2BufferOffset) {
+
+        @Override
+        public void serialize(T object, ByteBuffer buffer, Map<Class<?>, Integer> class2BufferOffset) {
           if (object == null) {
             LOGGER.fine(() -> "Serializing null object");
             buffer.put(NULL.marker());
@@ -560,25 +713,25 @@ public interface Pickler<T> {
           writeClassNameWithDeduplication(buffer, object.getClass(), class2BufferOffset);
 
           // Get the appropriate pickler for this concrete type
-          @SuppressWarnings("unchecked") Pickler<Record> concretePickler = 
-              (Pickler<Record>) picklerForRecord((Class<? extends Record>) object.getClass());
+          @SuppressWarnings("unchecked") PicklerInternal<Record> concretePickler =
+              (PicklerInternal<Record>) picklerForRecord((Class<? extends Record>) object.getClass());
 
           LOGGER.fine(() -> "Serializing " + object.getClass().getName() + 
                      " with pickler: " + concretePickler.hashCode());
 
           // Use that pickler to serialize the object
-          concretePickler.serialize((Record) object, buffer);
+          concretePickler.serialize((Record) object, buffer, class2BufferOffset);
         }
 
         @Override
         public T deserialize(ByteBuffer buffer) {
           // Create a map to track class positions for this deserialization session
-          java.util.Map<Integer, Class<?>> bufferOffset2Class = new java.util.HashMap<>();
-          return deserializeWithDeduplication(buffer, bufferOffset2Class);
+          Map<Integer, Class<?>> bufferOffset2Class = new java.util.HashMap<>();
+          return deserialize(buffer, bufferOffset2Class);
         }
-        
-        private T deserializeWithDeduplication(ByteBuffer buffer, 
-                                              java.util.Map<Integer, Class<?>> bufferOffset2Class) {
+
+        @Override
+        public T deserialize(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
           // Check if the value is null
           byte firstByte = buffer.get(buffer.position());
           if (firstByte == NULL.marker()) {
@@ -592,14 +745,14 @@ public interface Pickler<T> {
             Class<?> concreteClass = readClassNameWithDeduplication(buffer, bufferOffset2Class);
 
             // Get the pickler for this concrete class
-            @SuppressWarnings("unchecked") Pickler<Record> concretePickler = 
-                (Pickler<Record>) picklerForRecord((Class<? extends Record>) concreteClass);
+            @SuppressWarnings("unchecked") PicklerInternal<Record> concretePickler =
+                (PicklerInternal<Record>) picklerForRecord((Class<? extends Record>) concreteClass);
 
             LOGGER.fine(() -> "Deserializing " + concreteClass.getName() + 
                        " with pickler: " + concretePickler.hashCode());
 
             // Deserialize using the concrete pickler
-            @SuppressWarnings("unchecked") T result = (T) concretePickler.deserialize(buffer);
+            @SuppressWarnings("unchecked") T result = (T) concretePickler.deserialize(buffer, bufferOffset2Class);
 
             return result;
           } catch (ClassNotFoundException e) {
@@ -609,48 +762,48 @@ public interface Pickler<T> {
 
         @Override
         public int sizeOf(T value) {
-          if (value == null) return 1;
-
-          // Create a map to track class name positions for this size calculation
-          java.util.Map<Class<?>, Integer> class2BufferOffset = new java.util.HashMap<>();
-          return sizeOfWithDeduplication(value, class2BufferOffset);
+          return sizeOf(value, new HashSet<>());
         }
-        
-        private int sizeOfWithDeduplication(T value, java.util.Map<Class<?>, Integer> class2BufferOffset) {
-          if (value == null) return 1;
-          
-          int size = 0;
+
+        @Override
+        public int sizeOf(T value, Set<Class<?>> classes) {
+          return sizeOfWithDeduplication(value, classes);
+        }
+
+        private int sizeOfWithDeduplication(T value, Set<Class<?>> classes) {
+          if (value == null) {
+            return 1;
+          }
+
+          // 4 bytes for length
+          int size = 4;
           
           // Check if we've seen this class before
-          if (class2BufferOffset.containsKey(value.getClass())) {
-            // We've seen this class before, just need 4 bytes for the reference
-            size += 4;
-          } else {
+          if (!classes.contains(value.getClass())) {
             // First time seeing this class, need full class name
             String className = value.getClass().getName();
             byte[] classNameBytes = className.getBytes(UTF_8);
             int classNameLength = classNameBytes.length;
-            
-            // 4 bytes for length + class name bytes
-            size += 4 + classNameLength;
+
+            size += classNameLength;
             
             // Mark this class as seen
-            class2BufferOffset.put(value.getClass(), 0); // Dummy value, we don't need actual offset here
+            classes.add(value.getClass()); // Dummy value, we don't need actual offset here
           }
 
           // Get the pickler for this concrete type
-          @SuppressWarnings("unchecked") Pickler<Record> concretePickler = 
-              (Pickler<Record>) picklerForRecord((Class<? extends Record>) value.getClass());
+          @SuppressWarnings("unchecked") PicklerInternal<Record> concretePickler =
+              (PicklerInternal<Record>) picklerForRecord((Class<? extends Record>) value.getClass());
 
           // Add the size of the concrete object
-          size += concretePickler.sizeOf((Record) value);
+          size += concretePickler.sizeOf((Record) value, classes);
           
           return size;
         }
       };
     }
   }
-  
+
   /// Enum containing constants used throughout the Pickler implementation
   enum Constants {
     NULL((byte) 1, 0, null),
@@ -669,12 +822,12 @@ public interface Pickler<T> {
 
     private final byte typeMarker;
     private final int sizeInBytes;
-    private final Class<?> primitiveClass;
+    private final Class<?> clazz;
 
-    Constants(byte typeMarker, int sizeInBytes, Class<?> primitiveClass) {
+    Constants(byte typeMarker, int sizeInBytes, Class<?> clazz) {
       this.typeMarker = typeMarker;
       this.sizeInBytes = sizeInBytes;
-      this.primitiveClass = primitiveClass;
+      this.clazz = clazz;
     }
 
     public byte marker() {
@@ -686,7 +839,7 @@ public interface Pickler<T> {
     }
 
     public Class<?> _class() {
-      return primitiveClass;
+      return clazz;
     }
 
     public static Constants fromMarker(byte marker) {

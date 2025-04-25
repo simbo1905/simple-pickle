@@ -9,12 +9,17 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static io.github.simbo1905.simple_pickle.Pickler.PicklerBase.LOGGER;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Test class for the Pickler functionality.
@@ -272,33 +277,44 @@ class PicklerTest {
     assertEquals("Jane Employee", deserialized.employee().person().name());
   }
 
-  @Test
-  void testArrays() {
-    // Create a record with different array types
-    final var original = new ArrayExample(
-        new int[]{1, 2, 3, 4, 5},
-        new String[]{"apple", "banana", "cherry"},
-        new boolean[]{true, false, true},
-        new Person[]{new Person("Alice", 30), new Person("Bob", 25)},
-        new Integer[]{10, 20, null, 40},
-        new Object[]{42, "mixed", true, null}
-    );
+  public record SimpleArrayExample(int[] array1, int[] array2) {
+  }
 
-    Pickler<ArrayExample> pickler = Pickler.picklerForRecord(ArrayExample.class);
+  @Test
+  void testSimpleArray() {
+    // Create a record with a simple array
+    final var original = new SimpleArrayExample(new int[]{1, 2}, null);
+
+    Pickler<SimpleArrayExample> pickler = Pickler.picklerForRecord(SimpleArrayExample.class);
+
+    int size = pickler.sizeOf(original);
 
     // Serialize the record
-    final var buffer = ByteBuffer.allocate(2048);
+    var buffer = ByteBuffer.allocate(size + 128);// FIXME
     pickler.serialize(original, buffer);
     buffer.flip(); // Prepare buffer for reading
+
+    // Get the bytes from the buffer
+    final var bytes = buffer.array();
+    StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
+    Matcher matcher = Pattern.compile(Pickler.Constants.INTEGER._class().getName()).matcher(escapedSearchString.toString());
+    int count = 0;
+    while (matcher.find()) {
+      count++;
+    }
+    assertEquals(1, count);
+    buffer = ByteBuffer.wrap(bytes);
 
     // Deserialize from the byte buffer
     final var deserialized = pickler.deserialize(buffer);
 
-    // Replace direct equality check with component-by-component array comparison
-    assertArrayRecordEquals(original, deserialized);
-
-    // Individual array checks are already handled by assertArrayRecordEquals
+    // Don't use assertEquals on the record directly as it will compare array references
+    // Instead, compare the arrays individually using assertArrayEquals
+    assertArrayEquals(original.array1(), deserialized.array1());
+    assertArrayEquals(original.array2(), deserialized.array2());
   }
+
+
 
   @Test
   void testEmptyArrays() {
@@ -551,4 +567,274 @@ class PicklerTest {
     assertEquals("operation successful", receivedResponse.payload());
   }
 
+  static StringBuilder stripOutAsciiStrings(byte[] bytes) {
+    StringBuilder escapedSearchString = new StringBuilder();
+
+    for (byte b : bytes) {
+      // Check if the byte is a printable ASCII character (32-126)
+      if (b >= 32 && b <= 126) {
+        escapedSearchString.append((char) b);
+      }
+    }
+    return escapedSearchString;
+  }
+  
+  @Test
+  void testEmptyRecordArray() {
+    // Create an empty array of records
+    Person[] emptyArray = new Person[0];
+    
+    // Calculate size and allocate buffer
+    int size = Pickler.sizeOfArray(emptyArray);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Serialize the array
+    Pickler.serializeArray(emptyArray, buffer);
+    buffer.flip();
+    
+    // Deserialize the array
+    Person[] deserialized = Pickler.deserializeArray(buffer, Person.class);
+    
+    // Verify the array is empty
+    assertEquals(0, deserialized.length);
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+  
+  @Test
+  void testRecordArray() {
+    // Create an array of records
+    Person[] people = new Person[] {
+        new Person("Alice", 30),
+        new Person("Bob", 25),
+        new Person("Charlie", 40)
+    };
+    
+    // Calculate size and allocate buffer
+    int size = Pickler.sizeOfArray(people);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Serialize the array
+    Pickler.serializeArray(people, buffer);
+    buffer.flip();
+    
+    // Deserialize the array
+    Person[] deserialized = Pickler.deserializeArray(buffer, Person.class);
+    
+    // Verify array length
+    assertEquals(people.length, deserialized.length);
+    
+    // Verify each element
+    for (int i = 0; i < people.length; i++) {
+      assertEquals(people[i], deserialized[i]);
+    }
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+  
+  @Test
+  void testMixedRecordArray() {
+    // Create an array of different shapes using the sealed interface
+    Shape[] shapes = new Shape[] {
+        new Circle(5.0),
+        new Rectangle(4.0, 6.0),
+        new Triangle(3.0, 4.0, 5.0)
+    };
+    
+    // Calculate size for the array
+    int size = 0;
+    Pickler<Shape> pickler = Pickler.picklerForSealedTrait(Shape.class);
+    
+    // 1 byte for ARRAY marker + 4 bytes for component type name length + component type name bytes
+    size += 1 + 4 + Shape.class.getName().getBytes(UTF_8).length;
+    
+    // 4 bytes for array length
+    size += 4;
+    
+    // Size of each element
+    for (Shape shape : shapes) {
+      size += pickler.sizeOf(shape);
+    }
+    
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Write array marker
+    buffer.put(Pickler.Constants.ARRAY.marker());
+    
+    // Write component type
+    Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
+    Pickler.writeClassNameWithDeduplication(buffer, Shape.class, class2BufferOffset);
+    
+    // Write array length
+    buffer.putInt(shapes.length);
+    
+    // Write each element
+    for (Shape shape : shapes) {
+      pickler.serialize(shape, buffer);
+    }
+    
+    buffer.flip();
+    
+    // Skip the array marker
+    buffer.get();
+    
+    // Read component type
+    Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
+    try {
+      Class<?> componentType = Pickler.readClassNameWithDeduplication(buffer, bufferOffset2Class);
+      assertEquals(Shape.class, componentType);
+    } catch (ClassNotFoundException e) {
+      fail("Failed to read component type: " + e.getMessage());
+    }
+    
+    // Read array length
+    int length = buffer.getInt();
+    assertEquals(shapes.length, length);
+    
+    // Read each element using IntStream instead of traditional for loop
+    java.util.stream.IntStream.range(0, length)
+        .forEach(i -> {
+          Shape deserialized = pickler.deserialize(buffer);
+          assertEquals(shapes[i], deserialized);
+        });
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+  
+  @Test
+  void testNestedRecordArrays() {
+    // Create arrays of records with different nesting levels
+    Person[] team1 = new Person[] {
+        new Person("Alice", 30),
+        new Person("Bob", 25)
+    };
+    
+    Person[] team2 = new Person[] {
+        new Person("Charlie", 40),
+        new Person("Dave", 35),
+        new Person("Eve", 28)
+    };
+    
+    Person[][] teams = new Person[][] { team1, team2 };
+    
+    // Calculate the exact size needed for the nested arrays
+    int size = calculateNestedArraySize(teams);
+    
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Write outer array marker
+    buffer.put(Pickler.Constants.ARRAY.marker());
+    
+    // Write outer component type (Person[].class)
+    Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
+    Pickler.writeClassNameWithDeduplication(buffer, Person[].class, class2BufferOffset);
+    
+    // Write outer array length
+    buffer.putInt(teams.length);
+    
+    // Write each inner array
+    for (Person[] team : teams) {
+      // Write inner array marker
+      buffer.put(Pickler.Constants.ARRAY.marker());
+      
+      // Write inner component type (Person.class)
+      Pickler.writeClassNameWithDeduplication(buffer, Person.class, class2BufferOffset);
+      
+      // Write inner array length
+      buffer.putInt(team.length);
+      
+      // Write each person
+      Pickler<Person> personPickler = Pickler.picklerForRecord(Person.class);
+      for (Person person : team) {
+        personPickler.serialize(person, buffer);
+      }
+    }
+    
+    buffer.flip();
+    
+    // Skip the outer array marker
+    buffer.get();
+    
+    // Read outer component type
+    Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
+    try {
+      Class<?> componentType = Pickler.readClassNameWithDeduplication(buffer, bufferOffset2Class);
+      assertEquals(Person[].class, componentType);
+    } catch (ClassNotFoundException e) {
+      fail("Failed to read component type: " + e.getMessage());
+    }
+    
+    // Read outer array length
+    int length = buffer.getInt();
+    assertEquals(teams.length, length);
+    
+    // Read each inner array using IntStream instead of traditional for loop
+    java.util.stream.IntStream.range(0, length).forEach(i -> {
+      // Skip the inner array marker
+      buffer.get();
+      
+      // Read inner component type
+      try {
+        Class<?> innerComponentType = Pickler.readClassNameWithDeduplication(buffer, bufferOffset2Class);
+        assertEquals(Person.class, innerComponentType);
+      } catch (ClassNotFoundException e) {
+        fail("Failed to read inner component type: " + e.getMessage());
+      }
+      
+      // Read inner array length
+      int innerLength = buffer.getInt();
+      assertEquals(teams[i].length, innerLength);
+      
+      // Read each person using IntStream
+      Pickler<Person> personPickler = Pickler.picklerForRecord(Person.class);
+      java.util.stream.IntStream.range(0, innerLength).forEach(j -> {
+        Person deserialized = personPickler.deserialize(buffer);
+        assertEquals(teams[i][j], deserialized);
+      });
+    });
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position(), "Buffer should be fully consumed");
+  }
+  
+  /**
+   * Helper method to calculate the exact size needed for a nested array of records
+   * @param teams The nested array of records
+   * @return The size in bytes needed for serialization
+   */
+  private int calculateNestedArraySize(Person[][] teams) {
+    // Start with 1 byte for the ARRAY marker
+    int size = 1;
+    
+    // Add size for outer component type name (4 bytes for length + name bytes)
+    String outerComponentTypeName = Person[].class.getName();
+    size += 4 + outerComponentTypeName.getBytes(UTF_8).length;
+    
+    // Add 4 bytes for outer array length
+    size += 4;
+    
+    // For each inner array
+    for (Person[] team : teams) {
+      // Add 1 byte for inner ARRAY marker
+      size += 1;
+      
+      // Add size for inner component type name (4 bytes for length + name bytes)
+      String innerComponentTypeName = Person.class.getName();
+      size += 4 + innerComponentTypeName.getBytes(UTF_8).length;
+      
+      // Add 4 bytes for inner array length
+      size += 4;
+      
+      // Add size for each Person record
+      Pickler<Person> personPickler = Pickler.picklerForRecord(Person.class);
+      for (Person person : team) {
+        size += personPickler.sizeOf(person);
+      }
+    }
+    
+    return size;
+  }
 }

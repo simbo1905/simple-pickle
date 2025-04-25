@@ -6,10 +6,11 @@ It works with nested sealed traits that permit nested simple records of simple t
 
 - Records containing primitive types or String
 - Optional of primitive types or String
-- Arrays (including primitive arrays, object arrays, and nested arrays)
+- Arrays (including primitive arrays, object arrays, nested arrays, and outer arrays of records)
 - Nested records that only contain the above type 
 - Sealed interfaces with record implementations that only contain the above types
 - Nested sealed interfaces that only contain the above types
+- Outer arrays of any of the above types
 
 Those restrictions are rich enough to build a message protocol suitable for using with record patterns in switch statements. 
 Those are a Java 21 feature that makes working with message protocols much safer and easier. 
@@ -89,6 +90,34 @@ buffer.flip();
 
 // Deserialize from the ByteBuffer
 Person deserializedPerson = pickler.deserialize(buffer);
+```
+
+### Array of Records Serialization
+
+```java
+// Define a simple record
+public record Person(String name, int age) {}
+
+// Create an array of Person records
+Person[] people = {
+    new Person("Alice", 30),
+    new Person("Bob", 25),
+    new Person("Charlie", 40)
+};
+
+// Serialize the array
+ByteBuffer buffer = ByteBuffer.allocate(1024);
+Pickler.serializeArray(people, buffer);
+buffer.flip();
+
+// Deserialize the array
+Person[] deserializedPeople = Pickler.deserializeArray(buffer, Person.class);
+
+// Verify the array was properly deserialized
+assertEquals(people.length, deserializedPeople.length);
+// Use streams to verify each element matches
+IntStream.range(0, people.length)
+    .forEach(i -> assertEquals(people[i], deserializedPeople[i]));
 ```
 
 ### Complex Nested Sealed Interfaces

@@ -15,9 +15,13 @@ import java.util.Arrays;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static io.github.simbo1905.simple_pickle.Pickler.PicklerBase.LOGGER;
+import static io.github.simbo1905.simple_pickle.Pickler.picklerForRecord;
 import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedTrait;
+import static io.github.simbo1905.simple_pickle.PicklerTest.stripOutAsciiStrings;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MorePicklerTests {
@@ -43,6 +47,41 @@ class MorePicklerTests {
     logger.setUseParentHandlers(false);
 
     LOGGER.info("Logging initialized at level: " + level);
+  }
+  /**
+   * Validates that the tree structure matches the expected structure
+   */
+  static void validateTreeStructure(TreeNode deserializedRoot) {
+    // Verify root node structure
+    assertInstanceOf(RootNode.class, deserializedRoot);
+    final var root = (RootNode) deserializedRoot;
+    
+    // Verify left branch (internal1)
+    assertInstanceOf(InternalNode.class, root.left());
+    final var internal1 = (InternalNode) root.left();
+    assertEquals("Branch1", internal1.name());
+    
+    // Verify right branch (internal2)
+    assertInstanceOf(InternalNode.class, root.right());
+    final var internal2 = (InternalNode) root.right();
+    assertEquals("Branch2", internal2.name());
+    
+    // Verify leaf nodes under internal1
+    assertInstanceOf(LeafNode.class, internal1.left());
+    final var leaf1 = (LeafNode) internal1.left();
+    assertEquals(42, leaf1.value());
+    
+    assertInstanceOf(LeafNode.class, internal1.right());
+    final var leaf2 = (LeafNode) internal1.right();
+    assertEquals(99, leaf2.value());
+    
+    // Verify leaf node under internal2
+    assertInstanceOf(LeafNode.class, internal2.left());
+    final var leaf3 = (LeafNode) internal2.left();
+    assertEquals(123, leaf3.value());
+    
+    // Verify null right child of internal2
+    assertNull(internal2.right());
   }
 
   /// Tests serialization and deserialization of all animal types in a single buffer
@@ -239,7 +278,94 @@ class MorePicklerTests {
     // Verify buffer is fully consumed
     assertEquals(0, buffer.remaining(), "Buffer should be fully consumed");
   }
-  
+
+  public sealed interface Chained permits Link {
+  }
+
+  record Link(Link next) implements Chained {
+  }
+
+  @Test
+  void testClassNameCompression() {
+    // Get a pickler for the Chained sealed interface
+    final var pickler = picklerForRecord(Link.class);
+
+    // Create a chain of links
+    final var link0 = new Link(null);
+    final var link1 = new Link(link0);
+    final var link2 = new Link(link1);
+
+    // Calculate buffer size needed for the entire chain
+    final var bufferSize = pickler.sizeOf(link2);
+
+    // Allocate a buffer to hold the entire chain
+    var buffer = ByteBuffer.allocate(bufferSize);
+    // Serialize the entire chain
+    pickler.serialize(link2, buffer);
+    // Prepare buffer for reading
+    buffer.flip();
+
+    // Get the bytes from the buffer
+    final var bytes = buffer.array();
+    StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
+    Matcher matcher = Pattern.compile(Link.class.getName().replace("$", "\\$")).matcher(escapedSearchString.toString());
+    int count = 0;
+    while (matcher.find()) {
+      count++;
+    }
+    assertEquals(1, count);
+    buffer = ByteBuffer.wrap(bytes);
+    // Deserialize the entire chain
+    final var deserializedChain = pickler.deserialize(buffer);
+    assertNotNull(deserializedChain);
+    var next = deserializedChain.next();
+    assertNotNull(next);
+    next = next.next();
+    assertNotNull(next);
+    next = next.next();
+    assertNull(next);
+
+    assertEquals(0, buffer.remaining(), "Buffer should be fully consumed");
+  }
+
+  @Test
+  void testClassNameCompressionSealedTrait() {
+    // Get a pickler for the Chained sealed interface
+    final var pickler = picklerForSealedTrait(Chained.class);
+
+    // Create a chain of links
+    final var link1 = new Link(null);
+    final var link2 = new Link(link1);
+
+    // Calculate buffer size needed for the entire chain
+    final var bufferSize = pickler.sizeOf(link2);
+
+    // Allocate a buffer to hold the entire chain
+    var buffer = ByteBuffer.allocate(bufferSize);
+    // Serialize the entire chain
+    pickler.serialize(link2, buffer);
+    // Prepare buffer for reading
+    buffer.flip();
+
+    // Get the bytes from the buffer
+    final var bytes = buffer.array();
+    StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
+    Matcher matcher = Pattern.compile(Link.class.getName().replace("$", "\\$")).matcher(escapedSearchString.toString());
+    int count = 0;
+    while (matcher.find()) {
+      count++;
+    }
+    assertEquals(1, count);
+    buffer = ByteBuffer.wrap(bytes);
+    // Deserialize the entire chain
+    final var deserializedChain = (Link) pickler.deserialize(buffer);
+    assertNotNull(deserializedChain);
+    var next = deserializedChain.next();
+    assertNotNull(next);
+    next = next.next();
+    assertNull(next);
+  }
+
   /// Tests serialization and deserialization of the entire tree through just the root node
   @Test
   void treeGraphSerialization() {
@@ -254,54 +380,39 @@ class MorePicklerTests {
     final var bufferSize = pickler.sizeOf(originalRoot);
     
     // Allocate a buffer to hold just the root node
-    final var buffer = ByteBuffer.allocate(bufferSize);
+    var buffer = ByteBuffer.allocate(bufferSize);
     
     // Serialize only the root node (which should include the entire graph)
     pickler.serialize(originalRoot, buffer);
     
     // Prepare buffer for reading
     buffer.flip();
-    
+
+    final var bytes = buffer.array();
+    StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
+
+    Matcher matcher = Pattern.compile(LeafNode.class.getName()).matcher(escapedSearchString.toString());
+
+    int count = 0;
+    while (matcher.find()) {
+      count++;
+    }
+
+    assertEquals(1, count);
+
+    buffer = ByteBuffer.wrap(bytes);
+
     // Deserialize the root node (which should reconstruct the entire graph)
     final var deserializedRoot = pickler.deserialize(buffer);
     
     // Validate the entire tree structure was properly deserialized
-    // Verify root node structure
-    assertInstanceOf(RootNode.class, deserializedRoot);
-    final var root = (RootNode) deserializedRoot;
-
-    // Verify left branch (internal1)
-    assertInstanceOf(InternalNode.class, root.left());
-    final var internal1 = (InternalNode) root.left();
-    assertEquals("Branch1", internal1.name());
-
-    // Verify right branch (internal2)
-    assertInstanceOf(InternalNode.class, root.right());
-    final var internal2 = (InternalNode) root.right();
-    assertEquals("Branch2", internal2.name());
-
-    // Verify leaf nodes under internal1
-    assertInstanceOf(LeafNode.class, internal1.left());
-    final var leaf1 = (LeafNode) internal1.left();
-    assertEquals(42, leaf1.value());
-
-    assertInstanceOf(LeafNode.class, internal1.right());
-    final var leaf2 = (LeafNode) internal1.right();
-    assertEquals(99, leaf2.value());
-
-    // Verify leaf node under internal2
-    assertInstanceOf(LeafNode.class, internal2.left());
-    final var leaf3 = (LeafNode) internal2.left();
-    assertEquals(123, leaf3.value());
-
-    // Verify null right child of internal2
-    assertNull(internal2.right());
-
+    validateTreeStructure(deserializedRoot);
+    
     // Verify buffer is fully consumed
     assertEquals(0, buffer.remaining(), "Buffer should be fully consumed");
   }
 
-  private static TreeNode[] getTreeNodes() {
+  static TreeNode[] getTreeNodes() {
     final var leaf1 = new LeafNode(42);
     final var leaf2 = new LeafNode(99);
     final var leaf3 = new LeafNode(123);
