@@ -240,20 +240,48 @@ sequenceDiagram
         Pickler->>ByteBuffer: put(NULL_MARKER)
     else Object is Record
         Pickler->>ByteBuffer: put(RECORD_MARKER)
-        Pickler->>ByteBuffer: put(className.length)
-        Pickler->>ByteBuffer: put(className.bytes)
+        Note right of Pickler: Class names are deduplicated
+        alt First occurrence of class
+            Pickler->>ByteBuffer: put(className.length)
+            Pickler->>ByteBuffer: put(className.bytes)
+            Note right of Pickler: Position is memorized
+        else Repeated class
+            Pickler->>ByteBuffer: put(reference to previous position)
+        end
         Pickler->>ByteBuffer: put(serialized component data)
     else Object is Array
         Pickler->>ByteBuffer: put(ARRAY_MARKER)
-        Pickler->>ByteBuffer: put(componentType.length)
-        Pickler->>ByteBuffer: put(componentType.bytes)
+        Note right of Pickler: Component type name is deduplicated
+        alt First occurrence of component type
+            Pickler->>ByteBuffer: put(componentType.length)
+            Pickler->>ByteBuffer: put(componentType.bytes)
+            Note right of Pickler: Position is memorized
+        else Repeated component type
+            Pickler->>ByteBuffer: put(reference to previous position)
+        end
+        Pickler->>ByteBuffer: put(array.length)
+        loop For each array element
+            Pickler->>ByteBuffer: put(serialized element)
+        end
+    else Object is Outer Array
+        Pickler->>Pickler: serializeArray(array, buffer)
+        Note right of Pickler: Handles arrays of records or sealed interfaces
+        Pickler->>ByteBuffer: put(ARRAY_MARKER)
+        Note right of Pickler: Component type name is deduplicated
+        Pickler->>ByteBuffer: put(componentType info)
         Pickler->>ByteBuffer: put(array.length)
         loop For each array element
             Pickler->>ByteBuffer: put(serialized element)
         end
     else Object implements SealedInterface
-        Pickler->>ByteBuffer: put(className.length)
-        Pickler->>ByteBuffer: put(className.bytes)
+        Note right of Pickler: Class name is deduplicated
+        alt First occurrence of class
+            Pickler->>ByteBuffer: put(className.length)
+            Pickler->>ByteBuffer: put(className.bytes)
+            Note right of Pickler: Position is memorized
+        else Repeated class
+            Pickler->>ByteBuffer: put(reference to previous position)
+        end
         Pickler->>ByteBuffer: put(serialized object data)
     end
     
@@ -261,14 +289,32 @@ sequenceDiagram
     Client->>Pickler: deserialize(buffer)
     alt Read NULL_MARKER
         Pickler->>Client: return null
+    else Read ARRAY_MARKER for outer array
+        Pickler->>Client: deserializeArray(buffer, componentType)
+        Note right of Pickler: Handles class name deduplication
+        Pickler->>ByteBuffer: get(componentType info)
+        Pickler->>ByteBuffer: get(array.length)
+        loop For each array element
+            Pickler->>ByteBuffer: get(serialized element)
+        end
+        Pickler->>Client: return reconstructed array
     else Read normal type
-        Pickler->>ByteBuffer: get(className.length)
-        Pickler->>ByteBuffer: get(className.bytes)
-        Pickler->>Client: Class.forName(className)
+        Note right of Pickler: Handles class name deduplication
+        alt Reference to previous class
+            Pickler->>ByteBuffer: get(reference position)
+            Pickler->>Client: lookup class from position map
+        else New class
+            Pickler->>ByteBuffer: get(className.length)
+            Pickler->>ByteBuffer: get(className.bytes)
+            Pickler->>Client: Class.forName(className)
+            Note right of Pickler: Position is memorized
+        end
         Pickler->>ByteBuffer: get(serialized data)
         Pickler->>Client: return reconstructed object
     end
 ```
+
+Note: The serialization protocol includes an optimization for class names. When a class name is first encountered during serialization, its full name is written to the buffer and its position is memorized. For subsequent occurrences of the same class, only a 4-byte reference to the previous position is written instead of repeating the full class name. This significantly reduces the size of the serialized data when the same classes appear multiple times, such as in arrays or nested structures.
 
 ## License
 
