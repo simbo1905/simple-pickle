@@ -236,9 +236,9 @@ sequenceDiagram
     
     Note over Client, ByteBuffer: Serialization Process
     Client->>Pickler: serialize(object, buffer)
-    alt Object is null
+    alt Pickler handles null
         Pickler->>ByteBuffer: put(NULL_MARKER)
-    else Object is Record
+    else Pickler for Record
         Pickler->>ByteBuffer: put(RECORD_MARKER)
         Note right of Pickler: Class names are deduplicated
         alt First occurrence of class
@@ -249,7 +249,7 @@ sequenceDiagram
             Pickler->>ByteBuffer: put(reference to previous position)
         end
         Pickler->>ByteBuffer: put(serialized component data)
-    else Object is Array
+    else Pickler for Array
         Pickler->>ByteBuffer: put(ARRAY_MARKER)
         Note right of Pickler: Component type name is deduplicated
         alt First occurrence of component type
@@ -263,7 +263,7 @@ sequenceDiagram
         loop For each array element
             Pickler->>ByteBuffer: put(serialized element)
         end
-    else Object is Outer Array
+    else Pickler for Outer Array
         Pickler->>Pickler: serializeArray(array, buffer)
         Note right of Pickler: Handles arrays of records or sealed interfaces
         Pickler->>ByteBuffer: put(ARRAY_MARKER)
@@ -273,7 +273,7 @@ sequenceDiagram
         loop For each array element
             Pickler->>ByteBuffer: put(serialized element)
         end
-    else Object implements SealedInterface
+    else Pickler for sealed interface
         Note right of Pickler: Class name is deduplicated
         alt First occurrence of class
             Pickler->>ByteBuffer: put(className.length)
