@@ -1,6 +1,6 @@
 # Java Record Pickler
 
-Java Record Pickler: A lightweight, zero-dependency serialization library for Java 21+ that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure, modern message protocols with nested data structures and switch pattern matching.
+Java Record Pickler: A lightweight, zero-dependency serialization library for Java 21+ that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure, modern message protocols of sealed interfaces containing nested records and arrays. It supports backwards compatibility through the use of alternative constructors when new components to the end of record definition (see Schema Evolution section below).
 It avoids excessive reflection when working with objects by caching MethodHandle. 
 It works with nested sealed traits that permit nested simple records of simple types: 
 
@@ -315,6 +315,66 @@ sequenceDiagram
 ```
 
 Note: The serialization protocol includes an optimization for class names. When a class name is first encountered during serialization, its full name is written to the buffer and its position is memorized. For subsequent occurrences of the same class, only a 4-byte reference to the previous position is written instead of repeating the full class name. This significantly reduces the size of the serialized data when the same classes appear multiple times, such as in arrays or nested structures.
+
+## Schema Evolution
+
+While Java Record Pickler is primarily designed for type-safe serialization of message protocols with simple data transfer records rather than long-term storage, it does support limited schema evolution to facilitate communication between microservices running different versions of a protocol.
+
+### Supported Evolution Pattern
+
+The library supports additive-only schema evolution where new fields are added to the end of a record definition. For this to work properly, the newer version of the record must provide a backward compatibility constructor that accepts only the original fields and supplies default values for the new fields.
+
+### Example: Adding a Field to a Record
+
+Consider a scenario with two microservices communicating with each other:
+
+**Original Record (used by older microservice):**
+```java
+package com.example.protocol;
+
+public record UserInfo(String username, int accessLevel) {
+}
+```
+
+**Evolved Record (used by newer microservice):**
+```java
+package com.example.protocol;
+
+public record UserInfo(String username, int accessLevel, String department) {
+    // Default value for backward compatibility
+    private static final String DEFAULT_DEPARTMENT_FOR_LEGACY_RECORDS = "UNASSIGNED";
+    
+    // Backward compatibility constructor
+    public UserInfo(String username, int accessLevel) {
+        this(username, accessLevel, DEFAULT_DEPARTMENT_FOR_LEGACY_RECORDS);
+    }
+}
+```
+
+### How It Works
+
+1. When the older microservice sends a serialized `UserInfo` record with just `username` and `accessLevel`, the newer microservice can deserialize it using the evolved `UserInfo` class.
+
+2. The Pickler detects that the serialized data has fewer components than the canonical constructor expects.
+
+3. It then looks for a compatible constructor that accepts exactly the number of components in the serialized data.
+
+4. The backward compatibility constructor is invoked, which supplies the default value for the new `department` field.
+
+### Limitations
+
+- Only supports adding new fields at the end of the record definition
+- Requires explicit backward compatibility constructors with appropriate default values
+- Cannot remove or reorder existing fields
+- Cannot change field types
+
+### Best Practices
+
+1. Always add new fields at the end of record definitions
+2. Always provide backward compatibility constructors with meaningful default values
+3. Use clearly named constants for default values to document their purpose
+4. Consider using `Optional<T>` for new fields that might not have a sensible default
+5. Test both serialization directions (old → new and new → old) to ensure compatibility
 
 ## License
 

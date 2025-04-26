@@ -6,6 +6,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.util.*;
@@ -589,14 +590,18 @@ public interface Pickler<T> {
       };
     }
 
-    /// Internal static method to create a new Pickler for a record class. This that creates the method handles for the
-    /// record's component accessors and the canonical constructor.
+    /// Internal static method to create a new Pickler for a record class. This creates the method handles for the
+    /// record's component accessors, the canonical constructor, and any fallback constructors for schema evolution.
     static <R extends Record> PicklerInternal<R> createPicklerForRecord(Class<R> recordClass) {
       MethodHandle[] componentAccessors;
-      MethodHandle constructorHandle;
+      MethodHandle canonicalConstructorHandle;
+      Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
+      int canonicalParamCount;
+    
       // Get lookup object
       MethodHandles.Lookup lookup = MethodHandles.lookup();
-      // first we get the accessor method handles for the record components and add them to the array used
+    
+      // First we get the accessor method handles for the record components and add them to the array used
       // that is used by the base class to pull all the components out of the record to load into the byte buffer
       try {
         RecordComponent[] components = recordClass.getRecordComponents();
@@ -615,20 +620,76 @@ public interface Pickler<T> {
         }
         throw new RuntimeException(inner.getMessage(), inner);
       }
-      // Then we get the canonical constructor method handle for the record that will be used to create a new
-      // instance from the components that the base class will pull out of the byte buffer
+    
+      // Get the canonical constructor and any fallback constructors for schema evolution
       try {
         // Get the record components
         RecordComponent[] components = recordClass.getRecordComponents();
-        // Extract component types for the constructor
-        Class<?>[] paramTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
-        // Create method type for the canonical constructor
-        MethodType constructorType = MethodType.methodType(void.class, paramTypes);
-
-        constructorHandle = lookup.findConstructor(recordClass, constructorType);
-      } catch (NoSuchMethodException | IllegalAccessException e) {
-        throw new RuntimeException("Failed to access constructor for record: " + recordClass.getName(), e);
+        // Extract component types for the canonical constructor
+        Class<?>[] canonicalParamTypes = Arrays.stream(components)
+            .map(RecordComponent::getType)
+            .toArray(Class<?>[]::new);
+        canonicalParamCount = canonicalParamTypes.length;
+      
+        // Get all public constructors
+        Constructor<?>[] allConstructors = recordClass.getConstructors();
+      
+        // Find the canonical constructor and potential fallback constructors
+        canonicalConstructorHandle = null;
+      
+        for (Constructor<?> constructor : allConstructors) {
+          Class<?>[] currentParamTypes = constructor.getParameterTypes();
+          int currentParamCount = constructor.getParameterCount();
+          MethodHandle handle;
+        
+          try {
+            handle = lookup.unreflectConstructor(constructor);
+          } catch (IllegalAccessException e) {
+            LOGGER.warning("Cannot access constructor with " + currentParamCount + 
+                " parameters for " + recordClass.getName() + ": " + e.getMessage());
+            continue;
+          }
+        
+          if (Arrays.equals(currentParamTypes, canonicalParamTypes)) {
+            // Found the canonical constructor
+            canonicalConstructorHandle = handle;
+          } else {
+            // This is a potential fallback constructor for schema evolution
+            if (fallbackConstructorHandles.containsKey(currentParamCount)) {
+              LOGGER.warning("Multiple fallback constructors with " + currentParamCount + 
+                  " parameters found for " + recordClass.getName() + 
+                  ". Using the first one encountered.");
+              // We keep the first one we found
+            } else {
+              fallbackConstructorHandles.put(currentParamCount, handle);
+              LOGGER.fine("Found fallback constructor with " + currentParamCount + 
+                  " parameters for " + recordClass.getName());
+            }
+          }
+        }
+      
+        // If we didn't find the canonical constructor, try to find it directly
+        if (canonicalConstructorHandle == null) {
+          try {
+            // Create method type for the canonical constructor
+            MethodType constructorType = MethodType.methodType(void.class, canonicalParamTypes);
+            canonicalConstructorHandle = lookup.findConstructor(recordClass, constructorType);
+          } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new RuntimeException("Failed to access canonical constructor for record: " + 
+                recordClass.getName(), e);
+          }
+        }
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to access constructors for record: " + 
+            recordClass.getName(), e);
       }
+    
+      // Capture these values for use in the anonymous class
+      final MethodHandle finalCanonicalConstructorHandle = canonicalConstructorHandle;
+      final int finalCanonicalParamCount = canonicalParamCount;
+      final String recordClassName = recordClass.getName();
+      final Map<Integer, MethodHandle> finalFallbackConstructorHandles = 
+          Collections.unmodifiableMap(fallbackConstructorHandles);
 
       return new PicklerBase<>() {
         @Override
@@ -648,9 +709,32 @@ public interface Pickler<T> {
         @Override
         R staticCreateFromComponents(Object[] components) {
           try {
-            return (R) constructorHandle.invokeWithArguments(components);
+            // Get the number of components from the serialized data
+            int numComponents = components.length;
+            MethodHandle constructorToUse;
+            
+            if (numComponents == finalCanonicalParamCount) {
+              // Number of components matches the canonical constructor - use it directly
+              constructorToUse = finalCanonicalConstructorHandle;
+              LOGGER.finest(() -> "Using canonical constructor for " + recordClassName + 
+                  " with " + numComponents + " components");
+            } else {
+              // Number of components differs, look for a fallback constructor
+              constructorToUse = finalFallbackConstructorHandles.get(numComponents);
+              if (constructorToUse == null) {
+                // No fallback constructor matches the number of components found
+                throw new RuntimeException("Schema evolution error: Cannot deserialize data for " + 
+                    recordClassName + ". Found " + numComponents + 
+                    " components, but no matching constructor (canonical or fallback) exists.");
+              }
+              LOGGER.finest(() -> "Using fallback constructor for " + recordClassName + 
+                  " with " + numComponents + " components");
+            }
+            
+            // Invoke the selected constructor
+            return (R) constructorToUse.invokeWithArguments(components);
           } catch (Throwable e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Failed to create instance of " + recordClassName, e);
           }
         }
       };

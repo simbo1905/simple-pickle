@@ -1,8 +1,9 @@
 # Java DOP Coding Standards ####################
 
-This file is a Gen AI summary of CODEING_STYLE.md to use less tokens of context window. Read the original file for full details.
+This file is a Gen AI summary of CODING_STYLE.md to use less tokens of context window. Read the original file for full details.
 
 IMPORTANT: We do TDD so all code must include targeted unit tests.
+IMPORTANT: Never disable tests written for logic that we are yet to write we do Red-Green-Refactor coding. 
 
 ## Core Principles
 
