@@ -1,16 +1,18 @@
 # Java Record Pickler
 
-Java Record Pickler: A lightweight, zero-dependency serialization library for Java 21+ that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure, modern message protocols of sealed interfaces containing nested records and arrays. It supports backwards compatibility through the use of alternative constructors when new components to the end of record definition (see Schema Evolution section below).
+Java Record Pickler: A lightweight, zero-dependency serialization library that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure, modern message protocols of sealed interfaces containing nested records and arrays. It supports binary backwards compatibility of additive changes through alternative constructors (see Schema Evolution section below).
+
 It avoids excessive reflection when working with objects by caching MethodHandle. 
+
 It works with nested sealed traits that permit nested simple records of simple types: 
 
 - Records containing primitive types or String
 - Optional of primitive types or String
 - Arrays (including primitive arrays, object arrays, nested arrays, and outer arrays of records)
-- Nested records that only contain the above type 
-- Sealed interfaces with record implementations that only contain the above types
-- Nested sealed interfaces that only contain the above types
-- Outer arrays of any of the above types
+- Nested records that only contain the above types
+- Sealed interfaces with record implementations that only contain the above
+- Nested sealed interfaces that only contain the above
+- Outer arrays of the above
 
 Those restrictions are rich enough to build a message protocol suitable for using with record patterns in switch statements. 
 Those are a Java 21 feature that makes working with message protocols much safer and easier. 
@@ -36,7 +38,7 @@ record Failure(String errorMessage) implements StackResponse {
 ```
 
 Note that there is deliberately no common interface between the client and server protocols. This means that we would 
-create two type-safe picklers, one for the client and one for the server. This is a deliberate design choice to avoid 
+create two type-safe picklers, one for each side of the shared protocols. This is a deliberate design choice to avoid 
 needing to do unchecked casts when deserializing: 
 
 ```java
@@ -47,25 +49,32 @@ Pickler<StackResponse> responsePickler = Pickler.picklerForSealedTrait(StackResp
 
 See the unit tests for many examples of using the library.
 
-## Project Goals
+## What This Solves And Project Goals
 
 The challenge with using record patterns in switch statements for message protocols are:
 
 - The built-in Java Serialization mechanism is university loathed. Even if was magically fixed in future Java versions no-one will ever trust it
 - Standard formats like Protobuf, Avro or JSON require 3rd party libraries dependencies that insist on adding security vulnerability due to "CV Driven Engineering"
 - Java 8 boilerplate programming forces the use of kitchen sink frameworks that use the standard 3rd party libraries which then maximises to a certainly future critical security vulnerabilities
+- Mapping between arbitrary Java types and standard protocols is hard and best solved through annotations and arbitrary code. Yet if we use a strong convention of how we define our protocols then we can avoid the need for annotations and arbitrary code and the code itself becomes the documentation.
 
 The goals of this codebase is to:
 
 1. Write one piece of stable code that is a single Java source file
 2. Never add features only fix any bugs
 3. Never have any third party dependencies
-4. Be good good enough to use for the internal communication between software. Remember perfection is the enemy of good. 
+4. Be good enough to use for the internal communication between software. Remember perfection is the enemy of good. 
+5. Support basic additive change to the message protocol for backwards and forwards compatibility of adjacent versions of microservices.
+
+## Security
+
+This library is primarily targeting internal microservice communication. It is not designed for long-term storage of data. 
+It is not intended to be used for external APIs. 
 
 In order to use this code safely you need to ensure that payloads have not been tempered with. If you are not
 doing that already then you are toast anyway due to all the future zero-day vulnerabilities of using popular 3rd party 
 alternatives. Often just using properly using https between your services is "good enough" to ensure no tampering. You 
-are already doing that, right? 
+are already doing that, right?
 
 ## Usage Examples
 
@@ -375,6 +384,16 @@ public record UserInfo(String username, int accessLevel, String department) {
 3. Use clearly named constants for default values to document their purpose
 4. Consider using `Optional<T>` for new fields that might not have a sensible default
 5. Test both serialization directions (old → new and new → old) to ensure compatibility
+
+## Contributing
+
+Users of this library can have LLMs write exhaustive tests of
+round-trip serialization and deserialization of their message protocols. If you find a bug send a pull request of the
+test and fix that the LLM wrote place.
+
+Please avoid suggesting adding new features. Please do fork the repo and add them to your copy. Do raise an discussion issue to advertise the new feature 
+to the wider community. LLMs are powerful so go for it. 
+
 
 ## License
 
