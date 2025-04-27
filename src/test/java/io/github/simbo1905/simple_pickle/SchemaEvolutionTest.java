@@ -60,7 +60,7 @@ class SchemaEvolutionTest {
     @Test
     void testBasicSchemaEvolution() throws Exception {
         // Step 1: Compile and load the original schema
-        Class<?> originalClass = compileAndLoadClass("TestRecord", ORIGINAL_SCHEMA);
+        Class<?> originalClass = compileAndLoadClass(ORIGINAL_SCHEMA);
         assertTrue(originalClass.isRecord(), "Compiled class should be a record");
         
         // Step 2: Create an instance of the original record
@@ -71,7 +71,7 @@ class SchemaEvolutionTest {
         byte[] serializedData = serializeRecord(originalInstance);
         
         // Step 4: Compile and load the evolved schema
-        Class<?> evolvedClass = compileAndLoadClass("TestRecord", EVOLVED_SCHEMA);
+        Class<?> evolvedClass = compileAndLoadClass(EVOLVED_SCHEMA);
         assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
         
         // Step 5: Deserialize using the evolved schema
@@ -89,7 +89,7 @@ class SchemaEvolutionTest {
     @Test
     void testRoundTripWithEvolvedSchema() throws Exception {
         // Compile and load the evolved schema
-        Class<?> evolvedClass = compileAndLoadClass("TestRecord", EVOLVED_SCHEMA);
+        Class<?> evolvedClass = compileAndLoadClass(EVOLVED_SCHEMA);
         
         // Create an instance with both fields specified
         Object originalInstance = createRecordInstance(evolvedClass, new Object[]{123, 456});
@@ -115,8 +115,8 @@ class SchemaEvolutionTest {
     @Test
     void testBackwardIncompatibility() throws Exception {
         // Compile and load both schemas
-        Class<?> originalClass = compileAndLoadClass("TestRecord", ORIGINAL_SCHEMA);
-        Class<?> evolvedClass = compileAndLoadClass("TestRecord", EVOLVED_SCHEMA);
+        Class<?> originalClass = compileAndLoadClass(ORIGINAL_SCHEMA);
+        Class<?> evolvedClass = compileAndLoadClass(EVOLVED_SCHEMA);
         
         // Create an instance of the evolved record
         Object evolvedInstance = createRecordInstance(evolvedClass, new Object[]{123, 456});
@@ -136,11 +136,10 @@ class SchemaEvolutionTest {
     }
 
     /// Compiles and loads a class from source code.
-    /// 
-    /// @param className The simple name of the class
+    ///
     /// @param sourceCode The source code
     /// @return The loaded class
-    static Class<?> compileAndLoadClass(String className, String sourceCode) throws Exception {
+    static Class<?> compileAndLoadClass(String sourceCode) throws Exception {
         // Get the Java compiler
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
@@ -153,7 +152,7 @@ class SchemaEvolutionTest {
             compiler.getStandardFileManager(diagnostics, null, null));
 
         // Create the source file object
-        String fullClassName = "io.github.simbo1905.simple_pickle.evolution." + className;
+        String fullClassName = "io.github.simbo1905.simple_pickle.evolution." + "TestRecord";
         JavaFileObject sourceFile = new InMemorySourceFile(fullClassName, sourceCode);
 
         // Compile the source
