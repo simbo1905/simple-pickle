@@ -69,7 +69,7 @@ The goals of this codebase is to:
 5. Support basic additive change to the message protocol for backwards and forwards compatibility of adjacent versions of microservices.
 6. Be simple enough to get an LLM to write the corresponding Rust code that can deserialize Java records into Rust structs. Therefore, rather than explicitly supporting cross-language serialization the library implicitly supports it through simplicity. 
 
-This mean you might find that this single Java file solution is a viable alternative to using gRPC in your application. YMMV. T&C apply.
+This mean you might find that this single Java file solution is a viable alternative to using gRPC in your application. YMMV and T&Cs apply.
 
 ## Security
 
