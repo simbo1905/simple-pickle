@@ -705,6 +705,180 @@ class PicklerTest {
   }
   
   @Test
+  void testArraysOfOptionals() {
+    // Create arrays of Optional values with mixed present/empty values
+    Optional<String>[] stringOptionals = new Optional[] {
+        Optional.of("Hello"),
+        Optional.empty(),
+        Optional.of("World")
+    };
+    
+    Optional<Integer>[] intOptionals = new Optional[] {
+        Optional.of(42),
+        Optional.empty(),
+        Optional.of(123),
+        Optional.of(456)
+    };
+    
+    // Create a record to hold these arrays
+    record OptionalArraysRecord(Optional<String>[] stringOptionals, Optional<Integer>[] intOptionals) {}
+    
+    // Create an instance
+    OptionalArraysRecord original = new OptionalArraysRecord(stringOptionals, intOptionals);
+    
+    // Get a pickler for the record
+    Pickler<OptionalArraysRecord> pickler = Pickler.picklerForRecord(OptionalArraysRecord.class);
+    
+    // Calculate size and allocate buffer
+    int size = pickler.sizeOf(original);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Serialize
+    pickler.serialize(original, buffer);
+    buffer.flip();
+    
+    // Deserialize
+    OptionalArraysRecord deserialized = pickler.deserialize(buffer);
+    
+    // Verify arrays length
+    assertEquals(original.stringOptionals().length, deserialized.stringOptionals().length);
+    assertEquals(original.intOptionals().length, deserialized.intOptionals().length);
+    
+    // Verify string optionals content
+    for (int i = 0; i < original.stringOptionals().length; i++) {
+      assertEquals(original.stringOptionals()[i], deserialized.stringOptionals()[i]);
+    }
+    
+    // Verify integer optionals content
+    for (int i = 0; i < original.intOptionals().length; i++) {
+      assertEquals(original.intOptionals()[i], deserialized.intOptionals()[i]);
+    }
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+  
+  @Test
+  void testOptionalsContainingArrays() {
+    // Create optionals containing arrays
+    Optional<int[]> optionalIntArray = Optional.of(new int[] {1, 2, 3, 4, 5});
+    Optional<String[]> optionalStringArray = Optional.of(new String[] {"Hello", "World"});
+    Optional<Person[]> optionalPersonArray = Optional.of(new Person[] {
+        new Person("Alice", 30),
+        new Person("Bob", 25)
+    });
+    Optional<int[]> emptyOptionalArray = Optional.empty();
+    
+    // Create a record to hold these optionals
+    record ArrayOptionalsRecord(
+        Optional<int[]> optionalIntArray,
+        Optional<String[]> optionalStringArray,
+        Optional<Person[]> optionalPersonArray,
+        Optional<int[]> emptyOptionalArray
+    ) {}
+    
+    // Create an instance
+    ArrayOptionalsRecord original = new ArrayOptionalsRecord(
+        optionalIntArray, optionalStringArray, optionalPersonArray, emptyOptionalArray);
+    
+    // Get a pickler for the record
+    Pickler<ArrayOptionalsRecord> pickler = Pickler.picklerForRecord(ArrayOptionalsRecord.class);
+    
+    // Calculate size and allocate buffer
+    int size = pickler.sizeOf(original);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Serialize
+    pickler.serialize(original, buffer);
+    buffer.flip();
+    
+    // Deserialize
+    ArrayOptionalsRecord deserialized = pickler.deserialize(buffer);
+    
+    // Verify optionals presence
+    assertEquals(original.optionalIntArray().isPresent(), deserialized.optionalIntArray().isPresent());
+    assertEquals(original.optionalStringArray().isPresent(), deserialized.optionalStringArray().isPresent());
+    assertEquals(original.optionalPersonArray().isPresent(), deserialized.optionalPersonArray().isPresent());
+    assertEquals(original.emptyOptionalArray().isPresent(), deserialized.emptyOptionalArray().isPresent());
+    
+    // Verify int array content
+    if (original.optionalIntArray().isPresent()) {
+      assertArrayEquals(original.optionalIntArray().get(), deserialized.optionalIntArray().get());
+    }
+    
+    // Verify string array content
+    if (original.optionalStringArray().isPresent()) {
+      assertArrayEquals(original.optionalStringArray().get(), deserialized.optionalStringArray().get());
+    }
+    
+    // Verify person array content
+    if (original.optionalPersonArray().isPresent()) {
+      Person[] originalPersons = original.optionalPersonArray().get();
+      Person[] deserializedPersons = deserialized.optionalPersonArray().get();
+      assertEquals(originalPersons.length, deserializedPersons.length);
+      for (int i = 0; i < originalPersons.length; i++) {
+        assertEquals(originalPersons[i], deserializedPersons[i]);
+      }
+    }
+    
+    // Verify empty optional
+    assertTrue(deserialized.emptyOptionalArray().isEmpty());
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+  
+  @Test
+  void testPrimitiveArrays() {
+    // Create arrays of all primitive types
+    byte[] byteArray = {1, 2, 3, 127, -128};
+    short[] shortArray = {1, 2, 3, 32767, -32768};
+    char[] charArray = {'a', 'b', 'c', '1', '2'};
+    long[] longArray = {1L, 2L, 3L, Long.MAX_VALUE, Long.MIN_VALUE};
+    float[] floatArray = {1.0f, 2.5f, 3.14f, Float.MAX_VALUE, Float.MIN_VALUE};
+    double[] doubleArray = {1.0, 2.5, 3.14, Double.MAX_VALUE, Double.MIN_VALUE};
+    
+    // Create a record to hold these arrays
+    record PrimitiveArraysRecord(
+        byte[] byteArray,
+        short[] shortArray,
+        char[] charArray,
+        long[] longArray,
+        float[] floatArray,
+        double[] doubleArray
+    ) {}
+    
+    // Create an instance
+    PrimitiveArraysRecord original = new PrimitiveArraysRecord(
+        byteArray, shortArray, charArray, longArray, floatArray, doubleArray);
+    
+    // Get a pickler for the record
+    Pickler<PrimitiveArraysRecord> pickler = Pickler.picklerForRecord(PrimitiveArraysRecord.class);
+    
+    // Calculate size and allocate buffer
+    int size = pickler.sizeOf(original);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Serialize
+    pickler.serialize(original, buffer);
+    buffer.flip();
+    
+    // Deserialize
+    PrimitiveArraysRecord deserialized = pickler.deserialize(buffer);
+    
+    // Verify all arrays
+    assertArrayEquals(original.byteArray(), deserialized.byteArray());
+    assertArrayEquals(original.shortArray(), deserialized.shortArray());
+    assertArrayEquals(original.charArray(), deserialized.charArray());
+    assertArrayEquals(original.longArray(), deserialized.longArray());
+    assertArrayEquals(original.floatArray(), deserialized.floatArray(), 0.0f);
+    assertArrayEquals(original.doubleArray(), deserialized.doubleArray(), 0.0);
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+  
+  @Test
   void testNestedRecordArrays() {
     // Create arrays of records with different nesting levels
     Person[] team1 = new Person[] {
