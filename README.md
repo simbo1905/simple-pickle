@@ -331,7 +331,7 @@ While Java Record Pickler is primarily designed for type-safe serialization of m
 
 ### Supported Evolution Pattern
 
-The library supports additive-only schema evolution where new fields are added to the end of a record definition. For this to work properly, the newer version of the record must provide a backward compatibility constructor that accepts only the original fields and supplies default values for the new fields.
+To enable backward compatibility when adding fields to a record, ensure you define a public constructor that accepts the exact parameter list (number and types) of the previous version. The library supports additive-only schema evolution where new fields are added to the end of a record definition. Pickler will automatically use your compatibility constructor when deserializing data from older versions.
 
 ### Example: Adding a Field to a Record
 
@@ -366,9 +366,9 @@ public record UserInfo(String username, int accessLevel, String department) {
 
 2. The Pickler detects that the serialized data has fewer components than the canonical constructor expects.
 
-3. It then looks for a compatible constructor that accepts exactly the number of components in the serialized data.
+3. It then looks for the public constructor you provide that accepts exactly the number and types of components in the serialized data.
 
-4. The backward compatibility constructor is invoked, which supplies the default value for the new `department` field.
+4. This backward compatibility constructor is invoked, which supplies the default value for the new `department` field.
 
 ### Limitations
 
