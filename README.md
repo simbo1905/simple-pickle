@@ -10,6 +10,7 @@ It works with nested sealed traits that permit nested simple records of simple t
   - Optional of primitive types or String
   - Arrays or primitive arrays such as `byte[]`, object arrays, nested arrays
   - Nested records that only contain the above types
+  - Maps with keys or values that are any of the above
   - Sealed interfaces with record implementations that only contain the above
   - Nested sealed interfaces that only contain the above
   - An outer array that contains any of the above
@@ -131,6 +132,38 @@ assertEquals(people.length, deserializedPeople.length);
 // Use streams to verify each element matches
 IntStream.range(0, people.length)
     .forEach(i -> assertEquals(people[i], deserializedPeople[i]));
+```
+
+### Maps
+
+If we define a map as `Map<String, Person>` then we run into erasure issues that at runtime 
+there is no type information about the map. We only have a raw `Map` type and so we do not get a type-safe pickler. We have to wrap the map into a record that is associated with the map type. We then create a pickler for the record type. In practice at runtime the wrapper adds one byte to say its the outer record type plus the class name. That is low overhead to persist the type information given that Java erasure is a runtime "feature". Note that we only ever write any class name once so if you have a lot of instances of maps to write out the overhead is amortized. Here is an example that is taken from the junit tests:
+
+```java
+Person john = new Person("John", 40);
+Person michael = new Person("Michael", 65);
+Person sarah = new Person("Sarah", 63);
+
+Map<String, Person> familyMap = new HashMap<>();
+familyMap.put("father", michael);
+familyMap.put("mother", sarah);
+
+record NestedFamilyMapContainer(Person subject, Map<String, Person> relationships) {}
+
+// we need a wrapper to create a concrete type for the pickler due to erase of map types
+final var nestedFamilyMapContainer = new NestedFamilyMapContainer(john, familyMap);
+
+final var pickler = picklerForRecord(NestedFamilyMapContainer.class);
+
+// Calculate size and allocate buffer
+int size = pickler.sizeOf(nestedFamilyMapContainer);
+ByteBuffer buffer = ByteBuffer.allocate(size);
+// Serialize
+pickler.serialize(nestedFamilyMapContainer, buffer);
+buffer.flip();
+// Deserialize
+NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
+// see the unit test that validates the deserialized map matches the original map. 
 ```
 
 ### Complex Nested Sealed Interfaces

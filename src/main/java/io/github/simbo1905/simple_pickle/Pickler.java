@@ -403,6 +403,18 @@ public interface Pickler<T> {
         @SuppressWarnings("unchecked")
         PicklerInternal<Record> nestedPickler = (PicklerInternal<Record>) Pickler.picklerForRecord(record.getClass());
         size += nestedPickler.sizeOf(record, classes); // Size of the record itself
+      } else if (c instanceof Map<?, ?> map) {
+        // 4 bytes for the number of entries
+        size += 4;
+        
+        // Calculate size for each key-value pair
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+          // Add size of key
+          size += staticSizeOf(entry.getKey(), classes);
+          
+          // Add size of value
+          size += staticSizeOf(entry.getValue(), classes);
+        }
       } else {
         size += plainSize;
       }
@@ -428,6 +440,7 @@ public interface Pickler<T> {
         case String ignored -> STRING.marker();
         case Optional<?> ignored -> OPTIONAL.marker();
         case Record ignored -> RECORD.marker();
+        case Map<?, ?> ignored -> MAP.marker();
         default -> throw new UnsupportedOperationException("Unsupported type: " + c.getClass());
       };
     }
@@ -488,6 +501,20 @@ public interface Pickler<T> {
 
           // Use that pickler to serialize the nested record
           nestedPickler.serialize(record, buffer, class2BufferOffset);
+        }
+        case Map<?, ?> map -> {
+          buffer.put(typeMarker(c));
+          
+          // Write the number of entries
+          buffer.putInt(map.size());
+          
+          // Write each key-value pair
+          map.forEach((key, value) -> {
+            // Write the key
+            write(class2BufferOffset, buffer, key);
+            // Write the value
+            write(class2BufferOffset, buffer, value);
+          });
         }
         default -> throw new UnsupportedOperationException("Unsupported type: " + c.getClass());
       }
@@ -570,6 +597,27 @@ public interface Pickler<T> {
           } catch (ClassNotFoundException e) {
             throw new RuntimeException("Failed to load component type class: ", e);
           }
+        }
+        case MAP -> { // Handle maps
+          // Read the number of entries
+          int size = buffer.getInt();
+          
+          // Create a new HashMap to hold the entries
+          Map<Object, Object> map = new HashMap<>(size);
+          
+          // Read each key-value pair
+          for (int i = 0; i < size; i++) {
+            // Read the key
+            Object key = deserializeValue(bufferOffset2Class, buffer);
+            
+            // Read the value
+            Object value = deserializeValue(bufferOffset2Class, buffer);
+            
+            // Add to the map
+            map.put(key, value);
+          }
+          
+          yield map;
         }
       };
     }
@@ -902,7 +950,8 @@ public interface Pickler<T> {
     STRING((byte) 10, 0, String.class),
     OPTIONAL((byte) 11, 0, Optional.class),
     RECORD((byte) 12, 0, Record.class),
-    ARRAY((byte) 13, 0, null);
+    ARRAY((byte) 13, 0, null),
+    MAP((byte) 14, 0, Map.class);
 
     private final byte typeMarker;
     private final int sizeInBytes;
