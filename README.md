@@ -7,15 +7,16 @@ It avoids excessive reflection when working with objects by caching MethodHandle
 It works with nested sealed traits that permit nested simple records of simple types: 
 
 - Records containing primitive types or String
-- Optional of primitive types or String
-- Arrays (including primitive arrays, object arrays, nested arrays, and outer arrays of records)
-- Nested records that only contain the above types
-- Sealed interfaces with record implementations that only contain the above
-- Nested sealed interfaces that only contain the above
-- Outer arrays of the above
+  - Optional of primitive types or String
+  - Arrays or primitive arrays such as `byte[]`, object arrays, nested arrays
+  - Nested records that only contain the above types
+  - Sealed interfaces with record implementations that only contain the above
+  - Nested sealed interfaces that only contain the above
+  - An outer array that contains any of the above
 
-Those restrictions are rich enough to build a message protocol suitable for using with record patterns in switch statements. 
-Those are a Java 21 feature that makes working with message protocols much safer and easier. 
+When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. Upon initializing the pickler for the outermost sealed interface the logic proactively prepares and caches the necessary picklers for all permitted record in the sealed hierarchy. You get one Pickler to rule them all. 
+
+The above restrictions are broad enough to build a rich message protocol suitable for using with record patterns in switch statements. At the same time these restrictions are narrow enough to be easy to memorize the rules to create a pure message exchange protocol. 
 
 An example protocol could look like this:
 
@@ -54,7 +55,7 @@ See the unit tests for many examples of using the library.
 The challenge with using record patterns in switch statements for message protocols are:
 
 - The built-in Java Serialization mechanism is university loathed. Even if was magically fixed in future Java versions no-one will ever trust it
-- Standard formats like Protobuf, Avro or JSON require 3rd party libraries dependencies that insist on adding security vulnerability due to "CV Driven Engineering"
+- Standard formats like Protobuf, Avro or JSON require 3rd party libraries dependencies that insist on adding kitchen sink features with future potential zero-day security vulnerability due to "CV Driven Engineering"
 - Java 8 boilerplate programming forces the use of kitchen sink frameworks that use the standard 3rd party libraries which then maximises to a certainly future critical security vulnerabilities
 - Mapping between arbitrary Java types and standard protocols is hard and best solved through annotations and arbitrary code. Yet if we use a strong convention of how we define our protocols then we can avoid the need for annotations and arbitrary code and the code itself becomes the documentation.
 
@@ -65,6 +66,9 @@ The goals of this codebase is to:
 3. Never have any third party dependencies
 4. Be good enough to use for the internal communication between software. Remember perfection is the enemy of good. 
 5. Support basic additive change to the message protocol for backwards and forwards compatibility of adjacent versions of microservices.
+6. Be simple enough to get an LLM to write the corresponding Rust code that can deserialize Java records into Rust structs. Therefore, rather than explicitly supporting cross-language serialization the library implicitly supports it through simplicity. 
+
+This mean you might find that this single Java file solution is a viable alternative to using gRPC in your application. YMMV. T&C apply.
 
 ## Security
 
