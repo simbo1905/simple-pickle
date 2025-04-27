@@ -17,6 +17,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 
 import static io.github.simbo1905.simple_pickle.Pickler.PicklerBase.LOGGER;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -703,22 +704,28 @@ class PicklerTest {
     // Verify buffer is fully consumed
     assertEquals(buffer.limit(), buffer.position());
   }
-  
+
+  // https://www.perplexity.ai/search/b11ebab9-122c-4841-b4bd-1d55de721ebd
+  @SafeVarargs
+  public static <T> Optional<T>[] createOptionalArray(Optional<T>... elements) {
+    return elements;
+  }
+
   @Test
   void testArraysOfOptionals() {
     // Create arrays of Optional values with mixed present/empty values
-    Optional<String>[] stringOptionals = new Optional[] {
+    Optional<String>[] stringOptionals = createOptionalArray(
         Optional.of("Hello"),
         Optional.empty(),
         Optional.of("World")
-    };
-    
-    Optional<Integer>[] intOptionals = new Optional[] {
+    );
+
+    Optional<Integer>[] intOptionals = createOptionalArray(
         Optional.of(42),
         Optional.empty(),
         Optional.of(123),
         Optional.of(456)
-    };
+    );
     
     // Create a record to hold these arrays
     record OptionalArraysRecord(Optional<String>[] stringOptionals, Optional<Integer>[] intOptionals) {}
@@ -745,14 +752,12 @@ class PicklerTest {
     assertEquals(original.intOptionals().length, deserialized.intOptionals().length);
     
     // Verify string optionals content
-    for (int i = 0; i < original.stringOptionals().length; i++) {
-      assertEquals(original.stringOptionals()[i], deserialized.stringOptionals()[i]);
-    }
+    IntStream.range(0, original.stringOptionals().length)
+        .forEach(i -> assertEquals(original.stringOptionals()[i], deserialized.stringOptionals()[i]));
     
     // Verify integer optionals content
-    for (int i = 0; i < original.intOptionals().length; i++) {
-      assertEquals(original.intOptionals()[i], deserialized.intOptionals()[i]);
-    }
+    IntStream.range(0, original.intOptionals().length)
+        .forEach(i -> assertEquals(original.intOptionals()[i], deserialized.intOptionals()[i]));
     
     // Verify buffer is fully consumed
     assertEquals(buffer.limit(), buffer.position());
@@ -816,9 +821,8 @@ class PicklerTest {
       Person[] originalPersons = original.optionalPersonArray().get();
       Person[] deserializedPersons = deserialized.optionalPersonArray().get();
       assertEquals(originalPersons.length, deserializedPersons.length);
-      for (int i = 0; i < originalPersons.length; i++) {
-        assertEquals(originalPersons[i], deserializedPersons[i]);
-      }
+      IntStream.range(0, originalPersons.length)
+          .forEach(i -> assertEquals(originalPersons[i], deserializedPersons[i]));
     }
     
     // Verify empty optional
