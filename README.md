@@ -98,8 +98,11 @@ var person = new Person("Alice", 30);
 // Get a pickler for the record type
 Pickler<Person> pickler = Pickler.picklerForRecord(Person.class);
 
+// Calculate size and allocate buffer
+int size = pickler.sizeOf(person);
+ByteBuffer buffer = ByteBuffer.allocate(size);
+
 // Serialize to a ByteBuffer
-ByteBuffer buffer = ByteBuffer.allocate(1024);
 pickler.serialize(person, buffer);
 buffer.flip();
 
@@ -125,8 +128,11 @@ var december = new Month(Season.WINTER, "December");
 // Get a pickler for the record type containing the enum
 Pickler<Month> pickler = Pickler.picklerForRecord(Month.class);
 
+// Calculate size and allocate buffer
+int size = pickler.sizeOf(december);
+ByteBuffer buffer = ByteBuffer.allocate(size);
+
 // Serialize to a ByteBuffer
-ByteBuffer buffer = ByteBuffer.allocate(1024); // Adjust size as needed
 pickler.serialize(december, buffer);
 buffer.flip();
 
@@ -150,8 +156,11 @@ Person[] people = {
     new Person("Charlie", 40)
 };
 
+// Calculate size and allocate buffer
+int size = pickler.sizeOf(people);
+ByteBuffer buffer = ByteBuffer.allocate(size);
+
 // Serialize the array
-ByteBuffer buffer = ByteBuffer.allocate(1024);
 Pickler.serializeArray(people, buffer);
 buffer.flip();
 
