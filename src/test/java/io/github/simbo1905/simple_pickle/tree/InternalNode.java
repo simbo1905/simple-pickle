@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package io.github.simbo1905.simple_pickle.tree;
 
+import java.util.Objects;
+
 /// Internal node that may have left and right children
 public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {
     /**
@@ -15,8 +17,8 @@ public record InternalNode(String name, TreeNode left, TreeNode right) implement
         InternalNode that = (InternalNode) o;
         
         if (!name.equals(that.name)) return false;
-        if (left != null ? !left.equals(that.left) : that.left != null) return false;
-        return right != null ? right.equals(that.right) : that.right == null;
+      if (!Objects.equals(left, that.left)) return false;
+      return Objects.equals(right, that.right);
     }
     
     /**
