@@ -13,6 +13,7 @@ It works with nested sealed traits that permit nested simple records of simple t
   - Maps with keys or values that are any of the above
   - Sealed interfaces with record implementations that only contain the above
   - Nested sealed interfaces that only contain the above
+  - Plain enums (enums without custom fields, constructors, or class bodies)
   - An outer array that contains any of the above
 
 When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. Upon initializing the pickler for the outermost sealed interface the logic proactively prepares and caches the necessary picklers for all permitted record in the sealed hierarchy. You get one Pickler to rule them all. 
@@ -104,6 +105,36 @@ buffer.flip();
 
 // Deserialize from the ByteBuffer
 Person deserializedPerson = pickler.deserialize(buffer);
+```
+
+### Enum Serialization
+
+The library supports serialization of records containing plain Java enums (enums without custom fields or methods). Here's how to serialize a record with an enum component:
+
+```java
+/// Define a simple enum
+public enum Season { SPRING, SUMMER, FALL, WINTER }
+
+/// Define a record using the enum
+/// Constructor must be public for the pickler
+public record Month(Season season, String name) {}
+
+// Create an instance
+var december = new Month(Season.WINTER, "December");
+
+// Get a pickler for the record type containing the enum
+Pickler<Month> pickler = Pickler.picklerForRecord(Month.class);
+
+// Serialize to a ByteBuffer
+ByteBuffer buffer = ByteBuffer.allocate(1024); // Adjust size as needed
+pickler.serialize(december, buffer);
+buffer.flip();
+
+// Deserialize from the ByteBuffer
+Month deserializedMonth = pickler.deserialize(buffer);
+
+// Verification (Optional, but good practice)
+// assertEquals(december, deserializedMonth);
 ```
 
 ### Array of Records Serialization
@@ -271,6 +302,8 @@ Support Types And Their Type Markers
 | Optional | 	11         |
 | Record | 	12         |
 | Array | 	13         |
+| Map | 	14         |
+| Enum | 	15         |
 
 The wire protocol is explained in this diagram: 
 
