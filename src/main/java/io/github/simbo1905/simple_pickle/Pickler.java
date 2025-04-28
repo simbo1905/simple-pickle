@@ -58,13 +58,11 @@ public interface Pickler<T> {
     });
   }
   
-  /**
-   * Validates that all enum types used in record components are simple enums.
-   * A simple enum has no instance fields, no custom constructors, and no class bodies.
-   * 
-   * @param recordClass The record class to validate
-   * @throws UnsupportedOperationException if a complex enum is found
-   */
+  /// Validates that all enum types used in record components are simple enums.
+  /// A simple enum has no instance fields, no custom constructors, and no class bodies.
+  ///
+  /// @param recordClass The record class to validate
+  /// @throws UnsupportedOperationException if a complex enum is found
   static <R extends Record> void validateRecordComponents(Class<R> recordClass) {
     RecordComponent[] components = recordClass.getRecordComponents();
     for (RecordComponent component : components) {
@@ -83,75 +81,61 @@ public interface Pickler<T> {
     }
   }
   
-  /**
-   * Helper method to get an enum constant with proper type witness
-   * 
-   * @param enumClass The enum class
-   * @param enumName The name of the enum constant
-   * @return The enum constant
-   */
+  /// Helper method to get an enum constant with proper type witness
+  ///
+  /// @param enumClass The enum class
+  /// @param enumName The name of the enum constant
+  /// @return The enum constant
   @SuppressWarnings("unchecked")
-  private static <E extends Enum<E>> Object enumValueOf(Class<?> enumClass, String enumName) {
+  static <E extends Enum<E>> Object enumValueOf(Class<?> enumClass, String enumName) {
       return Enum.valueOf((Class<E>) enumClass, enumName);
   }
   
-  /**
-   * Validates that an enum is a simple enum without custom fields, methods, or constructors.
-   * 
-   * @param enumClass The enum class to validate
-   * @throws UnsupportedOperationException if the enum is complex
-   */
-  private static void validateSimpleEnum(Class<?> enumClass) {
+  /// Validates that an enum is a simple enum without custom fields, methods, or constructors.
+  ///
+  /// @param enumClass The enum class to validate
+  /// @throws UnsupportedOperationException if the enum is complex
+  static void validateSimpleEnum(Class<?> enumClass) {
     if (!enumClass.isEnum()) {
       return;
     }
     
     // Check for instance fields (excluding compiler-generated ones)
-    java.lang.reflect.Field[] fields = enumClass.getDeclaredFields();
-    for (java.lang.reflect.Field field : fields) {
-      // Skip static fields, synthetic fields, and the compiler-generated $VALUES field
-      if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || 
-          field.isSynthetic() || 
-          field.getName().equals("$VALUES")) {
-        continue;
-      }
-      
-      // Skip the compiler-generated enum constant fields
-      if (field.getName().equals("name") || field.getName().equals("ordinal")) {
-        continue;
-      }
-      
-      // If we found any other instance field, this is a complex enum
-      throw new UnsupportedOperationException(
-          "Complex enum not supported: " + enumClass.getName() + 
-          " has custom field: " + field.getName());
-    }
+    final var fields = enumClass.getDeclaredFields();
+    Arrays.stream(fields)
+        .filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers()) && 
+                         !field.isSynthetic() && 
+                         !field.getName().equals("$VALUES") &&
+                         !field.getName().equals("name") && 
+                         !field.getName().equals("ordinal"))
+        .findFirst()
+        .ifPresent(field -> {
+            throw new UnsupportedOperationException(
+                "Complex enum not supported: " + enumClass.getName() + 
+                " has custom field: " + field.getName());
+        });
     
     // Check for custom constructors
-    java.lang.reflect.Constructor<?>[] constructors = enumClass.getDeclaredConstructors();
-    for (java.lang.reflect.Constructor<?> constructor : constructors) {
-      // Skip synthetic constructors
-      if (constructor.isSynthetic()) {
-        continue;
-      }
-      
-      // The default enum constructor has 2 parameters: name and ordinal
-      if (constructor.getParameterCount() > 2) {
-        throw new UnsupportedOperationException(
-            "Complex enum not supported: " + enumClass.getName() + 
-            " has custom constructor with " + constructor.getParameterCount() + " parameters");
-      }
-    }
+    final var constructors = enumClass.getDeclaredConstructors();
+    Arrays.stream(constructors)
+        .filter(constructor -> !constructor.isSynthetic() && constructor.getParameterCount() > 2)
+        .findFirst()
+        .ifPresent(constructor -> {
+            throw new UnsupportedOperationException(
+                "Complex enum not supported: " + enumClass.getName() + 
+                " has custom constructor with " + constructor.getParameterCount() + " parameters");
+        });
     
     // Check for enum constants with class bodies
-    Object[] constants = enumClass.getEnumConstants();
-    for (Object constant : constants) {
-      if (constant.getClass() != enumClass) {
-        throw new UnsupportedOperationException(
-            "Complex enum not supported: " + enumClass.getName() + 
-            " has enum constant with class body: " + ((Enum<?>)constant).name());
-      }
-    }
+    final var constants = enumClass.getEnumConstants();
+    Arrays.stream(constants)
+        .filter(constant -> constant.getClass() != enumClass)
+        .findFirst()
+        .ifPresent(constant -> {
+            throw new UnsupportedOperationException(
+                "Complex enum not supported: " + enumClass.getName() + 
+                " has enum constant with class body: " + ((Enum<?>)constant).name());
+        });
   }
 
   /// Get a Pickler for a record class, creating one if it doesn't exist in the registry
@@ -243,35 +227,33 @@ public interface Pickler<T> {
     }
     
     // Start with 1 byte for the ARRAY marker
-    int size = 1;
+    final var size = new int[]{1};
     
     // Add size for component type name (4 bytes for length + name bytes)
-    String componentTypeName = array.getClass().getComponentType().getName();
-    size += 4 + componentTypeName.getBytes(UTF_8).length;
+    final var componentTypeName = array.getClass().getComponentType().getName();
+    size[0] += 4 + componentTypeName.getBytes(UTF_8).length;
     
     // Add 4 bytes for array length
-    size += 4;
+    size[0] += 4;
     
     // Get the pickler for the component type
     @SuppressWarnings("unchecked")
-    Pickler<R> pickler = picklerForRecord((Class<R>) array.getClass().getComponentType());
+    final var pickler = picklerForRecord((Class<R>) array.getClass().getComponentType());
     
-    // Add size of each element
-    for (R element : array) {
-      size += pickler.sizeOf(element);
-    }
+    // Add size of each element using streams
+    Arrays.stream(array)
+        .mapToInt(pickler::sizeOf)
+        .forEach(elementSize -> size[0] += elementSize);
     
-    return size;
+    return size[0];
   }
   
-  /**
-   * Helper method to write a class name to a buffer with deduplication.
-   * If the class has been seen before, writes a negative reference instead of the full name.
-   * 
-   * @param buffer The buffer to write to
-   * @param clazz The class to write
-   * @param class2BufferOffset Map tracking class to buffer position
-   */
+  /// Helper method to write a class name to a buffer with deduplication.
+  /// If the class has been seen before, writes a negative reference instead of the full name.
+  ///
+  /// @param buffer The buffer to write to
+  /// @param clazz The class to write
+  /// @param class2BufferOffset Map tracking class to buffer position
   static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz,
                                               Map<Class<?>, Integer> class2BufferOffset) {
     LOGGER.finest(() -> "writeClassNameWithDeduplication: class=" + clazz.getName() +
@@ -308,13 +290,11 @@ public interface Pickler<T> {
     }
   }
   
-  /**
-   * Helper method to read a class name from a buffer with deduplication support.
-   * 
-   * @param buffer The buffer to read from
-   * @param bufferOffset2Class Map tracking buffer position to class
-   * @return The loaded class
-   */
+  /// Helper method to read a class name from a buffer with deduplication support.
+  ///
+  /// @param buffer The buffer to read from
+  /// @param bufferOffset2Class Map tracking buffer position to class
+  /// @return The loaded class
   static Class<?> readClassNameWithDeduplication(ByteBuffer buffer,
                                                  Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
