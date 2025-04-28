@@ -140,6 +140,21 @@ class SchemaEvolutionTest {
     /// @param sourceCode The source code
     /// @return The loaded class
     static Class<?> compileAndLoadClass(String sourceCode) throws Exception {
+        final String fullClassName = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
+        
+        // Compile the source code
+        byte[] classBytes = compileSource(sourceCode, fullClassName);
+        
+        // Load the compiled class
+        return loadCompiledClass(fullClassName, classBytes);
+    }
+    
+    /// Compiles source code into bytecode.
+    ///
+    /// @param sourceCode The source code to compile
+    /// @param fullClassName The fully qualified class name
+    /// @return The compiled bytecode
+    private static byte[] compileSource(String sourceCode, String fullClassName) {
         // Get the Java compiler
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
@@ -152,7 +167,6 @@ class SchemaEvolutionTest {
             compiler.getStandardFileManager(diagnostics, null, null));
 
         // Create the source file object
-        String fullClassName = "io.github.simbo1905.simple_pickle.evolution." + "TestRecord";
         JavaFileObject sourceFile = new InMemorySourceFile(fullClassName, sourceCode);
 
         // Compile the source
@@ -161,19 +175,34 @@ class SchemaEvolutionTest {
 
         boolean success = task.call();
         if (!success) {
-            StringBuilder errorMsg = new StringBuilder("Compilation failed:\n");
-            for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
-                errorMsg.append(diagnostic).append("\n");
-            }
-            throw new RuntimeException(errorMsg.toString());
+            throwCompilationError(diagnostics);
         }
 
-        // Load the compiled class
-        byte[] classBytes = fileManager.getClassBytes(fullClassName);
+        // Return the compiled bytecode
+        return fileManager.getClassBytes(fullClassName);
+    }
+    
+    /// Throws a runtime exception with compilation error details.
+    ///
+    /// @param diagnostics The compilation diagnostics
+    private static void throwCompilationError(DiagnosticCollector<JavaFileObject> diagnostics) {
+        StringBuilder errorMsg = new StringBuilder("Compilation failed:\n");
+        for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
+            errorMsg.append(diagnostic).append("\n");
+        }
+        throw new RuntimeException(errorMsg.toString());
+    }
+    
+    /// Loads a class from its bytecode.
+    ///
+    /// @param fullClassName The fully qualified class name
+    /// @param classBytes The class bytecode
+    /// @return The loaded class
+    private static Class<?> loadCompiledClass(String fullClassName, byte[] classBytes) throws ClassNotFoundException {
         InMemoryClassLoader classLoader = new InMemoryClassLoader(
             SchemaEvolutionTest.class.getClassLoader(), 
             Map.of(fullClassName, classBytes));
-
+        
         return classLoader.loadClass(fullClassName);
     }
 
@@ -183,15 +212,26 @@ class SchemaEvolutionTest {
     /// @param args The constructor arguments
     /// @return A new instance of the record
     static Object createRecordInstance(Class<?> recordClass, Object[] args) throws Exception {
+        // Get constructor matching the record components
+        Constructor<?> constructor = getRecordConstructor(recordClass);
+        
+        // Create and return the instance
+        return constructor.newInstance(args);
+    }
+    
+    /// Gets the canonical constructor for a record class.
+    ///
+    /// @param recordClass The record class
+    /// @return The canonical constructor
+    private static Constructor<?> getRecordConstructor(Class<?> recordClass) throws NoSuchMethodException {
         // Get the record components to determine constructor parameter types
         RecordComponent[] components = recordClass.getRecordComponents();
         Class<?>[] paramTypes = Arrays.stream(components)
             .map(RecordComponent::getType)
             .toArray(Class<?>[]::new);
 
-        // Get the constructor and create an instance
-        Constructor<?> constructor = recordClass.getDeclaredConstructor(paramTypes);
-        return constructor.newInstance(args);
+        // Get the constructor matching the component types
+        return recordClass.getDeclaredConstructor(paramTypes);
     }
 
     /// Serializes a record instance using the Pickler.
@@ -243,23 +283,30 @@ class SchemaEvolutionTest {
         Class<?> recordClass = record.getClass();
         RecordComponent[] components = recordClass.getRecordComponents();
         
-        for (RecordComponent component : components) {
-            String name = component.getName();
-            if (expectedValues.containsKey(name)) {
-                try {
-                    Method accessor = component.getAccessor();
-                    Object actualValue = accessor.invoke(record);
-                    Object expectedValue = expectedValues.get(name);
-                    
-                    assertEquals(expectedValue, actualValue, 
-                        "Component '" + name + "' has value " + actualValue + 
-                        " but expected " + expectedValue);
-                    
-                    LOGGER.fine("Verified component '" + name + "' = " + actualValue);
-                } catch (Exception e) {
-                    fail("Failed to access component '" + name + "': " + e.getMessage());
-                }
-            }
+        Arrays.stream(components)
+            .filter(component -> expectedValues.containsKey(component.getName()))
+            .forEach(component -> verifyComponent(record, component, expectedValues));
+    }
+    
+    /// Verifies a single record component value.
+    ///
+    /// @param record The record instance
+    /// @param component The record component to verify
+    /// @param expectedValues Map of component names to expected values
+    private static void verifyComponent(Object record, RecordComponent component, Map<String, Object> expectedValues) {
+        String name = component.getName();
+        try {
+            Method accessor = component.getAccessor();
+            Object actualValue = accessor.invoke(record);
+            Object expectedValue = expectedValues.get(name);
+            
+            assertEquals(expectedValue, actualValue, 
+                "Component '" + name + "' has value " + actualValue + 
+                " but expected " + expectedValue);
+            
+            LOGGER.fine("Verified component '" + name + "' = " + actualValue);
+        } catch (Exception e) {
+            fail("Failed to access component '" + name + "': " + e.getMessage());
         }
     }
 
