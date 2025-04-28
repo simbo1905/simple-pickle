@@ -250,7 +250,7 @@ class MapPicklerTest {
     }
 
   @Test
-  void testDocumenation() {
+  void testDocumentation() {
     Person john = new Person("John", 40);
     Person michael = new Person("Michael", 65);
     Person sarah = new Person("Sarah", 63);

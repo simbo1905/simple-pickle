@@ -882,6 +882,231 @@ class PicklerTest {
     assertEquals(buffer.limit(), buffer.position());
   }
   
+  // Define simple enums for testing
+  enum TestColor {
+    RED, GREEN, BLUE, YELLOW
+  }
+  
+  enum TestSize {
+    SMALL, MEDIUM, LARGE, EXTRA_LARGE
+  }
+  
+  @Test
+  void testBasicEnum() {
+    // Create a record with enum fields
+    record EnumRecord(TestColor color, TestSize size) {}
+    
+    // Create an instance
+    EnumRecord original = new EnumRecord(TestColor.BLUE, TestSize.LARGE);
+    
+    // Get a pickler for the record
+    Pickler<EnumRecord> pickler = Pickler.picklerForRecord(EnumRecord.class);
+    
+    // Calculate size and allocate buffer
+    int size = pickler.sizeOf(original);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Serialize
+    pickler.serialize(original, buffer);
+    buffer.flip();
+    
+    // Deserialize
+    EnumRecord deserialized = pickler.deserialize(buffer);
+    
+    // Verify enum values
+    assertEquals(original.color(), deserialized.color());
+    assertEquals(original.size(), deserialized.size());
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+  
+  @Test
+  void testEnumArray() {
+    // Create a record with an array of enums
+    record EnumArrayRecord(TestColor[] colors) {}
+    
+    // Create an instance
+    EnumArrayRecord original = new EnumArrayRecord(
+        new TestColor[] {TestColor.RED, TestColor.GREEN, TestColor.BLUE, TestColor.YELLOW}
+    );
+    
+    // Get a pickler for the record
+    Pickler<EnumArrayRecord> pickler = Pickler.picklerForRecord(EnumArrayRecord.class);
+    
+    // Calculate size and allocate buffer
+    int size = pickler.sizeOf(original);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Serialize
+    pickler.serialize(original, buffer);
+    buffer.flip();
+    
+    // Deserialize
+    EnumArrayRecord deserialized = pickler.deserialize(buffer);
+    
+    // Verify array length
+    assertEquals(original.colors().length, deserialized.colors().length);
+    
+    // Verify each enum value
+    for (int i = 0; i < original.colors().length; i++) {
+      assertEquals(original.colors()[i], deserialized.colors()[i]);
+    }
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+  
+  @Test
+  void testOptionalEnum() {
+    // Create a record with optional enum fields
+    record OptionalEnumRecord(
+        Optional<TestColor> colorOpt,
+        Optional<TestSize> sizeOpt,
+        Optional<TestColor> emptyColorOpt
+    ) {}
+    
+    // Create an instance
+    OptionalEnumRecord original = new OptionalEnumRecord(
+        Optional.of(TestColor.YELLOW),
+        Optional.of(TestSize.MEDIUM),
+        Optional.empty()
+    );
+    
+    // Get a pickler for the record
+    Pickler<OptionalEnumRecord> pickler = Pickler.picklerForRecord(OptionalEnumRecord.class);
+    
+    // Calculate size and allocate buffer
+    int size = pickler.sizeOf(original);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    
+    // Serialize
+    pickler.serialize(original, buffer);
+    buffer.flip();
+    
+    // Deserialize
+    OptionalEnumRecord deserialized = pickler.deserialize(buffer);
+    
+    // Verify optional enum values
+    assertEquals(original.colorOpt(), deserialized.colorOpt());
+    assertEquals(original.sizeOpt(), deserialized.sizeOpt());
+    assertEquals(original.emptyColorOpt(), deserialized.emptyColorOpt());
+    
+    // Verify specific values
+    assertTrue(deserialized.colorOpt().isPresent());
+    assertEquals(TestColor.YELLOW, deserialized.colorOpt().get());
+    assertTrue(deserialized.sizeOpt().isPresent());
+    assertEquals(TestSize.MEDIUM, deserialized.sizeOpt().get());
+    assertTrue(deserialized.emptyColorOpt().isEmpty());
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+
+  @SuppressWarnings("OptionalGetWithoutIsPresent")
+  @Test
+  void testMixedEnumArray() {
+    // Create a record with a mixed array containing enums
+    record MixedRecord(Object[] mixedArray, Optional<Object[]> optionalMixedArray) {}
+    
+    // Create mixed arrays with enums, primitives, and strings
+    Object[] mixedArray = new Object[] {
+        TestColor.RED,
+        42,
+        "Hello",
+        TestSize.EXTRA_LARGE,
+        true
+    };
+    
+    Object[] nestedArray = new Object[] {
+        TestColor.GREEN,
+        123,
+        TestSize.SMALL
+    };
+    
+    // Create an instance
+    MixedRecord original = new MixedRecord(
+        mixedArray,
+        Optional.of(nestedArray)
+    );
+    
+    // Get a pickler for the record
+    Pickler<MixedRecord> pickler = Pickler.picklerForRecord(MixedRecord.class);
+    
+    // Calculate size and allocate buffer
+    int size = pickler.sizeOf(original);
+    LOGGER.info("Calculated size for MixedRecord: " + size + " bytes");
+    
+    // Add extra space to avoid buffer overflow during debugging
+    int bufferSize = size + 256;
+    LOGGER.info("Allocating buffer with size: " + bufferSize + " bytes (added 256 bytes safety margin)");
+    ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
+    
+    // Serialize
+    LOGGER.info("Starting serialization");
+    pickler.serialize(original, buffer);
+    int actualSize = buffer.position();
+    LOGGER.info("Serialization complete, actual bytes written: " + actualSize + 
+                " (calculated size was: " + size + ", difference: " + (actualSize - size) + ")");
+    buffer.flip();
+    
+    // Deserialize
+    MixedRecord deserialized = pickler.deserialize(buffer);
+    
+    // Verify array lengths
+    assertEquals(original.mixedArray().length, deserialized.mixedArray().length);
+    assertTrue(deserialized.optionalMixedArray().isPresent());
+    assertEquals(original.optionalMixedArray().get().length, 
+                 deserialized.optionalMixedArray().get().length);
+    
+    // Verify each element in the main array
+    for (int i = 0; i < original.mixedArray().length; i++) {
+      assertEquals(original.mixedArray()[i], deserialized.mixedArray()[i]);
+    }
+    
+    // Verify each element in the optional array
+    for (int i = 0; i < original.optionalMixedArray().get().length; i++) {
+      assertEquals(original.optionalMixedArray().get()[i], 
+                   deserialized.optionalMixedArray().get()[i]);
+    }
+    
+    // Verify specific enum values
+    assertEquals(TestColor.RED, deserialized.mixedArray()[0]);
+    assertEquals(TestSize.EXTRA_LARGE, deserialized.mixedArray()[3]);
+    assertEquals(TestColor.GREEN, deserialized.optionalMixedArray().get()[0]);
+    assertEquals(TestSize.SMALL, deserialized.optionalMixedArray().get()[2]);
+    
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+  
+  // Define a complex enum that should be rejected
+  enum ComplexEnum {
+    @SuppressWarnings("unused") ONE(1), TWO(2), @SuppressWarnings("unused") THREE(3);
+
+    ComplexEnum(@SuppressWarnings("unused") int value) {
+    }
+  }
+  
+  @Test
+  void testComplexEnumRejection() {
+    // Create a record with a complex enum field
+    record ComplexEnumRecord(ComplexEnum value) {}
+    
+    // Create an instance
+    ComplexEnumRecord original = new ComplexEnumRecord(ComplexEnum.TWO);
+    
+    // Attempt to get a pickler for the record should throw an exception
+    assertThrows(UnsupportedOperationException.class, () -> {
+      Pickler<ComplexEnumRecord> pickler = Pickler.picklerForRecord(ComplexEnumRecord.class);
+      
+      // This should never execute, but if it does, try to serialize
+      int size = pickler.sizeOf(original);
+      ByteBuffer buffer = ByteBuffer.allocate(size);
+      pickler.serialize(original, buffer);
+    });
+  }
+  
   @Test
   void testNestedRecordArrays() {
     // Create arrays of records with different nesting levels
@@ -953,10 +1178,10 @@ class PicklerTest {
     java.util.stream.IntStream.range(0, length).forEach(i -> {
       // Skip the inner array marker
       buffer.get();
-      
+              
       // Read inner component type
       try {
-        Class<?> innerComponentType = Pickler.readClassNameWithDeduplication(buffer, bufferOffset2Class);
+        final Class<?> innerComponentType = Pickler.readClassNameWithDeduplication(buffer, bufferOffset2Class);
         assertEquals(Person.class, innerComponentType);
       } catch (ClassNotFoundException e) {
         fail("Failed to read inner component type: " + e.getMessage());

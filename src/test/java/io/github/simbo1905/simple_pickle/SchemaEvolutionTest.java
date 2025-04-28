@@ -65,7 +65,7 @@ class SchemaEvolutionTest {
         
         // Step 2: Create an instance of the original record
         Object originalInstance = createRecordInstance(originalClass, new Object[]{123});
-        LOGGER.info("Original instance: " + originalInstance);
+        LOGGER.fine("Original instance: " + originalInstance);
         
         // Step 3: Serialize the original instance
         byte[] serializedData = serializeRecord(originalInstance);
@@ -76,7 +76,7 @@ class SchemaEvolutionTest {
         
         // Step 5: Deserialize using the evolved schema
         Object evolvedInstance = deserializeRecord(evolvedClass, serializedData);
-        LOGGER.info("Evolved instance: " + evolvedInstance);
+        LOGGER.fine("Evolved instance: " + evolvedInstance);
         
         // Step 6: Verify the fields
         verifyRecordComponents(evolvedInstance, Map.of(
@@ -93,12 +93,12 @@ class SchemaEvolutionTest {
         
         // Create an instance with both fields specified
         Object originalInstance = createRecordInstance(evolvedClass, new Object[]{123, 456});
-        LOGGER.info("Original evolved instance: " + originalInstance);
+        LOGGER.fine("Original evolved instance: " + originalInstance);
         
         // Serialize and then deserialize
         byte[] serializedData = serializeRecord(originalInstance);
         Object deserializedInstance = deserializeRecord(evolvedClass, serializedData);
-        LOGGER.info("Deserialized evolved instance: " + deserializedInstance);
+        LOGGER.fine("Deserialized evolved instance: " + deserializedInstance);
         
         // Verify both fields are preserved
         verifyRecordComponents(deserializedInstance, Map.of(
@@ -128,7 +128,7 @@ class SchemaEvolutionTest {
         Exception exception = assertThrows(RuntimeException.class, 
                 () -> deserializeRecord(originalClass, serializedData));
         
-        LOGGER.info("Expected exception: " + exception.getMessage());
+        LOGGER.fine("Expected exception: " + exception.getMessage());
         // The exception should contain a message about schema evolution
         assertTrue(exception.getMessage().contains("Schema evolution error") || 
                    exception.getMessage().contains("Failed to create instance"),

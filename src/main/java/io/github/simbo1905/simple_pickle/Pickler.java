@@ -51,7 +51,107 @@ public interface Pickler<T> {
   @SuppressWarnings("unchecked")
   static <R extends Record> Pickler<R> picklerForRecord(Class<R> recordClass) {
     // Check if we already have a Pickler for this record class
-    return (Pickler<R>) PICKLER_REGISTRY.computeIfAbsent(recordClass, clazz -> PicklerBase.createPicklerForRecord((Class<R>) clazz));
+    return (Pickler<R>) PICKLER_REGISTRY.computeIfAbsent(recordClass, clazz -> {
+      // Validate record components for enum types
+      validateRecordComponents((Class<R>) clazz);
+      return PicklerBase.createPicklerForRecord((Class<R>) clazz);
+    });
+  }
+  
+  /**
+   * Validates that all enum types used in record components are simple enums.
+   * A simple enum has no instance fields, no custom constructors, and no class bodies.
+   * 
+   * @param recordClass The record class to validate
+   * @throws UnsupportedOperationException if a complex enum is found
+   */
+  static <R extends Record> void validateRecordComponents(Class<R> recordClass) {
+    RecordComponent[] components = recordClass.getRecordComponents();
+    for (RecordComponent component : components) {
+      Class<?> type = component.getType();
+      
+      // Check if the type is an enum
+      if (type.isEnum()) {
+        validateSimpleEnum(type);
+      }
+      
+      // Check if it's an array of enums
+      if (type.isArray() && type.getComponentType().isEnum()) {
+        validateSimpleEnum(type.getComponentType());
+      }
+      
+    }
+  }
+  
+  /**
+   * Helper method to get an enum constant with proper type witness
+   * 
+   * @param enumClass The enum class
+   * @param enumName The name of the enum constant
+   * @return The enum constant
+   */
+  @SuppressWarnings("unchecked")
+  private static <E extends Enum<E>> Object enumValueOf(Class<?> enumClass, String enumName) {
+      return Enum.valueOf((Class<E>) enumClass, enumName);
+  }
+  
+  /**
+   * Validates that an enum is a simple enum without custom fields, methods, or constructors.
+   * 
+   * @param enumClass The enum class to validate
+   * @throws UnsupportedOperationException if the enum is complex
+   */
+  private static void validateSimpleEnum(Class<?> enumClass) {
+    if (!enumClass.isEnum()) {
+      return;
+    }
+    
+    // Check for instance fields (excluding compiler-generated ones)
+    java.lang.reflect.Field[] fields = enumClass.getDeclaredFields();
+    for (java.lang.reflect.Field field : fields) {
+      // Skip static fields, synthetic fields, and the compiler-generated $VALUES field
+      if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || 
+          field.isSynthetic() || 
+          field.getName().equals("$VALUES")) {
+        continue;
+      }
+      
+      // Skip the compiler-generated enum constant fields
+      if (field.getName().equals("name") || field.getName().equals("ordinal")) {
+        continue;
+      }
+      
+      // If we found any other instance field, this is a complex enum
+      throw new UnsupportedOperationException(
+          "Complex enum not supported: " + enumClass.getName() + 
+          " has custom field: " + field.getName());
+    }
+    
+    // Check for custom constructors
+    java.lang.reflect.Constructor<?>[] constructors = enumClass.getDeclaredConstructors();
+    for (java.lang.reflect.Constructor<?> constructor : constructors) {
+      // Skip synthetic constructors
+      if (constructor.isSynthetic()) {
+        continue;
+      }
+      
+      // The default enum constructor has 2 parameters: name and ordinal
+      if (constructor.getParameterCount() > 2) {
+        throw new UnsupportedOperationException(
+            "Complex enum not supported: " + enumClass.getName() + 
+            " has custom constructor with " + constructor.getParameterCount() + " parameters");
+      }
+    }
+    
+    // Check for enum constants with class bodies
+    Object[] constants = enumClass.getEnumConstants();
+    for (Object constant : constants) {
+      if (constant.getClass() != enumClass) {
+        throw new UnsupportedOperationException(
+            "Complex enum not supported: " + enumClass.getName() + 
+            " has enum constant with class body: " + ((Enum<?>)constant).name());
+      }
+    }
   }
 
   /// Get a Pickler for a record class, creating one if it doesn't exist in the registry
@@ -350,6 +450,7 @@ public interface Pickler<T> {
 
     int staticSizeOf(Object c, Set<Class<?>> classes) {
       if (c == null) {
+        LOGGER.finest(() -> "Size of null is 1 byte");
         return 1;
       }
       int plainSize = switch (c) {
@@ -364,24 +465,45 @@ public interface Pickler<T> {
         default -> 0;
       };
       int size = 1; // Type marker byte
+      final int initialSize = size; // Make a final copy for the lambda
+      LOGGER.finest(() -> "Starting size calculation for " + c.getClass().getName() + 
+          ", initial size (type marker): " + initialSize);
       if (c.getClass().isArray()) {
-        int arrayHeaderSize = 4 + 4; // 4 bytes for length + 4 bytes for type name length
+        final int[] arrayHeaderSize = {4 + 4}; // 4 bytes for length + 4 bytes for type name length - use array for mutability
+        LOGGER.finest(() -> "Array header base size: " + arrayHeaderSize[0]);
 
         if (!classes.contains(c.getClass())) {
           // Component type name size
           String componentTypeName = c.getClass().getComponentType().getName();
           byte[] componentTypeBytes = componentTypeName.getBytes(UTF_8);
-          arrayHeaderSize += componentTypeBytes.length;
+          arrayHeaderSize[0] += componentTypeBytes.length;
+          LOGGER.finest(() -> "Adding component type name size: " + componentTypeBytes.length + 
+              " for " + componentTypeName);
           classes.add(c.getClass());
+        } else {
+          LOGGER.finest(() -> "Component type already seen, using reference");
         }
 
-        // Calculate size of all array elements using streams
+        // Calculate size of all array elements
         int length = Array.getLength(c);
-        int elementsSize = IntStream.range(0, length)
-            .map(i -> staticSizeOf(Array.get(c, i), classes))
-            .sum();
+        LOGGER.finest(() -> "Array length: " + length);
+        
+        final int[] elementsSize = {0};
+        
+        for (int i = 0; i < length; i++) {
+          final int index = i;
+          final Object element = Array.get(c, i);
+          final int elementSize = staticSizeOf(element, classes);
+          elementsSize[0] += elementSize;
+          LOGGER.finest(() -> "Element " + index + " size: " + elementSize + 
+              ", type: " + (element != null ? element.getClass().getName() : "null"));
+        }
 
-        size += arrayHeaderSize + elementsSize;
+        size += arrayHeaderSize[0] + elementsSize[0];
+        final int finalElementsSize = elementsSize[0];
+        final int finalSize = size; // Make a final copy for the lambda
+        LOGGER.finest(() -> "Total array size: " + finalSize + 
+            " (header: " + arrayHeaderSize[0] + ", elements: " + finalElementsSize + ")");
       } else if (c instanceof String) {
         size += ((String) c).getBytes(UTF_8).length + 4; // 4 bytes for the length of the string
       } else if (c instanceof Optional<?> opt) {
@@ -398,7 +520,6 @@ public interface Pickler<T> {
           size += classNameBytes.length; // Class name bytes
           classes.add(record.getClass()); // Add class to seen classes
         }
-
         // Get the appropriate pickler for this record type
         @SuppressWarnings("unchecked")
         PicklerInternal<Record> nestedPickler = (PicklerInternal<Record>) Pickler.picklerForRecord(record.getClass());
@@ -415,6 +536,29 @@ public interface Pickler<T> {
           // Add size of value
           size += staticSizeOf(entry.getValue(), classes);
         }
+      } else if (c instanceof Enum<?> enumValue) {
+        // Add size for enum class name
+        if (!classes.contains(c.getClass())) {
+          String enumClassName = c.getClass().getName();
+          byte[] enumClassNameBytes = enumClassName.getBytes(UTF_8);
+          int classNameSize = 4 + enumClassNameBytes.length; // 4 bytes for length + name bytes
+          size += classNameSize;
+          final int enumClassSize = classNameSize; // Make a final copy for the lambda
+          LOGGER.finest(() -> "Enum class name size: " + enumClassSize + 
+              " for " + enumClassName);
+          classes.add(c.getClass());
+        } else {
+          LOGGER.finest(() -> "Enum class already seen, using reference");
+        }
+        
+        // Add size for enum constant name
+        String enumConstantName = enumValue.name();
+        byte[] enumNameBytes = enumConstantName.getBytes(UTF_8);
+        int constantNameSize = 4 + enumNameBytes.length; // 4 bytes for length + name bytes
+        size += constantNameSize;
+        final int enumNameSize = constantNameSize; // Make a final copy for the lambda
+        LOGGER.finest(() -> "Enum constant name size: " + enumNameSize + 
+            " for " + enumConstantName);
       } else {
         size += plainSize;
       }
@@ -427,6 +571,9 @@ public interface Pickler<T> {
       }
       if (c.getClass().isArray()) {
         return ARRAY.marker();
+      }
+      if (c instanceof Enum<?>) {
+        return ENUM.marker();
       }
       return switch (c) {
         case Integer ignored -> INTEGER.marker();
@@ -446,8 +593,14 @@ public interface Pickler<T> {
     }
 
     static void write(Map<Class<?>, Integer> class2BufferOffset, ByteBuffer buffer, Object c) {
+      int startPosition = buffer.position();
+      LOGGER.finest(() -> "Starting write at position " + startPosition + 
+          " for " + (c != null ? c.getClass().getName() : "null") + 
+          ", remaining: " + buffer.remaining());
+      
       if (c == null) {
         buffer.put(NULL.marker());
+        LOGGER.finest(() -> "Wrote NULL marker, new position: " + buffer.position());
         return;
       }
 
@@ -515,6 +668,36 @@ public interface Pickler<T> {
             // Write the value
             write(class2BufferOffset, buffer, value);
           });
+        }
+        case Enum<?> enumValue -> {
+          int enumStartPos = buffer.position();
+          LOGGER.finest(() -> "Starting enum serialization at position " + enumStartPos);
+          
+          buffer.put(typeMarker(c));
+          LOGGER.finest(() -> "Wrote enum type marker: " + ENUM.marker());
+          
+          // Write the enum class name with deduplication
+          int beforeClassName = buffer.position();
+          writeClassNameWithDeduplication(buffer, enumValue.getClass(), class2BufferOffset);
+          int afterClassName = buffer.position();
+          LOGGER.finest(() -> "Wrote enum class name from position " + beforeClassName + 
+              " to " + afterClassName + " (size: " + (afterClassName - beforeClassName) + ")");
+          
+          // Write the enum constant name
+          String enumConstantName = enumValue.name();
+          byte[] enumNameBytes = enumConstantName.getBytes(UTF_8);
+          LOGGER.finest(() -> "Writing enum constant name: " + enumConstantName + 
+              ", length: " + enumNameBytes.length);
+          
+          int beforeConstantName = buffer.position();
+          buffer.putInt(enumNameBytes.length);
+          buffer.put(enumNameBytes);
+          int afterConstantName = buffer.position();
+          LOGGER.finest(() -> "Wrote enum constant name from position " + beforeConstantName + 
+              " to " + afterConstantName + " (size: " + (afterConstantName - beforeConstantName) + ")");
+          
+          LOGGER.finest(() -> "Completed enum serialization, total size: " + 
+              (buffer.position() - enumStartPos));
         }
         default -> throw new UnsupportedOperationException("Unsupported type: " + c.getClass());
       }
@@ -587,7 +770,7 @@ public interface Pickler<T> {
             int length = buffer.getInt();
 
             // Create array of the right type and size
-            Object array = Array.newInstance(componentType, length);
+            final Object array = Array.newInstance(componentType, length);
 
             // Deserialize each element using IntStream instead of for loop
             IntStream.range(0, length)
@@ -618,6 +801,28 @@ public interface Pickler<T> {
           }
           
           yield map;
+        }
+        case ENUM -> { // Handle enums
+          try {
+            // Read the enum class with deduplication support
+            Class<?> enumClass = readClassNameWithDeduplication(buffer, bufferOffset2Class);
+            
+            // Verify it's an enum class
+            if (!enumClass.isEnum()) {
+              throw new IllegalArgumentException("Expected enum class but got: " + enumClass.getName());
+            }
+            
+            // Read the enum constant name
+            int enumNameLength = buffer.getInt();
+            byte[] enumNameBytes = new byte[enumNameLength];
+            buffer.get(enumNameBytes);
+            String enumName = new String(enumNameBytes, UTF_8);
+
+            // Get the enum constant using helper method with proper type witness
+            yield enumValueOf(enumClass, enumName);
+          } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load enum class", e);
+          }
         }
       };
     }
@@ -918,18 +1123,16 @@ public interface Pickler<T> {
             int classNameLength = classNameBytes.length;
 
             size += classNameLength;
-            
             // Mark this class as seen
             classes.add(value.getClass()); // Dummy value, we don't need actual offset here
           }
 
           // Get the pickler for this concrete type
-          @SuppressWarnings("unchecked") PicklerInternal<Record> concretePickler =
+          @SuppressWarnings("unchecked") final PicklerInternal<Record> concretePickler =
               (PicklerInternal<Record>) picklerForRecord((Class<? extends Record>) value.getClass());
 
           // Add the size of the concrete object
           size += concretePickler.sizeOf((Record) value, classes);
-          
           return size;
         }
       };
@@ -951,7 +1154,8 @@ public interface Pickler<T> {
     OPTIONAL((byte) 11, 0, Optional.class),
     RECORD((byte) 12, 0, Record.class),
     ARRAY((byte) 13, 0, null),
-    MAP((byte) 14, 0, Map.class);
+    MAP((byte) 14, 0, Map.class),
+    ENUM((byte) 15, 0, Enum.class);
 
     private final byte typeMarker;
     private final int sizeInBytes;
