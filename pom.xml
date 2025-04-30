@@ -4,11 +4,11 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.simbo1905</groupId>
-    <artifactId>java-record-pickler</artifactId>
+    <artifactId>no-framework-pickler</artifactId>
     <version>0.1.0-SNAPSHOT</version>
 
     <description>
-        Java Record Pickler: A lightweight, zero-dependency serialization library for Java 21+ that generates
+        No Framework Pickler: A lightweight, zero-dependency serialization library for Java 21+ that generates
         type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure,
         modern message protocols with nested data structures and switch pattern matching.
     </description>
@@ -35,6 +35,6 @@
     </dependencies>
 
     <build>
-        <finalName>java-record-pickler</finalName>
+        <finalName>no-framework-pickler</finalName>
     </build>
 </project>

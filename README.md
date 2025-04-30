@@ -1,8 +1,8 @@
 # Java Record Pickler
 
-Java Record Pickler: A lightweight, zero-dependency serialization library that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure, modern message protocols of sealed interfaces containing nested records and arrays. It supports binary backwards compatibility of additive changes through alternative constructors (see Schema Evolution section below).
+No Framework Pickler: A lightweight, zero-dependency Java serialization library that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure, modern message protocols of sealed interfaces containing nested records, arrays, maps and simple enum constants. It supports binary backwards compatibility of additive changes through alternative constructors (see Schema Evolution section below).
 
-It avoids excessive reflection when working with objects by caching MethodHandle. 
+It avoids excessive reflection when working with objects by caching MethodHandle which are resolved through reflection at the 
 
 It works with nested sealed traits that permit nested simple records of simple types: 
 
