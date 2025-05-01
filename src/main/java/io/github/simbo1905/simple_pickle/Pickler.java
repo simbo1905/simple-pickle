@@ -1090,7 +1090,7 @@ public interface Pickler<T> {
       // Get all permitted record subclasses, recursively traversing sealed interfaces
       Class<?>[] subclasses = getAllPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
 
-      // Force the pre-creation and caching of picklers for all permitted record of all nested permermitted sealed interfaces
+      // Force the pre-creation and caching of picklers for all permitted record of all nested permitted sealed interfaces
       //noinspection unchecked
       Arrays.stream(subclasses).filter(Record.class::isAssignableFrom).forEach(permitted -> createPicklerForRecord((Class<? extends Record>) permitted));
 
