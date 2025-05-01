@@ -1,10 +1,8 @@
 # No Framework Pickler
 
-No Framework Pickler: A lightweight, zero-dependency Java serialization library that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure, modern message protocols of sealed interfaces containing nested records, arrays, maps and simple enum constants. It supports binary backwards compatibility of additive changes through alternative constructors (see Schema Evolution section below).
+No Framework Pickler: A lightweight, zero-dependency Java serialization library that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect. It is perfect for building secure, modern message protocols of sealed interfaces containing nested records, arrays, maps and simple enum constants. It supports binary backwards compatibility of additive changes through alternative constructors (see Schema Evolution section below).
 
-It avoids excessive reflection when working with objects by caching MethodHandle which are resolved through reflection at the 
-
-It works with nested sealed traits that permit nested simple records of simple types: 
+It works with nested sealed traits that permit nested simple records of the following types: 
 
 - Records containing primitive types or String
   - Optional of primitive types or String
@@ -19,6 +17,10 @@ It works with nested sealed traits that permit nested simple records of simple t
 When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. Upon initializing the pickler for the outermost sealed interface the logic proactively prepares and caches the necessary picklers for all permitted record in the sealed hierarchy. You get one Pickler to rule them all. 
 
 The above restrictions are broad enough to build a rich message protocol suitable for using with record patterns in switch statements. At the same time these restrictions are narrow enough to be easy to memorize the rules to create a pure message exchange protocol. 
+
+An additional payoff is that this project is fully functional with 1 Java source file with less than 1,500 lines of code. It creates a single Jar file with no dependencies that is less than 33k in size. 
+
+This library code avoids reflection when working with objects by caching MethodHandle which are resolved through reflection when you construct the pickler. The typesafe picklers are cached and reused. A sealed interface pickler creates and caches the record picklers ahead of time. This means that the picklers are both fast and secure by default.
 
 An example protocol could look like this:
 
@@ -57,7 +59,7 @@ See the unit tests for many examples of using the library.
 The challenge with using record patterns in switch statements for message protocols are:
 
 - The built-in Java Serialization mechanism is university loathed. Even if was magically fixed in future Java versions no-one will ever trust it
-- Drop in replacements for java serialization like [Apache Fury](https://github.com/apache/fury/tree/main/java) is at the time of writing only at alpha version 0.10. Under only  `src/main/java` of `fury-core` there are 229 java source files and a quick line count has 56,000 lines of code. In contrast this project has 1 source file with 1,200 lines of code. The `fury-core-0.10.1.jar` Jar file is 1.9M in size. This project makes a `no-framework-pickler.jar` Jar that is only 31k in size
+- Drop in replacements for java serialization like [Apache Fury](https://github.com/apache/fury/tree/main/java) is at the time of writing only at alpha version 0.10. The core module `fure-core` under only `src/main/java` has 229 java source files and 56,000 lines of code. The `fury-core-0.10.1.jar` Jar file is 1.9M in size. There are mature java relational database are smaller in size. 
 - Standard formats like Protobuf, Avro or JSON require 3rd party libraries dependencies that often have dependencies and/or a lot bigger surface for potential zero-day security vulnerability
 - Java 8 boilerplate programming forces the use of kitchen sink frameworks that use the standard 3rd party libraries which then maximizes to a certainly future critical security vulnerabilities
 - Mapping between arbitrary Java types and standard protocols is hard and best solved through annotations and arbitrary code. Yet we can map to Java's built-in "data transfer objects" which are records to get idiomatic Java with "obvious" serialization.
@@ -89,7 +91,7 @@ The JDK ensures that `record` types can only be constructed bottom-up. This mean
 
 When `MehtodHandle`s are invoked they validate the types and numbers of parameters then call constructors that must use the canonical constructor else the canonical constructor itself. 
 
-If you instantiate a pickler for a `sealed interface` it ensures that the permitted types of the sealed interface are all `record` types else nested `sealed interface`s of records. It then builds a map of the validated classNames to the correct classes. When it reads back the class names this is via the `ByteBuffer` method `readUtf8` which ensures they are valid bytes then it ceats the string explicitly using the UTF8 constructor. It then checks that string against the map of permitted class names to clases. Then it delegates to the pickler for the class.
+If you instantiate a pickler for a `sealed interface` it ensures that the permitted types of the sealed interface are all `record` types else nested `sealed interface`s of records. It then builds a map of the validated classNames to the correct classes. When it reads back the class names this is via the `ByteBuffer` method `readUtf8` which ensures they are valid bytes then it creates the string explicitly using the UTF8 constructor. It then checks that string against the map of permitted class names to clases. Then it delegates to the pickler for the class.
 
 This means that you cannot attack this library to try to get it to deserialize a classes that are not validated record types in the correct type hierarchy with all code be validated and invoked in the correct order as though it was regular Java code not reflective Java code. 
 
