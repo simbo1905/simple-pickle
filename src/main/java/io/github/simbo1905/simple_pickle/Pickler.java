@@ -195,7 +195,7 @@ public interface Pickler<T> {
       // Read component type
       Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
       try {
-        Class<?> readComponentType = readClassNameWithDeduplication(buffer, bufferOffset2Class);
+        Class<?> readComponentType = resolveClass(buffer, bufferOffset2Class);
         if (!componentType.equals(readComponentType)) {
           final var msg = "Component type mismatch: expected " + componentType.getName() +
               " but got " + readComponentType.getName();
@@ -302,18 +302,19 @@ public interface Pickler<T> {
           ", new buffer position=" + buffer.position());
     }
   }
-  
+
   /// Helper method to read a class name from a buffer with deduplication support.
   ///
   /// @param buffer The buffer to read from
   /// @param bufferOffset2Class Map tracking buffer position to class
   /// @return The loaded class
-  static Class<?> readClassNameWithDeduplication(ByteBuffer buffer,
-                                                 Map<Integer, Class<?>> bufferOffset2Class)
+  static Class<?> resolveClass(ByteBuffer buffer,
+                               Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
+
     int bufferPosition = buffer.position();
 
-    LOGGER.finest(() -> "readClassNameWithDeduplication: buffer position=" + bufferPosition +
+    LOGGER.finest(() -> "resolveClass: buffer position=" + bufferPosition +
         ", remaining=" + buffer.remaining());
 
     // Read the class name length or reference
@@ -756,7 +757,7 @@ public interface Pickler<T> {
         case RECORD -> { // Handle nested record
           try {
             // Read the class with deduplication support
-            Class<?> recordClass = readClassNameWithDeduplication(buffer, bufferOffset2Class);
+            Class<?> recordClass = resolveClass(buffer, bufferOffset2Class);
 
             // Get or create the pickler for this class
             @SuppressWarnings("unchecked")
@@ -774,7 +775,7 @@ public interface Pickler<T> {
         case ARRAY -> { // Handle arrays
           try {
             // Get the component class
-            Class<?> componentType = readClassNameWithDeduplication(buffer, bufferOffset2Class);
+            Class<?> componentType = resolveClass(buffer, bufferOffset2Class);
             
             // Read array length
             int length = buffer.getInt();
@@ -817,7 +818,7 @@ public interface Pickler<T> {
         case ENUM -> { // Handle enums
           try {
             // Read the enum class with deduplication support
-            Class<?> enumClass = readClassNameWithDeduplication(buffer, bufferOffset2Class);
+            Class<?> enumClass = resolveClass(buffer, bufferOffset2Class);
             
             // Verify it's an enum class
             if (!enumClass.isEnum()) {
@@ -1113,7 +1114,7 @@ public interface Pickler<T> {
 
           try {
             // Read the class name with deduplication support
-            Class<?> concreteClass = readClassNameWithDeduplication(buffer, bufferOffset2Class);
+            Class<?> concreteClass = resolveClass(buffer, bufferOffset2Class);
 
             // Get the pickler for this concrete class
             @SuppressWarnings("unchecked") PicklerInternal<Record> concretePickler =

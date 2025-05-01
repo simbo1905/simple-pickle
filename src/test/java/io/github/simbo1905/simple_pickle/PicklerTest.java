@@ -684,7 +684,7 @@ class PicklerTest {
     // Read component type
     Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
     try {
-      Class<?> componentType = Pickler.readClassNameWithDeduplication(buffer, bufferOffset2Class);
+      Class<?> componentType = Pickler.resolveClass(buffer, bufferOffset2Class);
       assertEquals(Shape.class, componentType);
     } catch (ClassNotFoundException e) {
       fail("Failed to read component type: " + e.getMessage());
@@ -1164,7 +1164,7 @@ class PicklerTest {
     // Read outer component type
     Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
     try {
-      Class<?> componentType = Pickler.readClassNameWithDeduplication(buffer, bufferOffset2Class);
+      Class<?> componentType = Pickler.resolveClass(buffer, bufferOffset2Class);
       assertEquals(Person[].class, componentType);
     } catch (ClassNotFoundException e) {
       fail("Failed to read component type: " + e.getMessage());
@@ -1181,7 +1181,7 @@ class PicklerTest {
               
       // Read inner component type
       try {
-        final Class<?> innerComponentType = Pickler.readClassNameWithDeduplication(buffer, bufferOffset2Class);
+        final Class<?> innerComponentType = Pickler.resolveClass(buffer, bufferOffset2Class);
         assertEquals(Person.class, innerComponentType);
       } catch (ClassNotFoundException e) {
         fail("Failed to read inner component type: " + e.getMessage());
