@@ -16,8 +16,9 @@ It works with nested sealed interfaces of permitted record types or an outer arr
  - Optional.class
  - Record.class
  - Map.class
+ - List.class
  - Enum.class
- - Arrays of any of the above
+ - Arrays of the above
 
 When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. Upon initializing the pickler for the outermost sealed interface the logic proactively prepares and caches the necessary picklers for all permitted record in the sealed hierarchy. You get one Pickler to rule them all. 
 
@@ -59,28 +60,20 @@ Pickler<StackResponse> responsePickler = Pickler.picklerForSealedTrait(StackResp
 
 See the unit tests for many examples of using the library.
 
-## What This Solves And Project Goals
-
-The challenge with using record patterns in switch statements for message protocols are:
-
-- The built-in Java Serialization mechanism is university loathed. Even if was magically fixed in future Java versions no-one will ever trust it
-- Drop in replacements for java serialization like [Apache Fury](https://github.com/apache/fury/tree/main/java) is at the time of writing only at alpha version 0.10. The core module `fure-core` under only `src/main/java` has 229 java source files and 56,000 lines of code. The `fury-core-0.10.1.jar` Jar file is 1.9M in size. There are mature java relational database are smaller in size. 
-- Standard formats like Protobuf, Avro or JSON require 3rd party libraries dependencies that often have dependencies and/or a lot bigger surface for potential zero-day security vulnerability
-- Java 8 boilerplate programming forces the use of kitchen sink frameworks that use the standard 3rd party libraries which then maximizes to a certainly future critical security vulnerabilities
-- Mapping between arbitrary Java types and standard protocols is hard and best solved through annotations and arbitrary code. Yet we can map to Java's built-in "data transfer objects" which are records to get idiomatic Java with "obvious" serialization.
-
-If we use a strong convention of `record` types that are the only permitted types of `sealed interface`s and allow nesting of interfaces and nesting of records we get a complete type safe Java message protocol out-of-the-jdk-box. We can avoid the need for annotations and arbitrary code and the code itself becomes the documentation.
+## Goals
 
 The goals of this codebase is to:
 
 1. Write one piece of stable code that is a single Java source file
-2. Never add features only fix any bugs
-3. Never have any third party dependencies
-4. Be good enough to use for the internal communication between software. Remember perfection is the enemy of good. 
-5. Support basic additive change to the message protocol for backwards and forwards compatibility of adjacent versions of microservices.
-6. Be simple enough to get an LLM to write the corresponding Rust code that can deserialize Java records into Rust structs. Therefore, rather than explicitly supporting cross-language serialization the library implicitly supports it through simplicity. 
+2. Be secure by default
+3. Support immutable records by using List.of() and Map.of() to create immutable collections
+4. Support `byte[]` as a necessary way to transfer binary data. Therefore we support arrays of other types for convenience.
+5. Never add features only fix any bugs
+6. Never have any third party dependencies
+7. Support basic additive change to the message protocol for backwards and forwards compatibility of adjacent versions of microservices.
+8. Be simple enough to get an LLM to write the corresponding Rust code that can deserialize Java records into Rust structs. Rather than explicitly supporting cross-language serialization the library implicitly supports it through simplicity. 
 
-This mean you might find that this single Java file solution is a viable alternative to using gRPC in your application. YMMV and T&Cs apply.
+This mean you might find that this single Java file solution is an excellent alternative to using gRPC in your application. YMMV and T&Cs apply.
 
 ## Security
 
@@ -259,18 +252,18 @@ final var totalSize = Arrays.stream(originalAnimals)
 final var buffer = ByteBuffer.allocate(totalSize);
 
 // Serialize all animals into the buffer using streams
-        Arrays.stream(originalAnimals)
-            .forEach(animal -> pickler.serialize(animal, buffer));
+Arrays.stream(originalAnimals)
+  .forEach(animal -> pickler.serialize(animal, buffer));
 
-    // Prepare buffer for reading
-    buffer.flip();
+// Prepare buffer for reading
+buffer.flip();
 
 // Deserialize all animals from the buffer
 final var deserializedAnimals = new Animal[originalAnimals.length];
-        Arrays.setAll(deserializedAnimals, i -> pickler.deserialize(buffer));
+Arrays.setAll(deserializedAnimals, i -> pickler.deserialize(buffer));
 ```
 
-### Trees Record Serialization
+### Nested Record Tree
 
 ```java
 /// Internal node that may have left and right children
@@ -491,6 +484,28 @@ test and fix that the LLM wrote place.
 Please avoid suggesting adding new features. Please do fork the repo and add them to your copy. Do raise an discussion issue to advertise the new feature 
 to the wider community. LLMs are powerful so go for it. 
 
+## Why Did Your Write This Framework Killer Code As A Single Java File?
+
+No Framework Pickler came about because I was doing Java Data Oriented programming over sealed traits and I wanted to quickly 
+transmit them for a narrow protocol. Doing something quick and dirty in a single Java file felt right. I wanted to try out some 
+new java features and avoid reflection and security issues and realized: 
+
+- The Java `record` types is specifically designed to be a safe data transfer object.
+- The JDK's `ByteBuffer` class correctly validates UTF8 bytes for Strings and all primitive types.
+- The JDK's `MethodHandle` class is a fast and secure way to invoke constructors and methods to access record components without reflection.
+- Nested `sealed interfaces` that only contain `records` then we can use exhaustively matched switch statements to deconstruct the records are exactly what you need to model message protocol on Java 21+.
+
+When I looked at just adding a bit more it was easy. Then when I started to write it up to say it missed a lot of feature I took another look around and "state of the art" and saw that there really wasn't much missing. It was fun to add the rest. 
+
+Until now the challenge with using record patterns in switch statements for a pure data exchange protocols are:
+
+- The built-in Java Serialization mechanism is university loathed. Even if was magically fixed in future Java versions no-one will ever trust it
+- Drop in replacements for java serialization like [Apache Fury](https://github.com/apache/fury/tree/main/java) at the time of writing only (v0.10.1) under `fure-core/src/main/java` has 229 java source files and 56,000 lines of code. The `fury-core-0.10.1.jar` Jar file is 1.9M in size.
+- The historic way to deal with things is to use a "standard" protocol like  JDK Serialization, Protocol Buffers, Apache Avro, JSON, Hessian, Flatbuffers,, Thrift (TBinaryProtocol, TCompactProtocol, TJSONProtocol), MessagePack, XML. That makes you have to learn and deal with the complexities and security vulnerabilities of libraries such as Kryo, Fst, Protostuff, Jsonb, Protobuf, Flatbuffers, Jackson, Thrift, Fury (when it is stable), FastJSON, JBoss Serialization
+
+The fact that you are spoilt for choices is not a good thing. The sorry history shows that the mapping between arbitrary Java types and standard protocols is very hard. 
+
+The answer to avoid all this complexity is to leverage the modern JDK. We can then potentially free thousands of teams from thousands of hours of build time with a no framework solution that replaces entire frameworks in a single Java file. 
 
 ## License
 

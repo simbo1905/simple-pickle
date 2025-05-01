@@ -712,7 +712,7 @@ class PicklerTest {
   }
 
   @Test
-  void testOpionalOfOptional() {
+  void testOptionalOfOptional() {
     record OptionalOptionalInt(Optional<Optional<Integer>> value) {
     }
 
@@ -732,6 +732,7 @@ class PicklerTest {
     // Deserialize
     OptionalOptionalInt deserialized = pickler.deserialize(buffer);
 
+    //noinspection OptionalGetWithoutIsPresent
     assertEquals(original.value().get().get(), deserialized.value().get().get());
   }
 
@@ -1167,7 +1168,7 @@ class PicklerTest {
       pickler.serialize(original, buffer);
     });
   }
-  
+
   @Test
   void testNestedRecordArrays() {
     // Create arrays of records with different nesting levels
@@ -1175,53 +1176,53 @@ class PicklerTest {
         new Person("Alice", 30),
         new Person("Bob", 25)
     };
-    
+
     Person[] team2 = new Person[] {
         new Person("Charlie", 40),
         new Person("Dave", 35),
         new Person("Eve", 28)
     };
-    
+
     Person[][] teams = new Person[][] { team1, team2 };
-    
+
     // Calculate the exact size needed for the nested arrays
     int size = calculateNestedArraySize(teams);
-    
+
     ByteBuffer buffer = ByteBuffer.allocate(size);
-    
+
     // Write outer array marker
     buffer.put(Pickler.Constants.ARRAY.marker());
-    
+
     // Write outer component type (Person[].class)
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
     Pickler.writeClassNameWithDeduplication(buffer, Person[].class, class2BufferOffset);
-    
+
     // Write outer array length
     buffer.putInt(teams.length);
-    
+
     // Write each inner array
     for (Person[] team : teams) {
       // Write inner array marker
       buffer.put(Pickler.Constants.ARRAY.marker());
-      
+
       // Write inner component type (Person.class)
       Pickler.writeClassNameWithDeduplication(buffer, Person.class, class2BufferOffset);
-      
+
       // Write inner array length
       buffer.putInt(team.length);
-      
+
       // Write each person
       Pickler<Person> personPickler = Pickler.picklerForRecord(Person.class);
       for (Person person : team) {
         personPickler.serialize(person, buffer);
       }
     }
-    
+
     buffer.flip();
-    
+
     // Skip the outer array marker
     buffer.get();
-    
+
     // Read outer component type
     Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
     try {
@@ -1230,16 +1231,16 @@ class PicklerTest {
     } catch (ClassNotFoundException e) {
       fail("Failed to read component type: " + e.getMessage());
     }
-    
+
     // Read outer array length
     int length = buffer.getInt();
     assertEquals(teams.length, length);
-    
+
     // Read each inner array using IntStream instead of traditional for loop
     java.util.stream.IntStream.range(0, length).forEach(i -> {
       // Skip the inner array marker
       buffer.get();
-              
+
       // Read inner component type
       try {
         final Class<?> innerComponentType = Pickler.resolveClass(buffer, bufferOffset2Class);
@@ -1247,11 +1248,11 @@ class PicklerTest {
       } catch (ClassNotFoundException e) {
         fail("Failed to read inner component type: " + e.getMessage());
       }
-      
+
       // Read inner array length
       int innerLength = buffer.getInt();
       assertEquals(teams[i].length, innerLength);
-      
+
       // Read each person using IntStream
       Pickler<Person> personPickler = Pickler.picklerForRecord(Person.class);
       java.util.stream.IntStream.range(0, innerLength).forEach(j -> {
@@ -1259,11 +1260,11 @@ class PicklerTest {
         assertEquals(teams[i][j], deserialized);
       });
     });
-    
+
     // Verify buffer is fully consumed
     assertEquals(buffer.limit(), buffer.position(), "Buffer should be fully consumed");
   }
-  
+
   /**
    * Helper method to calculate the exact size needed for a nested array of records
    * @param teams The nested array of records
