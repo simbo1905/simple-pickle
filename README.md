@@ -1,4 +1,4 @@
-# Java Record Pickler
+# No Framework Pickler
 
 No Framework Pickler: A lightweight, zero-dependency Java serialization library that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect for building secure, modern message protocols of sealed interfaces containing nested records, arrays, maps and simple enum constants. It supports binary backwards compatibility of additive changes through alternative constructors (see Schema Evolution section below).
 
@@ -57,9 +57,12 @@ See the unit tests for many examples of using the library.
 The challenge with using record patterns in switch statements for message protocols are:
 
 - The built-in Java Serialization mechanism is university loathed. Even if was magically fixed in future Java versions no-one will ever trust it
-- Standard formats like Protobuf, Avro or JSON require 3rd party libraries dependencies that insist on adding kitchen sink features with future potential zero-day security vulnerability due to "CV Driven Engineering"
-- Java 8 boilerplate programming forces the use of kitchen sink frameworks that use the standard 3rd party libraries which then maximises to a certainly future critical security vulnerabilities
-- Mapping between arbitrary Java types and standard protocols is hard and best solved through annotations and arbitrary code. Yet if we use a strong convention of how we define our protocols then we can avoid the need for annotations and arbitrary code and the code itself becomes the documentation.
+- Drop in replacements for java serialization like [Apache Fury](https://github.com/apache/fury/tree/main/java) is at the time of writing only at alpha version 0.10. Under only  `src/main/java` of `fury-core` there are 229 java source files and a quick line count has 56,000 lines of code. In contrast this project has 1 source file with 1,200 lines of code. The `fury-core-0.10.1.jar` Jar file is 1.9M in size. This project makes a `no-framework-pickler.jar` Jar that is only 31k in size
+- Standard formats like Protobuf, Avro or JSON require 3rd party libraries dependencies that often have dependencies and/or a lot bigger surface for potential zero-day security vulnerability
+- Java 8 boilerplate programming forces the use of kitchen sink frameworks that use the standard 3rd party libraries which then maximizes to a certainly future critical security vulnerabilities
+- Mapping between arbitrary Java types and standard protocols is hard and best solved through annotations and arbitrary code. Yet we can map to Java's built-in "data transfer objects" which are records to get idiomatic Java with "obvious" serialization.
+
+If we use a strong convention of `record` types that are the only permitted types of `sealed interface`s and allow nesting of interfaces and nesting of records we get a complete type safe Java message protocol out-of-the-jdk-box. We can avoid the need for annotations and arbitrary code and the code itself becomes the documentation.
 
 The goals of this codebase is to:
 
@@ -73,6 +76,12 @@ The goals of this codebase is to:
 This mean you might find that this single Java file solution is a viable alternative to using gRPC in your application. YMMV and T&Cs apply.
 
 ## Security
+
+This library deserializes to `record` types that are inherently more secure than Java beans or POJOs. The JDK treats records a differently exactly to avoid security bugs. The canonical constructor is always run to ensure components are initialized. This implementation resolves and caches `record` constructors when the pickler is created. At deserialization time it unloads components into an array. It then uses a cached MethodHandle to invokes the constructor that hs the matching number of arguments. If the number or types of the objects parameters are wrong the JDK throws an error. 
+
+If you make a pickler for a 
+
+This implementation writes the class name to the wire and reads it back. If you attack it by using a different class name in the byte buffer it will refuse to attempt to deserialize and create that type. When you create the pickle it resolves the correct constructors as MethodHandles. It will only call the constructor of the class that has the matching arguments of the types that it supports. 
 
 This library is primarily targeting internal microservice communication. It is not designed for long-term storage of data. 
 It is not intended to be used for external APIs. 

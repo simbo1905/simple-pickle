@@ -54,7 +54,9 @@ public interface Pickler<T> {
     return (Pickler<R>) PICKLER_REGISTRY.computeIfAbsent(recordClass, clazz -> {
       // Check if the class is a record
       if (!clazz.isRecord()) {
-        throw new IllegalArgumentException("Class " + clazz.getName() + " is not a record");
+        final var msg = "Class is not a record: " + clazz.getName();
+        LOGGER.severe(() -> msg);
+        throw new IllegalArgumentException(msg);
       }
       // Validate record components for enum types
       validateRecordComponents((Class<R>) clazz);
@@ -114,9 +116,10 @@ public interface Pickler<T> {
                          !field.getName().equals("ordinal"))
         .findFirst()
         .ifPresent(field -> {
-            throw new UnsupportedOperationException(
-                "Complex enum not supported: " + enumClass.getName() + 
-                " has custom field: " + field.getName());
+          final var msg = "Complex enum not supported: " + enumClass.getName() +
+              " has instance field: " + field.getName();
+          LOGGER.severe(msg);
+          throw new UnsupportedOperationException(msg);
         });
     
     // Check for custom constructors
@@ -125,9 +128,10 @@ public interface Pickler<T> {
         .filter(constructor -> !constructor.isSynthetic() && constructor.getParameterCount() > 2)
         .findFirst()
         .ifPresent(constructor -> {
-            throw new UnsupportedOperationException(
-                "Complex enum not supported: " + enumClass.getName() + 
-                " has custom constructor with " + constructor.getParameterCount() + " parameters");
+          final var msg = "Complex enum not supported: " + enumClass.getName() +
+              " has custom constructor with " + constructor.getParameterCount() + " parameters";
+          LOGGER.severe(msg);
+          throw new UnsupportedOperationException(msg);
         });
     
     // Check for enum constants with class bodies
@@ -136,9 +140,10 @@ public interface Pickler<T> {
         .filter(constant -> constant.getClass() != enumClass)
         .findFirst()
         .ifPresent(constant -> {
-            throw new UnsupportedOperationException(
-                "Complex enum not supported: " + enumClass.getName() + 
-                " has enum constant with class body: " + ((Enum<?>)constant).name());
+          final var msg = "Complex enum not supported: " + enumClass.getName() +
+              " has enum constant with class body: " + ((Enum<?>) constant).name();
+          LOGGER.severe(msg);
+          throw new UnsupportedOperationException(msg);
         });
   }
 
@@ -192,11 +197,15 @@ public interface Pickler<T> {
       try {
         Class<?> readComponentType = readClassNameWithDeduplication(buffer, bufferOffset2Class);
         if (!componentType.equals(readComponentType)) {
-          throw new IllegalArgumentException("Component type mismatch: expected " + 
-              componentType.getName() + " but got " + readComponentType.getName());
+          final var msg = "Component type mismatch: expected " + componentType.getName() +
+              " but got " + readComponentType.getName();
+          LOGGER.severe(() -> msg);
+          throw new IllegalArgumentException(msg);
         }
       } catch (ClassNotFoundException e) {
-        throw new RuntimeException("Failed to load component type class", e);
+        final var msg = "Failed to load component type class: " + e.getMessage();
+        LOGGER.severe(() -> msg);
+        throw new IllegalArgumentException(msg, e);
       }
     } else {
       // If no array marker, rewind to original position
@@ -310,6 +319,13 @@ public interface Pickler<T> {
     // Read the class name length or reference
     int componentTypeLength = buffer.getInt();
 
+    if (componentTypeLength > Short.MAX_VALUE) {
+      final var msg = "The max length of a string in java is 65535 bytes, " +
+          "but the length of the class name is " + componentTypeLength;
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg);
+    }
+
     LOGGER.finest(() -> "Read length/reference value: " + componentTypeLength +
         ", buffer position after read=" + buffer.position());
 
@@ -323,8 +339,9 @@ public interface Pickler<T> {
           ", referenced class=" + (referencedClass != null ? referencedClass.getName() : "null"));
 
       if (referencedClass == null) {
-        throw new RuntimeException("Invalid class reference at offset: " + offset +
-            ", available offsets: " + bufferOffset2Class.keySet());
+        final var msg = "Invalid class reference offset: " + offset;
+        LOGGER.severe(() -> msg);
+        throw new IllegalArgumentException(msg);
       }
       return referencedClass;
     } else {
@@ -336,10 +353,10 @@ public interface Pickler<T> {
           ", remaining bytes=" + buffer.remaining());
 
       if (buffer.remaining() < componentTypeLength) {
-        LOGGER.severe(() -> "Buffer underflow imminent: needed " + componentTypeLength +
-            " bytes but only " + buffer.remaining() + " remaining");
-        throw new IllegalArgumentException("Buffer underflow: class name length (" +
-            componentTypeLength + ") exceeds remaining buffer size (" + buffer.remaining() + ")");
+        final var msg = "Buffer underflow: needed " + componentTypeLength +
+            " bytes but only " + buffer.remaining() + " remaining";
+        LOGGER.severe(() -> msg);
+        throw new IllegalArgumentException(msg);
       }
 
       // Read the class name
@@ -349,8 +366,9 @@ public interface Pickler<T> {
 
       // Validate class name - add basic validation that allows array type names like `[I`, `[[I`, `[L`java.lang.String;` etc.
       if (!className.matches("[\\[\\]a-zA-Z0-9_.$;]+")) {
-        LOGGER.severe("Invalid class name format: " + className);
-        throw new IllegalArgumentException("Invalid class name format: " + className);
+        final var msg = "Invalid class name format: " + className;
+        LOGGER.severe(msg);
+        throw new IllegalArgumentException(msg);
       }
 
       // Load the class using our helper method
@@ -572,7 +590,7 @@ public interface Pickler<T> {
         case Optional<?> ignored -> OPTIONAL.marker();
         case Record ignored -> RECORD.marker();
         case Map<?, ?> ignored -> MAP.marker();
-        default -> throw new UnsupportedOperationException("Unsupported type: " + c.getClass());
+        default -> throw new IllegalArgumentException("Unsupported type: " + c.getClass());
       };
     }
 
@@ -683,7 +701,7 @@ public interface Pickler<T> {
           LOGGER.finest(() -> "Completed enum serialization, total size: " + 
               (buffer.position() - enumStartPos));
         }
-        default -> throw new UnsupportedOperationException("Unsupported type: " + c.getClass());
+        default -> throw new IllegalArgumentException("Unsupported type: " + c.getClass());
       }
     }
 
@@ -716,6 +734,12 @@ public interface Pickler<T> {
         case BOOLEAN -> buffer.get() == 1;
         case STRING -> {
           final var strLength = buffer.getInt();
+          if (strLength > Short.MAX_VALUE) {
+            final var msg = "The max length of a string in java is 65535 bytes, " +
+                "but the length found is " + strLength;
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg);
+          }
           final byte[] bytes = new byte[strLength];
           buffer.get(bytes);
           yield new String(bytes, UTF_8);
@@ -741,7 +765,9 @@ public interface Pickler<T> {
             // Deserialize the nested record
             yield nestedPickler.deserialize(buffer, bufferOffset2Class);
           } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load class", e);
+            final var msg = "Failed to load class: " + e.getMessage();
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg, e);
           }
         }
         case NULL -> null; // Handle null values
@@ -762,7 +788,9 @@ public interface Pickler<T> {
 
             yield array;
           } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load component type class: ", e);
+            final var msg = "Failed to load component class: " + e.getMessage();
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg, e);
           }
         }
         case MAP -> { // Handle maps
@@ -793,7 +821,9 @@ public interface Pickler<T> {
             
             // Verify it's an enum class
             if (!enumClass.isEnum()) {
-              throw new IllegalArgumentException("Expected enum class but got: " + enumClass.getName());
+              final var msg = "Expected enum class but got: " + enumClass.getName();
+              LOGGER.severe(() -> msg);
+              throw new IllegalArgumentException(msg);
             }
             
             // Read the enum constant name
@@ -805,7 +835,9 @@ public interface Pickler<T> {
             // Get the enum constant using helper method with proper type witness
             yield enumValueOf(enumClass, enumName);
           } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load enum class", e);
+            final var msg = "Failed to load enum class: " + e.getMessage();
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg, e);
           }
         }
       };
@@ -847,7 +879,10 @@ public interface Pickler<T> {
           try {
             return lookup.unreflect(components[i].getAccessor());
           } catch (IllegalAccessException e) {
-            throw new RuntimeException("Failed to access component: " + components[i].getName(), e);
+            final var msg = "Failed to access component accessor for " + components[i].getName() +
+                " in record class " + recordClass.getName() + ": " + e.getClass().getSimpleName();
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg, e);
           }
         });
       } catch (Exception e) {
@@ -855,7 +890,10 @@ public interface Pickler<T> {
         while (inner.getCause() != null) {
           inner = inner.getCause();
         }
-        throw new RuntimeException(inner.getMessage(), inner);
+        final var msg = "Failed to access record components for class '" +
+            recordClass.getName() + "' due to " + inner.getClass().getSimpleName() + " " + inner.getMessage();
+        LOGGER.severe(() -> msg);
+        throw new IllegalArgumentException(msg, inner);
       }
     
       // Get the canonical constructor and any fallback constructors for schema evolution
@@ -882,7 +920,7 @@ public interface Pickler<T> {
           try {
             handle = lookup.unreflectConstructor(constructor);
           } catch (IllegalAccessException e) {
-            LOGGER.warning("Cannot access constructor with " + currentParamCount + 
+            LOGGER.warning("Cannot access constructor with " + currentParamCount +
                 " parameters for " + recordClass.getName() + ": " + e.getMessage());
             continue;
           }
@@ -912,13 +950,17 @@ public interface Pickler<T> {
             MethodType constructorType = MethodType.methodType(void.class, canonicalParamTypes);
             canonicalConstructorHandle = lookup.findConstructor(recordClass, constructorType);
           } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new RuntimeException("Failed to access canonical constructor for record: " + 
-                recordClass.getName(), e);
+            final var msg = "Failed to access canonical constructor for record '" +
+                recordClass.getName() + "' due to " + e.getClass().getSimpleName();
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg, e);
           }
         }
       } catch (Exception e) {
-        throw new RuntimeException("Failed to access constructors for record: " + 
-            recordClass.getName(), e);
+        final var msg = "Failed to access constructors for record '" +
+            recordClass.getName() + "' due to " + e.getClass().getSimpleName() + " " + e.getMessage();
+        LOGGER.severe(() -> msg);
+        throw new IllegalArgumentException(msg, e);
       }
     
       // Capture these values for use in the anonymous class
@@ -936,7 +978,10 @@ public interface Pickler<T> {
             try {
               return componentAccessors[i].invokeWithArguments(record);
             } catch (Throwable e) {
-              throw new RuntimeException("Failed to access component: " + i, e);
+              final var msg = "Failed to access component: " + i +
+                  " in record class '" + recordClassName + "' : " + e.getMessage();
+              LOGGER.severe(() -> msg);
+              throw new IllegalArgumentException(msg, e);
             }
           });
           return result;
@@ -959,10 +1004,12 @@ public interface Pickler<T> {
               // Number of components differs, look for a fallback constructor
               constructorToUse = finalFallbackConstructorHandles.get(numComponents);
               if (constructorToUse == null) {
+                final var msg = "Schema evolution error: Cannot deserialize data for " +
+                    recordClassName + ". Found " + numComponents +
+                    " components, but no matching constructor (canonical or fallback) exists.";
+                LOGGER.severe(() -> msg);
                 // No fallback constructor matches the number of components found
-                throw new RuntimeException("Schema evolution error: Cannot deserialize data for " + 
-                    recordClassName + ". Found " + numComponents + 
-                    " components, but no matching constructor (canonical or fallback) exists.");
+                throw new IllegalArgumentException(msg);
               }
               LOGGER.finest(() -> "Using fallback constructor for " + recordClassName + 
                   " with " + numComponents + " components");
@@ -971,7 +1018,10 @@ public interface Pickler<T> {
             // Invoke the selected constructor
             return (R) constructorToUse.invokeWithArguments(components);
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to create instance of " + recordClassName, e);
+            final var msg = "Failed to create instance of " + recordClassName +
+                " with " + components.length + " components: " + e.getMessage();
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg, e);
           }
         }
       };
@@ -1077,7 +1127,9 @@ public interface Pickler<T> {
 
             return result;
           } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load class", e);
+            final var msg = "Failed to load class: " + e.getMessage();
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg, e);
           }
         }
 
@@ -1169,7 +1221,9 @@ public interface Pickler<T> {
           return c;
         }
       }
-      throw new IllegalArgumentException("Unknown type marker: " + marker);
+      final var msg = "Unknown type marker: " + marker;
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg);
     }
   }
 }

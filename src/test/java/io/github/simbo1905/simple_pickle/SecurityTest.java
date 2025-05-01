@@ -11,73 +11,111 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedTrait;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /// Tests related to security aspects of serialization/deserialization.
 class SecurityTest {
 
-    private static final Logger LOGGER = Logger.getLogger(SecurityTest.class.getName());
+  private static final Logger LOGGER = Logger.getLogger(SecurityTest.class.getName());
 
-    static {
-        // Set up logging
-        LOGGER.setLevel(Level.FINE);
-        ConsoleHandler handler = new ConsoleHandler();
-        handler.setLevel(Level.FINE);
-        LOGGER.addHandler(handler);
+  static {
+    // Set up logging
+    LOGGER.setLevel(Level.FINE);
+    ConsoleHandler handler = new ConsoleHandler();
+    handler.setLevel(Level.FINE);
+    LOGGER.addHandler(handler);
+  }
+
+  sealed interface MyInterface permits Good {
+  }
+
+  /// Record for deserialization attack test
+  record Good(String value) implements MyInterface {
+  }
+
+  /// Non-record class with the same name length as Good
+  @SuppressWarnings("unused")
+  static class Bad1 {
+    String value;
+  }
+
+  /// Non-record class with the same name length as Good
+  @SuppressWarnings("unused")
+  static class Bad2 {
+    String value;
+    // Constructor or methods if needed, but not required for the attack test structure
+    // Ensure it's not a record
+  }
+
+  @Test
+  void testSealedTraitNotRecordAttack() {
+    // 1. Get Pickler for the sealed trait
+    final Pickler<MyInterface> pickler = picklerForSealedTrait(MyInterface.class);
+
+    // 2. Create an instance of a permitted subtype
+    final var original = new Good("safe_value");
+
+    // 3. Serialize the instance
+    final int size = pickler.sizeOf(original);
+    final ByteBuffer buffer = ByteBuffer.allocate(size);
+    pickler.serialize(original, buffer);
+    buffer.flip(); // Prepare for reading/manipulation
+
+    // 4. Manipulate the byte buffer to replace the class name
+    // The format for sealed trait is: [classNameLength (int)] [classNameBytes (utf8)] [actual object data...]
+    final int classNamePosition = buffer.position() + 4; // Position where class name bytes start
+
+    final String maliciousClassName = "io.github.simbo1905.simple_pickle.SecurityTest$Bad1";
+
+    final byte[] maliciousBytes = maliciousClassName.getBytes(StandardCharsets.UTF_8);
+
+    // Overwrite the class name bytes in the buffer
+    for (int i = 0; i < maliciousBytes.length; i++) {
+      buffer.put(classNamePosition + i, maliciousBytes[i]);
     }
 
-    sealed interface MyInterface permits Good {}
+    // 5. Reset buffer position and attempt deserialization
+    buffer.position(0); // Reset position to the beginning for deserialization
 
-    /// Record for deserialization attack test
-    record Good(String value) implements MyInterface{}
+    // 6. Assert that deserialization fails because "Baad" is not a permitted subtype
+    assertThrows(IllegalArgumentException.class, () -> {
+      pickler.deserialize(buffer);
+    }, "Deserialization should fail for none record class");
+  }
 
-    /// Non-record class with the same name length as Good
-    static class Baad {
-        String value;
-        // Constructor or methods if needed, but not required for the attack test structure
-        // Ensure it's not a record
+  @Test
+  void testSealedTraitWrongRecordAttack() {
+    // 1. Get Pickler for the sealed trait
+    final Pickler<MyInterface> pickler = picklerForSealedTrait(MyInterface.class);
+
+    // 2. Create an instance of a permitted subtype
+    final var original = new Good("safe_value");
+
+    // 3. Serialize the instance
+    final int size = pickler.sizeOf(original);
+    final ByteBuffer buffer = ByteBuffer.allocate(size);
+    pickler.serialize(original, buffer);
+    buffer.flip(); // Prepare for reading/manipulation
+
+    // 4. Manipulate the byte buffer to replace the class name
+    // The format for sealed trait is: [classNameLength (int)] [classNameBytes (utf8)] [actual object data...]
+    final int classNamePosition = buffer.position() + 4; // Position where class name bytes start
+
+    final String maliciousClassName = "io.github.simbo1905.simple_pickle.SecurityTest$Bad2";
+
+    final byte[] maliciousBytes = maliciousClassName.getBytes(StandardCharsets.UTF_8);
+
+    // Overwrite the class name bytes in the buffer
+    for (int i = 0; i < maliciousBytes.length; i++) {
+      buffer.put(classNamePosition + i, maliciousBytes[i]);
     }
 
-    @Test
-    void testDeserializationAttack() {
-        // 1. Get Pickler for the sealed trait
-        final Pickler<MyInterface> pickler = picklerForSealedTrait(MyInterface.class);
+    // 5. Reset buffer position and attempt deserialization
+    buffer.position(0); // Reset position to the beginning for deserialization
 
-        // 2. Create an instance of a permitted subtype
-        final var original = new Good("safe_value");
-
-        // 3. Serialize the instance
-        final int size = pickler.sizeOf(original);
-        final ByteBuffer buffer = ByteBuffer.allocate(size);
-        pickler.serialize(original, buffer);
-        buffer.flip(); // Prepare for reading/manipulation
-
-        // 4. Manipulate the byte buffer to replace the class name
-        // The format for sealed trait is: [classNameLength (int)] [classNameBytes (utf8)] [actual object data...]
-        final int classNameLength = buffer.getInt(); // Read the length
-        final int classNamePosition = buffer.position(); // Position where class name bytes start
-
-        final String originalClassName = "io.github.simbo1905.simple_pickle.SecurityTest$Good";
-        final String maliciousClassName = "io.github.simbo1905.simple_pickle.SecurityTest$Baad";
-
-        // Ensure lengths match for simple replacement
-        assertEquals(originalClassName.length(), maliciousClassName.length(), "Class name lengths must match for this test");
-        assertEquals(classNameLength, originalClassName.getBytes(StandardCharsets.UTF_8).length, "Serialized length mismatch");
-
-        final byte[] maliciousBytes = maliciousClassName.getBytes(StandardCharsets.UTF_8);
-
-        // Overwrite the class name bytes in the buffer
-        for (int i = 0; i < maliciousBytes.length; i++) {
-            buffer.put(classNamePosition + i, maliciousBytes[i]);
-        }
-
-        // 5. Reset buffer position and attempt deserialization
-        buffer.position(0); // Reset position to the beginning for deserialization
-
-        // 6. Assert that deserialization fails because "Baad" is not a permitted subtype
-        final var exception = assertThrows(IllegalArgumentException.class, () -> {
-            pickler.deserialize(buffer);
-        }, "Deserialization should fail for non-permitted class name");
-    }
+    // 6. Assert that deserialization fails because "Bad2" is not a permitted subtype
+    assertThrows(IllegalArgumentException.class, () -> {
+      pickler.deserialize(buffer);
+    }, "Deserialization should fail for wrong record type");
+  }
 }
