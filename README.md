@@ -2,17 +2,22 @@
 
 No Framework Pickler: A lightweight, zero-dependency Java serialization library that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect. It is perfect for building secure, modern message protocols of sealed interfaces containing nested records, arrays, maps and simple enum constants. It supports binary backwards compatibility of additive changes through alternative constructors (see Schema Evolution section below).
 
-It works with nested sealed traits that permit nested simple records of the following types: 
+It works with nested sealed interfaces of permitted record types or an outer array of such where the records may contain arbitrarily nested:
 
-- Records containing primitive types or String
-  - Optional of primitive types or String
-  - Arrays or primitive arrays such as `byte[]`, object arrays, nested arrays
-  - Nested records that only contain the above types
-  - Maps with keys or values that are any of the above
-  - Sealed interfaces with record implementations that only contain the above
-  - Nested sealed interfaces that only contain the above
-  - Plain enums (enums without custom fields, constructors, or class bodies)
-  - An outer array that contains any of the above
+ - boolean.class
+ - byte.class
+ - short.class
+ - char.class
+ - int.class
+ - long.class
+ - float.class
+ - double.class
+ - String.class
+ - Optional.class
+ - Record.class
+ - Map.class
+ - Enum.class
+ - Arrays of any of the above
 
 When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. Upon initializing the pickler for the outermost sealed interface the logic proactively prepares and caches the necessary picklers for all permitted record in the sealed hierarchy. You get one Pickler to rule them all. 
 

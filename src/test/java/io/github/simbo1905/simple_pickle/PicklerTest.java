@@ -712,6 +712,30 @@ class PicklerTest {
   }
 
   @Test
+  void testOpionalOfOptional() {
+    record OptionalOptionalInt(Optional<Optional<Integer>> value) {
+    }
+
+    final var original = new OptionalOptionalInt(Optional.of(Optional.of(99)));
+
+    // Get a pickler for the record
+    Pickler<OptionalOptionalInt> pickler = Pickler.picklerForRecord(OptionalOptionalInt.class);
+
+    // Calculate size and allocate buffer
+    int size = pickler.sizeOf(original);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+
+    // Serialize
+    pickler.serialize(original, buffer);
+    buffer.flip();
+
+    // Deserialize
+    OptionalOptionalInt deserialized = pickler.deserialize(buffer);
+
+    assertEquals(original.value().get().get(), deserialized.value().get().get());
+  }
+
+  @Test
   void testArraysOfOptionals() {
     // Create arrays of Optional values with mixed present/empty values
     Optional<String>[] stringOptionals = createOptionalArray(
@@ -881,7 +905,44 @@ class PicklerTest {
     // Verify buffer is fully consumed
     assertEquals(buffer.limit(), buffer.position());
   }
-  
+
+  @Test
+  void testByteArray() {
+    // Create arrays of all primitive types
+    byte[] byteArray = {1, 2, 3, 127, -128};
+
+    // Create a record to hold these arrays
+    record PrimitiveArraysRecord(
+        byte[] byteArray
+    ) {
+    }
+
+    // Create an instance
+    PrimitiveArraysRecord original = new PrimitiveArraysRecord(
+        byteArray);
+
+    // Get a pickler for the record
+    Pickler<PrimitiveArraysRecord> pickler = Pickler.picklerForRecord(PrimitiveArraysRecord.class);
+
+    // Calculate size and allocate buffer
+    int size = pickler.sizeOf(original);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+
+    // Serialize
+    pickler.serialize(original, buffer);
+    buffer.flip();
+
+    // Deserialize
+    PrimitiveArraysRecord deserialized = pickler.deserialize(buffer);
+
+    // Verify all arrays
+    assertArrayEquals(original.byteArray(), deserialized.byteArray());
+
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
+
+
   // Define simple enums for testing
   enum TestColor {
     RED, GREEN, BLUE, YELLOW

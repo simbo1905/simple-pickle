@@ -619,7 +619,12 @@ public interface Pickler<T> {
         int length = Array.getLength(c);
         buffer.putInt(length);
 
-        IntStream.range(0, length).forEach(i -> write(class2BufferOffset, buffer, Array.get(c, i)));
+        if (byte.class.equals(c.getClass().getComponentType())) {
+          buffer.put((byte[]) c);
+        } else {
+          IntStream.range(0, length).forEach(i -> write(class2BufferOffset, buffer, Array.get(c, i)));
+        }
+
         return;
       }
 
@@ -780,9 +785,13 @@ public interface Pickler<T> {
             // Create array of the right type and size
             final Object array = Array.newInstance(componentType, length);
 
+            if (componentType.equals(byte.class)) {
+              buffer.get((byte[]) array);
+            } else {
             // Deserialize each element using IntStream instead of for loop
             IntStream.range(0, length)
                 .forEach(i -> Array.set(array, i, deserializeValue(bufferOffset2Class, buffer)));
+            }
 
             yield array;
           } catch (ClassNotFoundException e) {
