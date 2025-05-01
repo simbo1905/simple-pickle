@@ -427,4 +427,42 @@ class MorePicklerTests {
     // Create an array of all tree nodes (excluding null values)
     return new TreeNode[]{root, internal1, internal2, leaf1, leaf2, leaf3};
   }
+
+  // Record for testing Unicode content
+  public record UnicodeData(
+      String ಢ_ಢ,
+      String[] tags,
+      java.util.Optional<String> note
+  ) {
+  }
+
+  // Record using valid Unicode characters in name
+  public record データ_αβγ_КПД(
+      String デ,
+      String[] タ,
+      java.util.Optional<String> Д
+  ) {
+  }
+
+  @Test
+  void testUnicodeContentRoundTrip() {
+    var pickler = picklerForRecord(データ_αβγ_КПД.class);
+
+    var original = new データ_αβγ_КПД(
+        "Rainbow ✨",
+        new String[]{"🌈", "⭐", "🌟"},
+        java.util.Optional.of("Magic 🦄")
+    );
+
+    var buffer = ByteBuffer.allocate(pickler.sizeOf(original));
+    pickler.serialize(original, buffer);
+    buffer.flip();
+
+    var deserialized = pickler.deserialize(buffer);
+
+    assertEquals(original.デ(), deserialized.デ());
+    assertArrayEquals(original.タ(), deserialized.タ());
+    assertEquals(original.Д(), deserialized.Д());
+    assertEquals(0, buffer.remaining(), "Buffer should be fully consumed");
+  }
 }

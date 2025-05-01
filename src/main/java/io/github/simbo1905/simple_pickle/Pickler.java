@@ -511,7 +511,7 @@ public interface Pickler<T> {
         LOGGER.finest(() -> "Total array size: " + finalSize +
             " (header: " + arrayHeaderSize[0] + ", elements: " + finalElementsSize + ")");
       } else if (c instanceof String) {
-        size += ((String) c).getBytes(UTF_8).length + 4; // 4 bytes for the length of the string
+        size += ((String) c).getBytes(UTF_8).length + 2; // 2 bytes for the length of the string
       } else if (c instanceof Optional<?> opt) {
         // 1 byte for the presence marker when empty
         // 1 byte for marker + size of contained value
@@ -635,7 +635,7 @@ public interface Pickler<T> {
         case String str -> {
           buffer.put(typeMarker(c));
           final var bytes = str.getBytes(UTF_8);
-          buffer.putInt(bytes.length); // Using full int instead of byte
+          buffer.putShort((short) bytes.length); // Using full int instead of byte
           buffer.put(bytes);
         }
         case Optional<?> opt -> {
@@ -737,13 +737,7 @@ public interface Pickler<T> {
         case CHARACTER -> buffer.getChar();
         case BOOLEAN -> buffer.get() == 1;
         case STRING -> {
-          final var strLength = buffer.getInt();
-          if (strLength > Short.MAX_VALUE) {
-            final var msg = "The max length of a string in java is 65535 bytes, " +
-                "but the length found is " + strLength;
-            LOGGER.severe(() -> msg);
-            throw new IllegalArgumentException(msg);
-          }
+          final var strLength = buffer.getShort();
           final byte[] bytes = new byte[strLength];
           buffer.get(bytes);
           yield new String(bytes, UTF_8);
