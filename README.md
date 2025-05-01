@@ -368,94 +368,86 @@ sequenceDiagram
     participant Pickler
     participant ByteBuffer
 
+    %% --- Serialization Phase ---
     Note over Client, ByteBuffer: Serialization Process
-    Client->>Pickler: serialize(object, buffer)
-    alt Pickler handles null
-        Pickler->>ByteBuffer: put(NULL_MARKER)
-    else Pickler for Record
-        Pickler->>ByteBuffer: put(RECORD_MARKER)
-        Note right of Pickler: Class names are deduplicated
-        alt First occurrence of class
-            Pickler->>ByteBuffer: put(className.length)
-            Pickler->>ByteBuffer: put(className.bytes)
-            Note right of Pickler: Position is memorized
-        else Repeated class
-            Pickler->>ByteBuffer: put(reference to previous position)
-        end
-        Pickler->>ByteBuffer: put(serialized component data)
-    else Pickler for Array (inner)
-        Pickler->>ByteBuffer: put(ARRAY_MARKER)
-        Note right of Pickler: Component type name is deduplicated
-        alt First occurrence of component type
-            Pickler->>ByteBuffer: put(componentType.length)
-            Pickler->>ByteBuffer: put(componentType.bytes)
-            Note right of Pickler: Position is memorized
-        else Repeated component type
-            Pickler->>ByteBuffer: put(reference to previous position)
-        end
-        Pickler->>ByteBuffer: put(array.length)
-        loop For each array element
-            Pickler->>ByteBuffer: put(serialized element)
-        end
-    else Pickler for Outer Array
-        Pickler->>Pickler: serializeArray(array, buffer)
-        Note right of Pickler: Handles arrays of records or sealed interfaces
-        Pickler->>ByteBuffer: put(ARRAY_MARKER)
-        Note right of Pickler: Component type name is deduplicated
-        Pickler->>ByteBuffer: put(componentType info)
-        Pickler->>ByteBuffer: put(array.length)
-        loop For each array element
-            Pickler->>ByteBuffer: put(serialized element)
-        end
-    else Pickler for Outer List
-        Pickler->>Pickler: serializeList(list, buffer)
-        Note right of Pickler: Handles lists of records or sealed interfaces
-        Pickler->>ByteBuffer: put(LIST_MARKER)
-        Note right of Pickler: Component type name is deduplicated
-        Pickler->>ByteBuffer: put(componentType info)
-        Pickler->>ByteBuffer: put(list.size)
-        loop For each list element
-            Pickler->>ByteBuffer: put(serialized element)
-        end
-    else Pickler for sealed interface
-        Note right of Pickler: Class name is deduplicated
-        alt First occurrence of class
-            Pickler->>ByteBuffer: put(className.length)
-            Pickler->>ByteBuffer: put(className.bytes)
-            Note right of Pickler: Position is memorized
-        else Repeated class
-            Pickler->>ByteBuffer: put(reference to previous position)
-        end
-        Pickler->>ByteBuffer: put(serialized object data)
+
+    %% 1. Record serialization
+    Client->>Pickler: picklerForRecord(recordClass)
+    Pickler->>Pickler: (caches method handles for record)
+    Client->>Pickler: serialize(record, buffer)
+    Pickler->>ByteBuffer: put(RECORD_MARKER)
+    Pickler->>ByteBuffer: put(className with deduplication)
+    Pickler->>ByteBuffer: put(serialized record components)
+
+    %% 2. Sealed interface serialization
+    Client->>Pickler: picklerForSealedInterface(sealedClass)
+    Pickler->>Pickler: (caches picklers for all permitted subclasses)
+    Client->>Pickler: serialize(sealedObject, buffer)
+    Pickler->>ByteBuffer: put(className with deduplication)
+    Pickler->>Pickler: get pickler for permitted record
+    Pickler->>ByteBuffer: put(serialized record components)
+
+    %% 3. Array serialization
+    Client->>Pickler: serializeArray(array, buffer)
+    Pickler->>ByteBuffer: put(ARRAY_MARKER)
+    Pickler->>ByteBuffer: put(componentType with deduplication)
+    Pickler->>ByteBuffer: put(array.length)
+    loop For each element in array
+        Pickler->>ByteBuffer: put(serialized element)
     end
-    
+
+    %% 4. List serialization
+    Client->>Pickler: serializeList(componentType, list, buffer)
+    Pickler->>ByteBuffer: put(LIST_MARKER)
+    Pickler->>ByteBuffer: put(componentType with deduplication)
+    Pickler->>ByteBuffer: put(list.size)
+    loop For each element in list
+        Pickler->>ByteBuffer: put(serialized element)
+    end
+
+    %% --- Deserialization Phase ---
     Note over Client, ByteBuffer: Deserialization Process
+
+    %% 5. Record deserialization
+    Client->>Pickler: picklerForRecord(recordClass)
     Client->>Pickler: deserialize(buffer)
-    alt Read NULL_MARKER
-        Pickler->>Client: return null
-    else Read ARRAY_MARKER for outer array
-        Pickler->>Client: deserializeArray(buffer, componentType)
-        Note right of Pickler: Handles class name deduplication
-        Pickler->>ByteBuffer: get(componentType info)
-        Pickler->>ByteBuffer: get(array.length)
-        loop For each array element
-            Pickler->>ByteBuffer: get(serialized element)
-        end
-        Pickler->>Client: return reconstructed array
-    else Read normal type
-        Note right of Pickler: Handles class name deduplication
-        alt Reference to previous class
-            Pickler->>ByteBuffer: get(reference position)
-            Pickler->>Client: lookup class from position map
-        else New class
-            Pickler->>ByteBuffer: get(className.length)
-            Pickler->>ByteBuffer: get(className.bytes)
-            Pickler->>Client: Class.forName(className)
-            Note right of Pickler: Position is memorized
-        end
-        Pickler->>ByteBuffer: get(serialized data)
-        Pickler->>Client: return reconstructed object
+    Pickler->>ByteBuffer: get(RECORD_MARKER)
+    Pickler->>ByteBuffer: get(className with deduplication)
+    Pickler->>Pickler: (finds cached method handles)
+    Pickler->>ByteBuffer: get(serialized record components)
+    Pickler->>Pickler: invoke constructor (schema evolution aware)
+    Pickler->>Client: return record instance
+
+    %% 6. Sealed interface deserialization
+    Client->>Pickler: picklerForSealedInterface(sealedClass)
+    Client->>Pickler: deserialize(buffer)
+    Pickler->>ByteBuffer: get(className with deduplication)
+    Pickler->>Pickler: get pickler for permitted record
+    Pickler->>ByteBuffer: get(serialized record components)
+    Pickler->>Pickler: invoke constructor (schema evolution aware)
+    Pickler->>Client: return permitted record instance
+
+    %% 7. Array deserialization
+    Client->>Pickler: deserializeArray(componentType, buffer)
+    Pickler->>ByteBuffer: get(ARRAY_MARKER)
+    Pickler->>ByteBuffer: get(componentType with deduplication)
+    Pickler->>ByteBuffer: get(array.length)
+    loop For each element in array
+        Pickler->>ByteBuffer: get(serialized element)
+        Pickler->>Pickler: deserialize element
     end
+    Pickler->>Client: return array
+
+    %% 8. List deserialization
+    Client->>Pickler: deserializeList(componentType, buffer)
+    Pickler->>ByteBuffer: get(LIST_MARKER)
+    Pickler->>ByteBuffer: get(componentType with deduplication)
+    Pickler->>ByteBuffer: get(list.size)
+    loop For each element in list
+        Pickler->>ByteBuffer: get(serialized element)
+        Pickler->>Pickler: deserialize element
+    end
+    Pickler->>Client: return
 ```
 
 Note: The serialization protocol includes an optimization for class names. When a class name is first encountered during serialization, its full name is written to the buffer and its position is memorized. For subsequent occurrences of the same class, only a 4-byte reference to the previous position is written instead of repeating the full class name. This significantly reduces the size of the serialized data when the same classes appear multiple times, such as in arrays or nested structures.
