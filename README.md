@@ -218,38 +218,6 @@ IntStream.range(0, people.length)
     .forEach(i -> assertEquals(people[i], deserializedPeople[i]));
 ```
 
-### Maps
-
-If we define a map as `Map<String, Person>` then we run into erasure issues that at runtime 
-there is no type information about the map. We only have a raw `Map` type so we do not get a type-safe pickler. We have to wrap the map into a record that is associated with the map type. We then create a pickler for the record type. In practice at runtime the wrapper adds one byte plus the out class name. That is the tax we pay due to Java erase. Note that we only ever write any class name once so if you have a lot of instances of maps to write out the overhead is amortized. Here is an example that is taken from the junit tests:
-
-```java
-Person john = new Person("John", 40);
-Person michael = new Person("Michael", 65);
-Person sarah = new Person("Sarah", 63);
-
-Map<String, Person> familyMap = new HashMap<>();
-familyMap.put("father", michael);
-familyMap.put("mother", sarah);
-
-record NestedFamilyMapContainer(Person subject, Map<String, Person> relationships) {}
-
-// we need a wrapper to create a concrete type for the pickler due to erase of map types
-final var nestedFamilyMapContainer = new NestedFamilyMapContainer(john, familyMap);
-
-final var pickler = picklerForRecord(NestedFamilyMapContainer.class);
-
-// Calculate size and allocate buffer
-int size = pickler.sizeOf(nestedFamilyMapContainer);
-ByteBuffer buffer = ByteBuffer.allocate(size);
-// Serialize
-pickler.serialize(nestedFamilyMapContainer, buffer);
-buffer.flip();
-// Deserialize
-NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
-// see the unit test that validates the deserialized map matches the original map. 
-```
-
 ### Complex Nested Sealed Interfaces
 
 ```java
@@ -336,6 +304,37 @@ final var deserializedRoot = pickler.deserialize(buffer);
 validateTreeStructure(deserializedRoot);
 ```
 
+### Maps
+
+Inner maps are supported.
+
+```java
+Person john = new Person("John", 40);
+Person michael = new Person("Michael", 65);
+Person sarah = new Person("Sarah", 63);
+
+Map<String, Person> familyMap = new HashMap<>();
+familyMap.put("father", michael);
+familyMap.put("mother", sarah);
+
+record NestedFamilyMapContainer(Person subject, Map<String, Person> relationships) {}
+
+// we need a wrapper to create a concrete type for the pickler due to erase of map types
+final var nestedFamilyMapContainer = new NestedFamilyMapContainer(john, familyMap);
+
+final var pickler = picklerForRecord(NestedFamilyMapContainer.class);
+
+// Calculate size and allocate buffer
+int size = pickler.sizeOf(nestedFamilyMapContainer);
+ByteBuffer buffer = ByteBuffer.allocate(size);
+// Serialize
+pickler.serialize(nestedFamilyMapContainer, buffer);
+buffer.flip();
+// Deserialize
+NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
+// see the unit test that validates the deserialized map matches the original map. 
+```
+
 ## Wire Protocol
 
 Support Types And Their Type Markers
@@ -357,15 +356,16 @@ Support Types And Their Type Markers
 | Array | 	13         |
 | Map | 	14         |
 | Enum | 	15         |
+| List | 	16         |
 
-The wire protocol is explained in this diagram: 
+The wire protocol is explained in this diagram:
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Pickler
     participant ByteBuffer
-    
+
     Note over Client, ByteBuffer: Serialization Process
     Client->>Pickler: serialize(object, buffer)
     alt Pickler handles null
@@ -381,7 +381,7 @@ sequenceDiagram
             Pickler->>ByteBuffer: put(reference to previous position)
         end
         Pickler->>ByteBuffer: put(serialized component data)
-    else Pickler for Array
+    else Pickler for Array (inner)
         Pickler->>ByteBuffer: put(ARRAY_MARKER)
         Note right of Pickler: Component type name is deduplicated
         alt First occurrence of component type
@@ -403,6 +403,16 @@ sequenceDiagram
         Pickler->>ByteBuffer: put(componentType info)
         Pickler->>ByteBuffer: put(array.length)
         loop For each array element
+            Pickler->>ByteBuffer: put(serialized element)
+        end
+    else Pickler for Outer List
+        Pickler->>Pickler: serializeList(list, buffer)
+        Note right of Pickler: Handles lists of records or sealed interfaces
+        Pickler->>ByteBuffer: put(LIST_MARKER)
+        Note right of Pickler: Component type name is deduplicated
+        Pickler->>ByteBuffer: put(componentType info)
+        Pickler->>ByteBuffer: put(list.size)
+        loop For each list element
             Pickler->>ByteBuffer: put(serialized element)
         end
     else Pickler for sealed interface
