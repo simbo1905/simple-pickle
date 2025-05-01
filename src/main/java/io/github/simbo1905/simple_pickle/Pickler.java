@@ -153,8 +153,8 @@ public interface Pickler<T> {
   /// Get a Pickler for a record class, creating one if it doesn't exist in the registry
   /// The returned pickler creates record picklers for the permitted subclasses of the sealed interface
   @SuppressWarnings("unchecked")
-  static <T> Pickler<T> picklerForSealedTrait(Class<T> sealedClass) {
-    return (Pickler<T>) PICKLER_REGISTRY.computeIfAbsent(sealedClass, clazz -> PicklerBase.createPicklerForSealedTrait((Class<T>) clazz));
+  static <T> Pickler<T> picklerForSealedInterface(Class<T> sealedClass) {
+    return (Pickler<T>) PICKLER_REGISTRY.computeIfAbsent(sealedClass, clazz -> PicklerBase.createPicklerForSealedInterface((Class<T>) clazz));
   }
 
   /// Serialize an array of records
@@ -1192,7 +1192,7 @@ public interface Pickler<T> {
     ///     // Implementation
     ///};
     ///```
-    static <T> Pickler<?> createPicklerForSealedTrait(Class<T> sealedClass) {
+    static <T> Pickler<?> createPicklerForSealedInterface(Class<T> sealedClass) {
       @SuppressWarnings("unchecked") Pickler<T> existingPickler = (Pickler<T>) PICKLER_REGISTRY.get(sealedClass);
       if (existingPickler != null) {
         return existingPickler;

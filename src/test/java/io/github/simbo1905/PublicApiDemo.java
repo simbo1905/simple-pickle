@@ -3,7 +3,7 @@ package io.github.simbo1905;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
-import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedTrait;
+import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedInterface;
 
 
 public class PublicApiDemo {
@@ -26,7 +26,7 @@ public class PublicApiDemo {
     Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
 
     // Get a pickler for the sealed trait Animal
-    var animalPickler = picklerForSealedTrait(Animal.class);
+    var animalPickler = picklerForSealedInterface(Animal.class);
 
     // Serialize and deserialize the Dog instance
     var dogBuffer = ByteBuffer.allocate(64);

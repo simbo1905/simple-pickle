@@ -385,7 +385,7 @@ class PicklerTest {
     Shape triangle = new Triangle(3.0, 4.0, 5.0);
 
     // Get a pickler for the Shape sealed interface
-    Pickler<Shape> pickler = Pickler.picklerForSealedTrait(Shape.class);
+    Pickler<Shape> pickler = Pickler.picklerForSealedInterface(Shape.class);
 
     // Test circle
     ByteBuffer circleBuffer = ByteBuffer.allocate(1024);
@@ -424,7 +424,7 @@ class PicklerTest {
   @Test
   void testNullSealedInterface() {
     // Get a pickler for the Shape sealed interface
-    Pickler<Shape> pickler = Pickler.picklerForSealedTrait(Shape.class);
+    Pickler<Shape> pickler = Pickler.picklerForSealedInterface(Shape.class);
 
     // Serialize null
     ByteBuffer buffer = ByteBuffer.allocate(1024);
@@ -446,7 +446,7 @@ class PicklerTest {
     Animal alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
 
     // Get a pickler for the top-level Animal sealed interface
-    Pickler<Animal> pickler = Pickler.picklerForSealedTrait(Animal.class);
+    Pickler<Animal> pickler = Pickler.picklerForSealedInterface(Animal.class);
 
     // Test dog serialization/deserialization
     ByteBuffer dogBuffer = ByteBuffer.allocate(1024);
@@ -508,8 +508,8 @@ class PicklerTest {
   void testProtocolExample() {
 
     // Get picklers for the protocol interfaces
-    Pickler<StackCommand> commandPickler = Pickler.picklerForSealedTrait(StackCommand.class);
-    Pickler<StackResponse> responsePickler = Pickler.picklerForSealedTrait(StackResponse.class);
+    Pickler<StackCommand> commandPickler = Pickler.picklerForSealedInterface(StackCommand.class);
+    Pickler<StackResponse> responsePickler = Pickler.picklerForSealedInterface(StackResponse.class);
 
     // Test Command serialization/deserialization
     StackCommand[] commands = {
@@ -646,7 +646,7 @@ class PicklerTest {
     
     // Calculate size for the array
     int size = 0;
-    Pickler<Shape> pickler = Pickler.picklerForSealedTrait(Shape.class);
+    Pickler<Shape> pickler = Pickler.picklerForSealedInterface(Shape.class);
     
     // 1 byte for ARRAY marker + 4 bytes for component type name length + component type name bytes
     size += 1 + 4 + Shape.class.getName().getBytes(UTF_8).length;

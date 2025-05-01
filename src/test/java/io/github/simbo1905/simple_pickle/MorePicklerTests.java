@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 
 import static io.github.simbo1905.simple_pickle.Pickler.PicklerBase.LOGGER;
 import static io.github.simbo1905.simple_pickle.Pickler.picklerForRecord;
-import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedTrait;
+import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedInterface;
 import static io.github.simbo1905.simple_pickle.PicklerTest.stripOutAsciiStrings;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -98,7 +98,7 @@ class MorePicklerTests {
     final var originalAnimals = new Animal[]{dog, cat, eagle, penguin, alicorn};
 
     // Get a pickler for the Animal sealed interface
-    final var pickler = picklerForSealedTrait(Animal.class);
+    final var pickler = picklerForSealedInterface(Animal.class);
 
     // Calculate total buffer size needed using streams
     final var totalSize = Arrays.stream(originalAnimals).mapToInt(pickler::sizeOf).sum();
@@ -171,7 +171,7 @@ class MorePicklerTests {
     final var originalNodes = getTreeNodes();
 
     // Get a pickler for the TreeNode sealed interface
-    final var pickler = picklerForSealedTrait(TreeNode.class);
+    final var pickler = picklerForSealedInterface(TreeNode.class);
 
     // Calculate total buffer size needed - handle each node individually to avoid NPE with null children
     final var totalSize = Arrays.stream(originalNodes)
@@ -331,7 +331,7 @@ class MorePicklerTests {
   @Test
   void testClassNameCompressionSealedTrait() {
     // Get a pickler for the Chained sealed interface
-    final var pickler = picklerForSealedTrait(Chained.class);
+    final var pickler = picklerForSealedInterface(Chained.class);
 
     // Create a chain of links
     final var link1 = new Link(null);
@@ -374,7 +374,7 @@ class MorePicklerTests {
     final var originalRoot = originalNodes[0];
     
     // Get a pickler for the TreeNode sealed interface
-    final var pickler = picklerForSealedTrait(TreeNode.class);
+    final var pickler = picklerForSealedInterface(TreeNode.class);
     
     // Calculate buffer size needed for just the root node
     final var bufferSize = pickler.sizeOf(originalRoot);
