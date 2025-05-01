@@ -52,6 +52,10 @@ public interface Pickler<T> {
   static <R extends Record> Pickler<R> picklerForRecord(Class<R> recordClass) {
     // Check if we already have a Pickler for this record class
     return (Pickler<R>) PICKLER_REGISTRY.computeIfAbsent(recordClass, clazz -> {
+      // Check if the class is a record
+      if (!clazz.isRecord()) {
+        throw new IllegalArgumentException("Class " + clazz.getName() + " is not a record");
+      }
       // Validate record components for enum types
       validateRecordComponents((Class<R>) clazz);
       return PicklerBase.createPicklerForRecord((Class<R>) clazz);
