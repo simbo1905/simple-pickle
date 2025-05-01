@@ -232,6 +232,106 @@ public interface Pickler<T> {
     return array;
   }
 
+
+  /// Serialize an array of records
+  ///
+  /// @param list The array of records to serialize
+  /// @param buffer The buffer to write to
+  /// @param <R> The record type
+  static <R extends Record> void serializeList(List<R> list, ByteBuffer buffer) {
+    // Get the pickler for the component type
+    @SuppressWarnings("unchecked")
+    Pickler<R> pickler = picklerForRecord((Class<R>) list.getClass().getComponentType());
+
+    // Write array marker
+    buffer.put(Constants.ARRAY.marker());
+
+    // Write component type
+    Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
+    writeClassNameWithDeduplication(buffer, list.getClass().getComponentType(), class2BufferOffset);
+
+    // Write array length
+    buffer.putInt(list.size());
+
+    // Write each element
+    for (R element : list) {
+      pickler.serialize(element, buffer);
+    }
+  }
+
+  /// Deserialize an array of records
+  ///
+  /// @param buffer The buffer to read from
+  /// @param componentType The component type of the array
+  /// @param <R> The record type
+  /// @return The deserialized array
+  @SuppressWarnings("unchecked")
+  static <R extends Record> List<R> deserializeList(ByteBuffer buffer, Class<R> componentType) {
+    // Skip the array marker if present
+    if (buffer.get(buffer.position()) == Constants.ARRAY.marker()) {
+      buffer.get(); // Consume the marker
+
+      // Read component type
+      Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
+      try {
+        Class<?> readComponentType = resolveClass(buffer, bufferOffset2Class);
+        if (!componentType.equals(readComponentType)) {
+          final var msg = "Component type mismatch: expected " + componentType.getName() +
+              " but got " + readComponentType.getName();
+          LOGGER.severe(() -> msg);
+          throw new IllegalArgumentException(msg);
+        }
+      } catch (ClassNotFoundException e) {
+        final var msg = "Failed to load component type class: " + e.getMessage();
+        LOGGER.severe(() -> msg);
+        throw new IllegalArgumentException(msg, e);
+      }
+    } else {
+      // If no array marker, rewind to original position
+      buffer.position(buffer.position() - 1);
+    }
+
+    // Get the pickler for the component type
+    Pickler<R> pickler = picklerForRecord(componentType);
+
+    return IntStream.range(0, buffer.getInt())
+        .mapToObj(i -> pickler.deserialize(buffer))
+        .toList();
+  }
+
+
+  /// Calculate the size of an list of records
+  ///
+  /// @param list The array of records
+  /// @param <R> The record type
+  /// @return The size in bytes
+  static <R extends Record> int sizeOfList(List<R> list) {
+    if (list == null) {
+      return 1; // Just the NULL marker
+    }
+
+    // This feels unnatural yet the final array can go into a lambda and hopefully escape analysis puts it onto the stack
+    final var size = new int[]{1};
+
+    // Add size for component type name (4 bytes for length + name bytes)
+    final var componentTypeName = list.getClass().getComponentType().getName();
+    size[0] += 4 + componentTypeName.getBytes(UTF_8).length;
+
+    // Add 4 bytes for array length
+    size[0] += 4;
+
+    // Get the pickler for the component type
+    @SuppressWarnings("unchecked") final var pickler = picklerForRecord((Class<R>) list.getClass().getComponentType());
+
+    // Add size of each element using streams
+    list.stream()
+        .mapToInt(pickler::sizeOf)
+        .forEach(elementSize -> size[0] += elementSize);
+
+    return size[0];
+  }
+
+
   /// Calculate the size of an array of records
   ///
   /// @param array The array of records
@@ -242,7 +342,7 @@ public interface Pickler<T> {
       return 1; // Just the NULL marker
     }
 
-    // Start with 1 byte for the ARRAY marker
+    // This feels unnatural yet the final array can go into a lambda and hopefully escape analysis puts it onto the stack
     final var size = new int[]{1};
 
     // Add size for component type name (4 bytes for length + name bytes)
@@ -542,6 +642,15 @@ public interface Pickler<T> {
           // Add size of value
           size += staticSizeOf(entry.getValue(), classes);
         }
+      } else if (c instanceof List<?> list) {
+        // 4 bytes for the number of entries
+        size += 4;
+
+        // Calculate size for each key-value pair
+        for (var entry : list) {
+          // Add size of key
+          size += staticSizeOf(entry, classes);
+        }
       } else if (c instanceof Enum<?> enumValue) {
         // Add size for enum class name
         if (!classes.contains(c.getClass())) {
@@ -594,6 +703,7 @@ public interface Pickler<T> {
         case Optional<?> ignored -> OPTIONAL.marker();
         case Record ignored -> RECORD.marker();
         case Map<?, ?> ignored -> MAP.marker();
+        case List<?> ignored -> LIST.marker();
         default -> throw new IllegalArgumentException("Unsupported type: " + c.getClass());
       };
     }
@@ -679,6 +789,15 @@ public interface Pickler<T> {
             // Write the value
             write(class2BufferOffset, buffer, value);
           });
+        }
+        case List<?> list -> {
+          buffer.put(typeMarker(c));
+
+          // Write the number of elements
+          buffer.putInt(list.size());
+
+          // Write each element
+          list.forEach(element -> write(class2BufferOffset, buffer, element));
         }
         case Enum<?> enumValue -> {
           int enumStartPos = buffer.position();
@@ -800,27 +919,17 @@ public interface Pickler<T> {
             throw new IllegalArgumentException(msg, e);
           }
         }
-        case MAP -> { // Handle maps
-          // Read the number of entries
-          int size = buffer.getInt();
-
-          // Create a new HashMap to hold the entries
-          Map<Object, Object> map = new HashMap<>(size);
-
-          // Read each key-value pair
-          for (int i = 0; i < size; i++) {
-            // Read the key
-            Object key = deserializeValue(bufferOffset2Class, buffer);
-
-            // Read the value
-            Object value = deserializeValue(bufferOffset2Class, buffer);
-
-            // Add to the map
-            map.put(key, value);
-          }
-
-          yield map;
-        }
+        case MAP -> // Handle maps
+            IntStream.range(0, buffer.getInt())
+                .mapToObj(i ->
+                    Map.entry(
+                        deserializeValue(bufferOffset2Class, buffer),
+                        deserializeValue(bufferOffset2Class, buffer)))
+                .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+        case LIST -> // Handle Lists
+            IntStream.range(0, buffer.getInt())
+                .mapToObj(i -> deserializeValue(bufferOffset2Class, buffer))
+                .toList();
         case ENUM -> { // Handle enums
           try {
             // Read the enum class with deduplication support
@@ -1313,7 +1422,8 @@ public interface Pickler<T> {
     RECORD((byte) 12, 0, Record.class),
     ARRAY((byte) 13, 0, null),
     MAP((byte) 14, 0, Map.class),
-    ENUM((byte) 15, 0, Enum.class);
+    ENUM((byte) 15, 0, Enum.class),
+    LIST((byte) 16, 0, List.class);
 
     private final byte typeMarker;
     private final int sizeInBytes;
