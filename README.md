@@ -77,15 +77,21 @@ This mean you might find that this single Java file solution is a viable alterna
 
 ## Security
 
-This library is secure by default by being typesafe and using JDK methods that are secure by default. When you instantiate a picker its resolves `MethodHandle`s to the default constructor and any fallback constructors. These are cached and the pickler is cached. The reading and writing of data is done using the JDK's `ByteBuffer` class. Specifically the `read` and `readXXX` method that read primitives and the `readUtf8` that reads a byte array of UTF8 encoded bytes. These read methods validate what they read and throw an error if the data is not legal data. If someone were to attempt to flip bits or craft attacking bytes the JDK will refuse to create an invalid primate or String. This is because strings are constructed using the UDF8 encoding using a UTF8 byte array thas has been validated by the ByteArray read methods.
+This library is secure by default by:
 
-This library does not use any reflection to read or write the data. Rather it uses `MethodHandle`s that are resolved when you instantiate the class. Only valid primates and validated legal Strings are read back into an array of parameters used to call the record constructor via the MethodHandle. The JDK will throw an error if the number of parameters or the types of the parameters are not correct. 
+1. Resolving and caching `MethodHandle`s to the default constructor of records when you create a record; not when you are deserializing. 
+2. Using the JDK's `ByteBuffer` class to read and write data that is correctly validate by the JDK ByteBuffer methods. 
+3. Creating strings using the UTF8 encoding using a UTF8 byte array that has been validated by the ByteArray `readUtf8` method.
+4. Resolving what are the legal permitted class names of all records within a sealed interface hierarchy at when you create a record; not when you are deserializing.
+5. Using the technology that Java has specifically created to model data transfer objects safely which is the `record` types. 
 
-The JDK ensures that `record` types can only be constructed bottom-up. This means that the first record to be deserialized is may only be a fully constructed record made from validated primate types. Only then will any `record` types be constructed that have nested recorded types. The same JDK protections apply that regular constructors are invoked via a `MethodHandle` and the JDK validates parameters are the correct number and correct types.
+The JDK ensures that `record` types can only be constructed bottom-up. This means that the first record to be deserialized is may only be a fully constructed record made from validated primitive types.
 
-If you instantiate a pickler for a `sealed interface` it ensures that the permitted types of the sealed interface are all `record` types else nested `sealed interface`s of records. This ensures that it will never attempt to call constructor on a non-record type. It then only writes out the class name of the permitted record type and then delegates to a cached record pickler of the type. When reading back it reads in it deletes to the cached pickler of the record type based on the class name it resolved. 
+When `MehtodHandle`s are invoked they validate the types and numbers of parameters then call constructors that must use the canonical constructor else the canonical constructor itself. 
 
-This means that you cannot attack this library to try to get it to deserialize a classes that are not validated record types. 
+If you instantiate a pickler for a `sealed interface` it ensures that the permitted types of the sealed interface are all `record` types else nested `sealed interface`s of records. It then builds a map of the validated classNames to the correct classes. When it reads back the class names this is via the `ByteBuffer` method `readUtf8` which ensures they are valid bytes then it ceats the string explicitly using the UTF8 constructor. It then checks that string against the map of permitted class names to clases. Then it delegates to the pickler for the class.
+
+This means that you cannot attack this library to try to get it to deserialize a classes that are not validated record types in the correct type hierarchy with all code be validated and invoked in the correct order as though it was regular Java code not reflective Java code. 
 
 ## Usage Examples
 
