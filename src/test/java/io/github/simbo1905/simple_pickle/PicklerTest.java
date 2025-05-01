@@ -594,7 +594,7 @@ class PicklerTest {
     buffer.flip();
     
     // Deserialize the array
-    Person[] deserialized = Pickler.deserializeArray(buffer, Person.class);
+    Person[] deserialized = Pickler.deserializeArray(Person.class, buffer);
     
     // Verify the array is empty
     assertEquals(0, deserialized.length);
@@ -621,7 +621,7 @@ class PicklerTest {
     buffer.flip();
     
     // Deserialize the array
-    Person[] deserialized = Pickler.deserializeArray(buffer, Person.class);
+    Person[] deserialized = Pickler.deserializeArray(Person.class, buffer);
     
     // Verify array length
     assertEquals(people.length, deserialized.length);

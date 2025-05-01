@@ -121,9 +121,45 @@ buffer.flip();
 Person deserializedPerson = pickler.deserialize(buffer);
 ```
 
+### Immutable List Of Records Of Immutable Lists
+
+```java
+public record ListRecord(List<String> list) { 
+}
+
+final List<ListRecord> outerList = List.of(new ListRecord(List.of("A", "B")), new ListRecord(List.of("X", "Y")));
+
+// Calculate size and allocate buffer
+int size = Pickler.sizeOfList(ListRecord.class, outerList);
+ByteBuffer buffer = ByteBuffer.allocate(size);
+
+// Serialize
+Pickler.serializeList(ListRecord.class, outerList, buffer);
+// Flip the buffer to prepare for reading
+buffer.flip();
+// Deserialize
+final List<ListRecord> deserialized = Pickler.deserializeList(ListRecord.class, buffer);
+// will throw an exception if you try to modify the list of the deserialized record
+try {
+  deserialized.removeFirst();
+}
+catch (UnsupportedOperationException e) {
+    // Expected exception, as the list is immutable
+    System.out.println("Works As Expected");
+}
+// will throw an exception if you try to modify a list inside of the deserialized record
+try {
+    deserialized.forEach(l -> l.list().removeFirst());
+}
+    catch (UnsupportedOperationException e) {
+    // Expected exception, as the list is immutable
+    System.out.println("Works As Expected");
+}
+```
+
 ### Enum Serialization
 
-The library supports serialization of records containing plain Java enums (enums without custom fields or methods). Here's how to serialize a record with an enum component:
+The library supports serialization of records containing plain Java enums (enums **without** custom fields or methods). Here's how to serialize a record with an enum component:
 
 ```java
 /// Define a simple enum
@@ -149,9 +185,6 @@ buffer.flip();
 
 // Deserialize from the ByteBuffer
 Month deserializedMonth = pickler.deserialize(buffer);
-
-// Verification (Optional, but good practice)
-// assertEquals(december, deserializedMonth);
 ```
 
 ### Array of Records Serialization
@@ -188,7 +221,7 @@ IntStream.range(0, people.length)
 ### Maps
 
 If we define a map as `Map<String, Person>` then we run into erasure issues that at runtime 
-there is no type information about the map. We only have a raw `Map` type and so we do not get a type-safe pickler. We have to wrap the map into a record that is associated with the map type. We then create a pickler for the record type. In practice at runtime the wrapper adds one byte to say its the outer record type plus the class name. That is low overhead to persist the type information given that Java erasure is a runtime "feature". Note that we only ever write any class name once so if you have a lot of instances of maps to write out the overhead is amortized. Here is an example that is taken from the junit tests:
+there is no type information about the map. We only have a raw `Map` type so we do not get a type-safe pickler. We have to wrap the map into a record that is associated with the map type. We then create a pickler for the record type. In practice at runtime the wrapper adds one byte plus the out class name. That is the tax we pay due to Java erase. Note that we only ever write any class name once so if you have a lot of instances of maps to write out the overhead is amortized. Here is an example that is taken from the junit tests:
 
 ```java
 Person john = new Person("John", 40);

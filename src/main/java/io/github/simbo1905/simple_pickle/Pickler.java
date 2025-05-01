@@ -185,12 +185,12 @@ public interface Pickler<T> {
 
   /// Deserialize an array of records
   ///
-  /// @param buffer The buffer to read from
+  /// @param <R>           The record type
   /// @param componentType The component type of the array
-  /// @param <R> The record type
+  /// @param buffer        The buffer to read from
   /// @return The deserialized array
   @SuppressWarnings("unchecked")
-  static <R extends Record> R[] deserializeArray(ByteBuffer buffer, Class<R> componentType) {
+  static <R extends Record> R[] deserializeArray(Class<R> componentType, ByteBuffer buffer) {
     // Skip the array marker if present
     if (buffer.get(buffer.position()) == Constants.ARRAY.marker()) {
       buffer.get(); // Consume the marker
@@ -235,20 +235,21 @@ public interface Pickler<T> {
 
   /// Serialize an array of records
   ///
+  /// @param componentType The component type of the array
   /// @param list The array of records to serialize
   /// @param buffer The buffer to write to
   /// @param <R> The record type
-  static <R extends Record> void serializeList(List<R> list, ByteBuffer buffer) {
+  static <R extends Record> void serializeList(Class<R> componentType, List<R> list, ByteBuffer buffer) {
     // Get the pickler for the component type
-    @SuppressWarnings("unchecked")
-    Pickler<R> pickler = picklerForRecord((Class<R>) list.getClass().getComponentType());
+    Pickler<R> pickler = picklerForRecord(componentType);
 
     // Write array marker
     buffer.put(Constants.ARRAY.marker());
 
     // Write component type
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-    writeClassNameWithDeduplication(buffer, list.getClass().getComponentType(), class2BufferOffset);
+
+    writeClassNameWithDeduplication(buffer, componentType, class2BufferOffset);
 
     // Write array length
     buffer.putInt(list.size());
@@ -261,12 +262,11 @@ public interface Pickler<T> {
 
   /// Deserialize an array of records
   ///
-  /// @param buffer The buffer to read from
+  /// @param <R>           The record type
   /// @param componentType The component type of the array
-  /// @param <R> The record type
+  /// @param buffer        The buffer to read from
   /// @return The deserialized array
-  @SuppressWarnings("unchecked")
-  static <R extends Record> List<R> deserializeList(ByteBuffer buffer, Class<R> componentType) {
+  static <R extends Record> List<R> deserializeList(Class<R> componentType, ByteBuffer buffer) {
     // Skip the array marker if present
     if (buffer.get(buffer.position()) == Constants.ARRAY.marker()) {
       buffer.get(); // Consume the marker
@@ -299,13 +299,12 @@ public interface Pickler<T> {
         .toList();
   }
 
-
-  /// Calculate the size of an list of records
+  /// Calculate the size of a list of records
   ///
+  /// @param <R>  The record type
   /// @param list The array of records
-  /// @param <R> The record type
   /// @return The size in bytes
-  static <R extends Record> int sizeOfList(List<R> list) {
+  static <R extends Record> int sizeOfList(Class<R> componentType, List<R> list) {
     if (list == null) {
       return 1; // Just the NULL marker
     }
@@ -314,14 +313,14 @@ public interface Pickler<T> {
     final var size = new int[]{1};
 
     // Add size for component type name (4 bytes for length + name bytes)
-    final var componentTypeName = list.getClass().getComponentType().getName();
+    final var componentTypeName = componentType.getName();
     size[0] += 4 + componentTypeName.getBytes(UTF_8).length;
 
     // Add 4 bytes for array length
     size[0] += 4;
 
     // Get the pickler for the component type
-    @SuppressWarnings("unchecked") final var pickler = picklerForRecord((Class<R>) list.getClass().getComponentType());
+    final var pickler = picklerForRecord(componentType);
 
     // Add size of each element using streams
     list.stream()

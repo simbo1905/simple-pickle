@@ -9,8 +9,46 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class ListPicklerTest {
+
+  record ListRecord(List<String> list) {
+    // Use the canonical constructor to make an immutable copy
+    ListRecord {
+      list = List.copyOf(list);
+    }
+  }
+
+  @Test
+  void testImmutableLists() {
+    // Here we are deliberately passing in a mutable list to the constructor
+    final var original = new ListRecord(new ArrayList<>() {{
+      add("A");
+      add("B");
+    }});
+
+    final List<ListRecord> outerList = List.of(original, new ListRecord(List.of("X", "Y")));
+
+    // Calculate size and allocate buffer
+    int size = Pickler.sizeOfList(ListRecord.class, outerList);
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+
+    // Serialize
+    Pickler.serializeList(ListRecord.class, outerList, buffer);
+    // Flip the buffer to prepare for reading
+    buffer.flip();
+    // Deserialize
+    final List<ListRecord> deserialized = Pickler.deserializeList(ListRecord.class, buffer);
+
+    // Verify the record counts
+    assertEquals(original.list().size(), deserialized.size());
+    // Verify immutable list by getting the deserialized list and trying to add into the list we expect an exception
+    assertThrows(UnsupportedOperationException.class, deserialized::removeFirst);
+
+    // Verify buffer is fully consumed
+    assertEquals(buffer.limit(), buffer.position());
+  }
 
   @Test
   void testNestedLists() {
@@ -79,15 +117,15 @@ public class ListPicklerTest {
     }
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfList(original);
+    int size = Pickler.sizeOfList(NestedListRecord.class, original);
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
-    Pickler.serializeList(original, buffer);
+    Pickler.serializeList(NestedListRecord.class, original, buffer);
     buffer.flip();
 
     // Deserialize
-    List<NestedListRecord> deserialized = Pickler.deserializeList(buffer, NestedListRecord.class);
+    List<NestedListRecord> deserialized = Pickler.deserializeList(NestedListRecord.class, buffer);
 
     // Verify the nested list structure
     assertEquals(original.size(), deserialized.size());
