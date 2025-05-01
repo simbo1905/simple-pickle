@@ -1090,12 +1090,15 @@ public interface Pickler<T> {
       // Get all permitted record subclasses, recursively traversing sealed interfaces
       Class<?>[] subclasses = getAllPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
 
-      // create an uncached pickler for the sealed interface as we cannot cache it while in an update to the map that is the cache
-      // FIXME
-      @SuppressWarnings("unchecked") final Map<String, Pickler<?>> permittedPicklersByClassName = Arrays.stream(subclasses)
+      // Force the pre-creation and caching of picklers for all permitted record of all nested permermitted sealed interfaces
+      //noinspection unchecked
+      Arrays.stream(subclasses).filter(Record.class::isAssignableFrom).forEach(permitted -> createPicklerForRecord((Class<? extends Record>) permitted));
+
+      // build a map of the names of the permitted record subclasses to their class objects
+      @SuppressWarnings("unchecked") final Map<String, Class<? extends Record>> classNamesToPermittedRecords = Arrays.stream(subclasses)
           .filter(Record.class::isAssignableFrom)
+          .map(permitted -> (Class<? extends Record>) permitted)
           .map(permitted -> Map.entry(permitted.getName(), permitted))
-          .map(entry -> Map.entry(entry.getKey(), createPicklerForRecord((Class<? extends Record>) entry.getValue())))
           .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
       return new PicklerInternal<T>() {
@@ -1209,15 +1212,7 @@ public interface Pickler<T> {
                 ": " + finalClassName +
                 ", new buffer position=" + buffer.position());
 
-            Class<?> classType;
-            try {
-              // Load the class using the class name
-              classType = getClassForName(className);
-            } catch (ClassNotFoundException e) {
-              final var msg = "Failed to load class: " + e.getMessage();
-              LOGGER.severe(() -> msg);
-              throw new IllegalArgumentException(msg, e);
-            }
+            final var classType = classNamesToPermittedRecords.get(className);
 
             // Store the position where we wrote this class
             bufferOffset2Class.put(currentPosition, classType);
@@ -1227,13 +1222,22 @@ public interface Pickler<T> {
                 ", new buffer position=" + buffer.position());
           }
 
+          final var permittedClass = classNamesToPermittedRecords.get(className);
+
+          if (permittedClass == null) {
+            final var msg = "No permitted subclass found for class '" + className + "' permitted subclasses: " +
+                String.join(",", classNamesToPermittedRecords.keySet());
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg);
+          }
+
           // Get the pickler for this concrete class
           @SuppressWarnings("unchecked") PicklerInternal<Record> concretePickler =
-              (PicklerInternal<Record>) permittedPicklersByClassName.get(className);
+              (PicklerInternal<Record>) Pickler.picklerForRecord(classNamesToPermittedRecords.get(className));
 
           if (concretePickler == null) {
             final var msg = "No permitted subclass pickler found for class '" + className + "' permitted subclasses: " +
-                String.join(",", permittedPicklersByClassName.keySet());
+                String.join(",", classNamesToPermittedRecords.keySet());
             LOGGER.severe(() -> msg);
             throw new IllegalArgumentException(msg);
           }
