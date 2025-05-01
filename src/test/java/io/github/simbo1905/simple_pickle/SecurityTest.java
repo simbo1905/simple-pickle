@@ -80,7 +80,7 @@ class SecurityTest {
     // 6. Assert that deserialization fails because "Baad" is not a permitted subtype
     assertThrows(IllegalArgumentException.class, () -> {
       pickler.deserialize(buffer);
-    }, "Deserialization should fail for none record class");
+    }, "Deserialization should fail for non-record class");
   }
 
   @Test
