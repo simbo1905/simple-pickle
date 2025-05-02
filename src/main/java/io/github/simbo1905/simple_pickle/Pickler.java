@@ -401,7 +401,7 @@ public interface Pickler<T> {
         // Validate class name - add basic validation that allows array type names like `[I`, `[[I`, `[L`java.lang.String;` etc.
         if (!className.matches("[\\[\\]a-zA-Z0-9_.$;]+")) {
           final var msg = "Invalid class name format: " + className;
-          LOGGER.severe(msg);
+          LOGGER.severe(() -> msg);
           throw new IllegalArgumentException(msg);
         }
 
@@ -428,6 +428,26 @@ public interface Pickler<T> {
       return Enum.valueOf((Class<E>) enumClass, enumName);
     }
 
+    /// Writes a short value (0-255) as a single unsigned byte to the buffer.
+    ///
+    /// @param buffer The buffer to write to.
+    /// @param value The short value (must be between 0 and 255).
+    /// @throws IllegalArgumentException if the value is outside the 0-255 range.
+    static void writeUnsignedByte(ByteBuffer buffer, short value) {
+      if (value < 0 || value > 255) {
+        throw new IllegalArgumentException("Value must be between 0 and 255, but got: " + value);
+      }
+      buffer.put((byte) value);
+    }
+
+    /// Reads a single byte from the buffer and returns it as a short, treating the byte as unsigned (0-255).
+    ///
+    /// @param buffer The buffer to read from.
+    /// @return The short value (0-255).
+    static short readUnsignedByte(ByteBuffer buffer) {
+      return (short) (buffer.get() & 0xFF);
+    }
+
     abstract Object[] staticGetComponents(R record);
 
     abstract R staticCreateFromComponents(Object[] record);
@@ -442,7 +462,8 @@ public interface Pickler<T> {
     @Override
     public void serialize(R object, ByteBuffer buffer, Map<Class<?>, Integer> class2BufferOffset) {
       final var components = staticGetComponents(object);
-      buffer.put((byte) components.length);
+      // Write the number of components as an unsigned byte (max 255)
+      writeUnsignedByte(buffer, (short) components.length);
       Arrays.stream(components).forEach(c -> write(class2BufferOffset, buffer, c));
     }
 
@@ -753,7 +774,8 @@ public interface Pickler<T> {
 
     @Override
     public R deserialize(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
-      final var length = buffer.get();
+      // Read the number of components as an unsigned byte
+      final short length = readUnsignedByte(buffer);
       final var components = new Object[length];
       Arrays.setAll(components, ignored -> deserializeValue(bufferOffset2Class, buffer));
       return this.staticCreateFromComponents(components);
@@ -1226,7 +1248,7 @@ public interface Pickler<T> {
             // Validate class name - add basic validation that allows array type names like `[I`, `[[I`, `[L`java.lang.String;` etc.
             if (!className.matches("[\\[\\]a-zA-Z0-9_.$;]+")) {
               final var msg = "Invalid class name format: " + className;
-              LOGGER.severe(msg);
+              LOGGER.severe(() -> msg);
               throw new IllegalArgumentException(msg);
             }
 
