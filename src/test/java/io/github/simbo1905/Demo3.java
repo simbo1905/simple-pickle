@@ -23,7 +23,7 @@ public class Demo3 {
     buffer.flip();
 
 // Deserialize. Limitations of generics means we have to pass the sealed interface class.
-    final List<ListRecord> deserialized = Pickler.deserialize(ListRecord.class, buffer);
+    final List<ListRecord> deserialized = Pickler.deserializeMany(ListRecord.class, buffer);
 // will throw an exception if you try to modify the list of the deserialized record
     try {
       deserialized.removeFirst();

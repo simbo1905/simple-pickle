@@ -162,7 +162,7 @@ public interface Pickler<T> {
   /// @param componentType The component type of the array
   /// @param buffer        The buffer to read from
   /// @return The deserialized objects in the order they were serialized
-  static <R extends Record> List<R> deserialize(Class<R> componentType, ByteBuffer buffer) {
+  static <R extends Record> List<R> deserializeMany(Class<R> componentType, ByteBuffer buffer) {
     // Skip the array marker if present
     if (buffer.get(buffer.position()) == Constants.ARRAY.marker()) {
       buffer.get(); // Consume the marker

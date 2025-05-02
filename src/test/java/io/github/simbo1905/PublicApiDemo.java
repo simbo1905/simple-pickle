@@ -80,7 +80,7 @@ public class PublicApiDemo {
           Class<? extends Record> recordClass = (Class<? extends Record>) i;
 
           // Deserialize the list of animals
-          var returnedAnimals = Pickler.deserialize(recordClass, animalsBuffer);
+          var returnedAnimals = Pickler.deserializeMany(recordClass, animalsBuffer);
 
           // Cast the returned list to List<Animal> since we know all records implement Animal
           @SuppressWarnings("unchecked")

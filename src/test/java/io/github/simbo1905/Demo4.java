@@ -27,7 +27,7 @@ public class Demo4 {
     buffer.flip();
 
 // Deserialize the array
-    List<Person> deserializedPeople = Pickler.deserialize(Person.class, buffer);
+    List<Person> deserializedPeople = Pickler.deserializeMany(Person.class, buffer);
 
 // Verify the array was properly deserialized
     assertEquals(people.length, deserializedPeople.size());

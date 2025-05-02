@@ -595,7 +595,7 @@ class PicklerTest {
     buffer.flip();
     
     // Deserialize the array
-    @SuppressWarnings("MismatchedReadAndWriteOfArray") Person[] deserialized = Pickler.deserialize(Person.class, buffer).toArray(Person[]::new);
+    @SuppressWarnings("MismatchedReadAndWriteOfArray") Person[] deserialized = Pickler.deserializeMany(Person.class, buffer).toArray(Person[]::new);
     
     // Verify the array is empty
     assertEquals(0, deserialized.length);
@@ -625,7 +625,7 @@ class PicklerTest {
     buffer.flip();
     
     // Deserialize the array
-    Person[] deserialized = Pickler.deserialize(Person.class, buffer).toArray(Person[]::new);
+    Person[] deserialized = Pickler.deserializeMany(Person.class, buffer).toArray(Person[]::new);
     
     // Verify array length
     assertEquals(people.length, deserialized.length);

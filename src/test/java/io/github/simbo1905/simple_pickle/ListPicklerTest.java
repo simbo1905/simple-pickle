@@ -42,7 +42,7 @@ public class ListPicklerTest {
     // Flip the buffer to prepare for reading
     buffer.flip();
     // Deserialize
-    final List<ListRecord> deserialized = Pickler.deserialize(ListRecord.class, buffer);
+    final List<ListRecord> deserialized = Pickler.deserializeMany(ListRecord.class, buffer);
 
     // Verify the record counts
     assertEquals(original.list().size(), deserialized.size());
@@ -128,7 +128,7 @@ public class ListPicklerTest {
     buffer.flip();
 
     // Deserialize
-    List<NestedListRecord> deserialized = Pickler.deserialize(NestedListRecord.class, buffer);
+    List<NestedListRecord> deserialized = Pickler.deserializeMany(NestedListRecord.class, buffer);
 
     // Verify the nested list structure
     assertEquals(original.size(), deserialized.size());
@@ -203,7 +203,7 @@ public class ListPicklerTest {
         .forEach(i -> {
           // Deserialize the list of animals
           //var returnedAnimals = PicklerOld.deserializeArray(i, animalsBuffer);
-          var returnedAnimals = Pickler.deserialize(i, animalsBuffer);
+          var returnedAnimals = Pickler.deserializeMany(i, animalsBuffer);
           // Check if the deserialized Dog instance is equal to the original
           if (animals.containsAll(returnedAnimals)) {
             LOGGER.info(i.getSimpleName() + " serialized and deserialized correctly");
