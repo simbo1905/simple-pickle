@@ -17,6 +17,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static io.github.simbo1905.simple_pickle.Pickler.PicklerBase.LOGGER;
 import static io.github.simbo1905.simple_pickle.Pickler.picklerForRecord;
@@ -84,6 +85,11 @@ class MorePicklerTests {
     assertNull(internal2.right());
   }
 
+  @SuppressWarnings("unchecked")
+  static <A> Stream<A> unsafeCast(Stream<Record> stream) {
+    return (Stream<A>) stream;
+  }
+
   /// Tests serialization and deserialization of all animal types in a single buffer
   @Test
   void allAnimalsInBuffer() {
@@ -96,6 +102,8 @@ class MorePicklerTests {
 
     // Create an array of all animals
     final var originalAnimals = new Animal[]{dog, cat, eagle, penguin, alicorn};
+
+    final var animals2 = Stream.of(dog, cat, eagle, penguin, alicorn);
 
     // Get a pickler for the Animal sealed interface
     final var pickler = picklerForSealedInterface(Animal.class);

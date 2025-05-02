@@ -67,14 +67,19 @@ See the unit tests for many examples of using the library.
 
 The goals of this codebase is to:
 
-1. Write one piece of stable code that is a single Java source file
-2. Be secure by default
-3. Support immutable records by using List.of() and Map.of() to create immutable collections
-4. Support `byte[]` as a necessary way to transfer binary data. Therefore we support arrays of other types for convenience.
-5. Never add features only fix any bugs
-6. Never have any third party dependencies
+1. Be fast. Seriously fast. We resolve and cache `MethodHandle`s to the both the default constructor and all the components. 
+2. Be small. Seriously small. Write one piece of stable code that is a single Java source file
+3. Be secure by default. 
+4. Be type safe by default.
+5. Support immutable records by using List.of() and Map.of() to create immutable collections
+6. Support `T[]` where `T` are the simple things that ByteBuffer can write plus UTF8 Strings or simple Records
 7. Support basic additive change to the message protocol for backwards and forwards compatibility of adjacent versions of microservices.
-8. Be simple enough to get an LLM to write the corresponding Rust code that can deserialize Java records into Rust structs. Rather than explicitly supporting cross-language serialization the library implicitly supports it through simplicity. 
+8. Never add features only fix any bugs
+9. Never have any third party dependencies
+10. Be simple enough to get an LLM to write the corresponding Rust code that can deserialize Java records into Rust structs. 
+
+That last point is to say that being cross-language when you are complicated is complicated. Being cross-language when you are
+simply is simple.  
 
 This mean you might find that this single Java file solution is an excellent alternative to using gRPC in your application. YMMV and T&Cs apply.
 
@@ -342,19 +347,38 @@ NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
 
 You will notice that to serialize many things we have the parameters `static void serialize(T[], buffer)` which takes an array as input. Yet when we read back we get a list and have to pass in the class to type the list `final List<Animal> returned = deserialize(Animal.class, buffer)`. Regrettably this is due to the limitations of generics in Java. 
 
-Arrays are mutable which means that if we read back an array it would not be immutable. So we prefer to read back a list.
-Yet Java Generics cannot enforce that a list of things that are in a sealed trait are all Records. AFAIK this due to the 
-famous erasure. So we are forces to pass in the class of the sealed interface as an additional parameter. That forces 
-the knowledge of actual specialist Pickler of sealed traits to resolve. We do not need to do that with arrays as they 
-have a runtime type. If I say deserialize to an array then the type of the array is known to be the sealed interface. 
-Yet I cannot allocate the array until I read the stream. In my eyes this is the lesser of all evils is to pass in the class 
-that you are intended to read back when you serialize the stream. YMMV. 
+We cannot serialize a `Stream<T>` which would unify `List<T>` and `Array[T]` as we need to write the size before we write
+other things. That would terminate the stream and blow someone else using after we drained it. Also, we cannot create a 
+type that is `String<? extends SealedTrate & Recordd>` due to Java's erasure. In contrast `Animal[]` has a runtime type 
+and it is type safe. Making shallow copies of lists to arrays makes a defensive copy of any mutable lists. This makes it 
+not much of a problem to use arrays. YMMV. 
 
-We cannot serialize a Stream<T> which would unify `List<T>` and `Array[T]` as we need to write the size before we write 
-other things. That would terminate the stream and blow someone else using after we drained it. The API makes you shallow copy of any collection into an array. In my eyes this is the lesser of all evils. YMMV. 
+The point here is that this library cannot be typesafe and fully generic due to limitations of Java generics. Yet you 
+yourself can do any amount of unsafe casting if you want to with: 
 
-If people know a better way to deal with this then please raise an issue with a pull request.
+```java
+  ///  Trust me what could possibly go wrong at runtime? 
+  @SuppressWarnings("unchecked")
+  static <A> Stream<A> unsafeCast(Stream<Record> stream) {
+    return (Stream<A>) stream;
+  }
+```
  
+You can do this safely with the following Pickler static method: 
+
+```java
+  static <A> Stream<A> permittedOf(Stream<Record> stream, Class<A> permitted) {
+    return stream.filter(permitted::isInstance)
+        .map(permitted::cast);
+  }
+```
+
+This allows you to do: 
+
+````java
+  final var animalsStream = Stream.of(dog, cat, eagle, penguin, alicorn);
+````
+
 ## Schema Evolution
 
 While Java Record Pickler is primarily designed for type-safe serialization of message protocols with simple data transfer records rather than long-term storage, it does support limited schema evolution to facilitate communication between microservices running different versions of a protocol.
