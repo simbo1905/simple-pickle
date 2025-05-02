@@ -1,6 +1,7 @@
 # No Framework Pickler
 
-No Framework Pickler: A lightweight, zero-dependency Java serialization library that generates type-safe, reflection-free serializers for records and sealed interfaces—perfect. It is perfect for building secure, modern message protocols of sealed interfaces containing nested records, arrays, maps and simple enum constants. It supports binary backwards compatibility of additive changes through alternative constructors (see Schema Evolution section below).
+No Framework Pickler: A tiny, fast, type safe, zero-dependency Java serialization library in a single java source file.  
+It creates type-safe, reflection-free serializers for records and sealed interfaces—perfect. It is perfect for building secure, modern message protocols of sealed interfaces. It supports nested records, arrays, maps and simple enum constants. Binary backwards compatibility is enabled through alternative constructors and adding components to the end of the record declaration (see Schema Evolution section below).
 
 It works with nested sealed interfaces of permitted record types or an outer array of such where the records may contain arbitrarily nested:
 
