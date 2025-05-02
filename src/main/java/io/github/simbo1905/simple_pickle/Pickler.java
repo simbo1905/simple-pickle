@@ -62,92 +62,9 @@ public interface Pickler<T> {
         throw new IllegalArgumentException(msg);
       }
       // Validate record components for enum types
-      validateRecordComponents((Class<R>) clazz);
+      PicklerBase.validateRecordComponents((Class<R>) clazz);
       return PicklerBase.createPicklerForRecord((Class<R>) clazz);
     });
-  }
-
-  /// Validates that all enum types used in record components are simple enums.
-  /// A simple enum has no instance fields, no custom constructors, and no class bodies.
-  ///
-  /// @param recordClass The record class to validate
-  /// @throws UnsupportedOperationException if a complex enum is found
-  static <R extends Record> void validateRecordComponents(Class<R> recordClass) {
-    RecordComponent[] components = recordClass.getRecordComponents();
-    for (RecordComponent component : components) {
-      Class<?> type = component.getType();
-
-      // Check if the type is an enum
-      if (type.isEnum()) {
-        validateSimpleEnum(type);
-      }
-
-      // Check if it's an array of enums
-      if (type.isArray() && type.getComponentType().isEnum()) {
-        validateSimpleEnum(type.getComponentType());
-      }
-
-    }
-  }
-
-  /// Helper method to get an enum constant with proper type witness
-  ///
-  /// @param enumClass The enum class
-  /// @param enumName The name of the enum constant
-  /// @return The enum constant
-  @SuppressWarnings("unchecked")
-  static <E extends Enum<E>> Object enumValueOf(Class<?> enumClass, String enumName) {
-    return Enum.valueOf((Class<E>) enumClass, enumName);
-  }
-
-  /// Validates that an enum is a simple enum without custom fields, methods, or constructors.
-  ///
-  /// @param enumClass The enum class to validate
-  /// @throws UnsupportedOperationException if the enum is complex
-  static void validateSimpleEnum(Class<?> enumClass) {
-    if (!enumClass.isEnum()) {
-      return;
-    }
-
-    // Check for instance fields (excluding compiler-generated ones)
-    final var fields = enumClass.getDeclaredFields();
-    Arrays.stream(fields)
-        .filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers()) &&
-            !field.isSynthetic() &&
-            !field.getName().equals("$VALUES") &&
-            !field.getName().equals("name") &&
-            !field.getName().equals("ordinal"))
-        .findFirst()
-        .ifPresent(field -> {
-          final var msg = "Complex enum not supported: " + enumClass.getName() +
-              " has instance field: " + field.getName();
-          LOGGER.severe(msg);
-          throw new UnsupportedOperationException(msg);
-        });
-
-    // Check for custom constructors
-    final var constructors = enumClass.getDeclaredConstructors();
-    Arrays.stream(constructors)
-        .filter(constructor -> !constructor.isSynthetic() && constructor.getParameterCount() > 2)
-        .findFirst()
-        .ifPresent(constructor -> {
-          final var msg = "Complex enum not supported: " + enumClass.getName() +
-              " has custom constructor with " + constructor.getParameterCount() + " parameters";
-          LOGGER.severe(msg);
-          throw new UnsupportedOperationException(msg);
-        });
-
-    // Check for enum constants with class bodies
-    final var constants = enumClass.getEnumConstants();
-    Arrays.stream(constants)
-        .filter(constant -> constant.getClass() != enumClass)
-        .findFirst()
-        .ifPresent(constant -> {
-          final var msg = "Complex enum not supported: " + enumClass.getName() +
-              " has enum constant with class body: " + ((Enum<?>) constant).name();
-          LOGGER.severe(msg);
-          throw new UnsupportedOperationException(msg);
-        });
   }
 
   /// Get a Pickler for a record class, creating one if it doesn't exist in the registry
@@ -172,7 +89,7 @@ public interface Pickler<T> {
 
     // Write component type
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-    writeClassNameWithDeduplication(buffer, array.getClass().getComponentType(), class2BufferOffset);
+    PicklerBase.writeClassNameWithDeduplication(buffer, array.getClass().getComponentType(), class2BufferOffset);
 
     // Write array length
     buffer.putInt(array.length);
@@ -198,7 +115,7 @@ public interface Pickler<T> {
       // Read component type
       Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
       try {
-        Class<?> readComponentType = resolveClass(buffer, bufferOffset2Class);
+        Class<?> readComponentType = PicklerBase.resolveClass(buffer, bufferOffset2Class);
         if (!componentType.equals(readComponentType)) {
           final var msg = "Component type mismatch: expected " + componentType.getName() +
               " but got " + readComponentType.getName();
@@ -233,13 +150,19 @@ public interface Pickler<T> {
   }
 
 
-  /// Serialize an array of records
+  /// Serialize a collection of records. It is not possible statically state that there is some generic type that is
+  /// both a record and implements a sealed interface. This is due to limitations of Java generics. This means we cannot
+  /// have a Collection<SealedInterface> that we know is also Collection<Record> at the same time. This means we have to
+  /// pass the component type of the collection as a parameter. In contrast we have another method that takes an array
+  /// and arrays are not generic they have a runtime type so we do no have to repeat ourselves. It is therefore less
+  /// error-prone to use the very clunky way to convert a collection to an array and then use the array method which is
+  /// `SealedTrait[] array = collection.toArray(new SealedTrait[0]);`
   ///
-  /// @param componentType The component type of the array
-  /// @param list The array of records to serialize
+  /// @param componentType The class that is common to all the objects in the collection
+  /// @param collection The array of records to serialize
   /// @param buffer The buffer to write to
   /// @param <R> The record type
-  static <R extends Record> void serializeList(Class<R> componentType, List<R> list, ByteBuffer buffer) {
+  static <R extends Record> void serializeCollection(Class<R> componentType, Collection<R> collection, ByteBuffer buffer) {
     // Get the pickler for the component type
     Pickler<R> pickler = picklerForRecord(componentType);
 
@@ -249,13 +172,13 @@ public interface Pickler<T> {
     // Write component type
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
 
-    writeClassNameWithDeduplication(buffer, componentType, class2BufferOffset);
+    PicklerBase.writeClassNameWithDeduplication(buffer, componentType, class2BufferOffset);
 
     // Write array length
-    buffer.putInt(list.size());
+    buffer.putInt(collection.size());
 
     // Write each element
-    for (R element : list) {
+    for (R element : collection) {
       pickler.serialize(element, buffer);
     }
   }
@@ -265,8 +188,8 @@ public interface Pickler<T> {
   /// @param <R>           The record type
   /// @param componentType The component type of the array
   /// @param buffer        The buffer to read from
-  /// @return The deserialized array
-  static <R extends Record> List<R> deserializeList(Class<R> componentType, ByteBuffer buffer) {
+  /// @return The deserialized objects in the order they were serialized
+  static <R extends Record> List<R> deserialize(Class<R> componentType, ByteBuffer buffer) {
     // Skip the array marker if present
     if (buffer.get(buffer.position()) == Constants.ARRAY.marker()) {
       buffer.get(); // Consume the marker
@@ -274,7 +197,7 @@ public interface Pickler<T> {
       // Read component type
       Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
       try {
-        Class<?> readComponentType = resolveClass(buffer, bufferOffset2Class);
+        Class<?> readComponentType = PicklerBase.resolveClass(buffer, bufferOffset2Class);
         if (!componentType.equals(readComponentType)) {
           final var msg = "Component type mismatch: expected " + componentType.getName() +
               " but got " + readComponentType.getName();
@@ -297,6 +220,26 @@ public interface Pickler<T> {
     return IntStream.range(0, buffer.getInt())
         .mapToObj(i -> pickler.deserialize(buffer))
         .toList();
+  }
+
+  /// In order to have a static method that enforces a stream to be records we must do a runtime check.
+  /// If there are permitted subclasses of the sealed interface that are not records then they are ignored.
+  /// If we try to create a pickler for such as sealed interface we will get runtime exception when instantiate a pickler.
+  static <S> Stream<Record> recordsOf(Stream<S> stream) {
+    return stream.filter(Record.class::isInstance)
+        .map(Record.class::cast);
+  }
+
+  /// This method is to work around restrictions in Java generics. It is not possible to say that something is a type
+  /// that both extends a record and implements a sealed interface. This method has to just force the cast. Yet we can
+  /// filter at runtime with `recordsOf` to ensure that we only have records. You will never get a runtime
+  /// exception if you apply this method to a stream of records created through `recordsOf`:
+  /// ```java
+  /// int totalSize = recordsOf(stream).mapToInt(Pickler::sized).sum();
+  ///```
+  static <T extends Record> int sized(T value) {
+    //noinspection unchecked
+    return picklerForRecord((Class<T>) value.getClass()).sizeOf(value);
   }
 
   /// Calculate the size of a list of records
@@ -362,130 +305,6 @@ public interface Pickler<T> {
     return size[0];
   }
 
-  /// Helper method to write a class name to a buffer with deduplication.
-  /// If the class has been seen before, writes a negative reference instead of the full name.
-  ///
-  /// @param buffer The buffer to write to
-  /// @param clazz The class to write
-  /// @param class2BufferOffset Map tracking class to buffer position
-  static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz,
-                                              Map<Class<?>, Integer> class2BufferOffset) {
-    LOGGER.finest(() -> "writeClassNameWithDeduplication: class=" + clazz.getName() +
-        ", buffer position=" + buffer.position() +
-        ", map contains class=" + class2BufferOffset.containsKey(clazz));
-
-    // Check if we've seen this class before
-    Integer existingOffset = class2BufferOffset.get(clazz);
-    if (existingOffset != null) {
-      // We've seen this class before, write a negative reference
-      int reference = ~existingOffset;
-      buffer.putInt(reference); // Using bitwise complement for negative reference
-      LOGGER.finest(() -> "Wrote class reference: " + clazz.getName() +
-          " at offset " + existingOffset + ", value=" + reference);
-    } else {
-      // First time seeing this class, write the full name
-      String className = clazz.getName();
-      byte[] classNameBytes = className.getBytes(UTF_8);
-      int classNameLength = classNameBytes.length;
-
-      // Store current position before writing
-      int currentPosition = buffer.position();
-
-      // Write positive length and class name
-      buffer.putInt(classNameLength);
-      buffer.put(classNameBytes);
-
-      // Store the position where we wrote this class
-      class2BufferOffset.put(clazz, currentPosition);
-      LOGGER.finest(() -> "Wrote class name: " + className +
-          " at offset " + currentPosition +
-          ", length=" + classNameLength +
-          ", new buffer position=" + buffer.position());
-    }
-  }
-
-  /// Helper method to read a class name from a buffer with deduplication support.
-  ///
-  /// @param buffer The buffer to read from
-  /// @param bufferOffset2Class Map tracking buffer position to class
-  /// @return The loaded class
-  static Class<?> resolveClass(ByteBuffer buffer,
-                               Map<Integer, Class<?>> bufferOffset2Class)
-      throws ClassNotFoundException {
-
-    int bufferPosition = buffer.position();
-
-    LOGGER.finest(() -> "resolveClass: buffer position=" + bufferPosition +
-        ", remaining=" + buffer.remaining());
-
-    // Read the class name length or reference
-    int componentTypeLength = buffer.getInt();
-
-    if (componentTypeLength > Short.MAX_VALUE) {
-      final var msg = "The max length of a string in java is 65535 bytes, " +
-          "but the length of the class name is " + componentTypeLength;
-      LOGGER.severe(() -> msg);
-      throw new IllegalArgumentException(msg);
-    }
-
-    LOGGER.finest(() -> "Read length/reference value: " + componentTypeLength +
-        ", buffer position after read=" + buffer.position());
-
-    if (componentTypeLength < 0) {
-      // This is a reference to a previously seen class
-      int offset = ~componentTypeLength; // Decode the reference using bitwise complement
-      Class<?> referencedClass = bufferOffset2Class.get(offset);
-
-      LOGGER.finest(() -> "Reference detected. Offset=" + offset +
-          ", map contains offset=" + bufferOffset2Class.containsKey(offset) +
-          ", referenced class=" + (referencedClass != null ? referencedClass.getName() : "null"));
-
-      if (referencedClass == null) {
-        final var msg = "Invalid class reference offset: " + offset;
-        LOGGER.severe(() -> msg);
-        throw new IllegalArgumentException(msg);
-      }
-      return referencedClass;
-    } else {
-      // This is a new class name
-      int currentPosition = buffer.position() - 4; // Position before reading the length
-
-      LOGGER.finest(() -> "New class name detected. Length=" + componentTypeLength +
-          ", stored position=" + currentPosition +
-          ", remaining bytes=" + buffer.remaining());
-
-      if (buffer.remaining() < componentTypeLength) {
-        final var msg = "Buffer underflow: needed " + componentTypeLength +
-            " bytes but only " + buffer.remaining() + " remaining";
-        LOGGER.severe(() -> msg);
-        throw new IllegalArgumentException(msg);
-      }
-
-      // Read the class name
-      byte[] classNameBytes = new byte[componentTypeLength];
-      buffer.get(classNameBytes);
-      String className = new String(classNameBytes, UTF_8);
-
-      // Validate class name - add basic validation that allows array type names like `[I`, `[[I`, `[L`java.lang.String;` etc.
-      if (!className.matches("[\\[\\]a-zA-Z0-9_.$;]+")) {
-        final var msg = "Invalid class name format: " + className;
-        LOGGER.severe(msg);
-        throw new IllegalArgumentException(msg);
-      }
-
-      // Load the class using our helper method
-      Class<?> loadedClass = PicklerBase.getClassForName(className);
-
-      // Store in our map for future references
-      bufferOffset2Class.put(currentPosition, loadedClass);
-      LOGGER.finest(() -> "Read class name at offset " + currentPosition +
-          ": " + className +
-          ", new buffer position=" + buffer.position());
-
-      return loadedClass;
-    }
-  }
-
   interface PicklerInternal<T> extends Pickler<T> {
     void serialize(T object, ByteBuffer buffer, Map<Class<?>, Integer> class2BufferOffset);
 
@@ -515,6 +334,213 @@ public interface Pickler<T> {
   /// @see Pickler
   /// @see Record
   abstract class PicklerBase<R extends Record> implements PicklerInternal<R> {
+
+    /// Validates that all enum types used in record components are simple enums.
+    /// A simple enum has no instance fields, no custom constructors, and no class bodies.
+    ///
+    /// @param recordClass The record class to validate
+    /// @throws UnsupportedOperationException if a complex enum is found
+    public static <R extends Record> void validateRecordComponents(Class<R> recordClass) {
+      RecordComponent[] components = recordClass.getRecordComponents();
+      for (RecordComponent component : components) {
+        Class<?> type = component.getType();
+
+        // Check if the type is an enum
+        if (type.isEnum()) {
+          validateSimpleEnum(type);
+        }
+
+        // Check if it's an array of enums
+        if (type.isArray() && type.getComponentType().isEnum()) {
+          validateSimpleEnum(type.getComponentType());
+        }
+
+      }
+    }
+
+    /// Validates that an enum is a simple enum without custom fields, methods, or constructors.
+    ///
+    /// @param enumClass The enum class to validate
+    /// @throws UnsupportedOperationException if the enum is complex
+    public static void validateSimpleEnum(Class<?> enumClass) {
+      if (!enumClass.isEnum()) {
+        return;
+      }
+
+      // Check for instance fields (excluding compiler-generated ones)
+      final var fields = enumClass.getDeclaredFields();
+      Arrays.stream(fields)
+          .filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers()) &&
+              !field.isSynthetic() &&
+              !field.getName().equals("$VALUES") &&
+              !field.getName().equals("name") &&
+              !field.getName().equals("ordinal"))
+          .findFirst()
+          .ifPresent(field -> {
+            final var msg = "Complex enum not supported: " + enumClass.getName() +
+                " has instance field: " + field.getName();
+            LOGGER.severe(msg);
+            throw new UnsupportedOperationException(msg);
+          });
+
+      // Check for custom constructors
+      final var constructors = enumClass.getDeclaredConstructors();
+      Arrays.stream(constructors)
+          .filter(constructor -> !constructor.isSynthetic() && constructor.getParameterCount() > 2)
+          .findFirst()
+          .ifPresent(constructor -> {
+            final var msg = "Complex enum not supported: " + enumClass.getName() +
+                " has custom constructor with " + constructor.getParameterCount() + " parameters";
+            LOGGER.severe(msg);
+            throw new UnsupportedOperationException(msg);
+          });
+
+      // Check for enum constants with class bodies
+      final var constants = enumClass.getEnumConstants();
+      Arrays.stream(constants)
+          .filter(constant -> constant.getClass() != enumClass)
+          .findFirst()
+          .ifPresent(constant -> {
+            final var msg = "Complex enum not supported: " + enumClass.getName() +
+                " has enum constant with class body: " + ((Enum<?>) constant).name();
+            LOGGER.severe(msg);
+            throw new UnsupportedOperationException(msg);
+          });
+    }
+
+    /// Helper method to write a class name to a buffer with deduplication.
+    /// If the class has been seen before, writes a negative reference instead of the full name.
+    ///
+    /// @param buffer The buffer to write to
+    /// @param clazz The class to write
+    /// @param class2BufferOffset Map tracking class to buffer position
+    public static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz,
+                                                       Map<Class<?>, Integer> class2BufferOffset) {
+      LOGGER.finest(() -> "writeClassNameWithDeduplication: class=" + clazz.getName() +
+          ", buffer position=" + buffer.position() +
+          ", map contains class=" + class2BufferOffset.containsKey(clazz));
+
+      // Check if we've seen this class before
+      Integer existingOffset = class2BufferOffset.get(clazz);
+      if (existingOffset != null) {
+        // We've seen this class before, write a negative reference
+        int reference = ~existingOffset;
+        buffer.putInt(reference); // Using bitwise complement for negative reference
+        LOGGER.finest(() -> "Wrote class reference: " + clazz.getName() +
+            " at offset " + existingOffset + ", value=" + reference);
+      } else {
+        // First time seeing this class, write the full name
+        String className = clazz.getName();
+        byte[] classNameBytes = className.getBytes(UTF_8);
+        int classNameLength = classNameBytes.length;
+
+        // Store current position before writing
+        int currentPosition = buffer.position();
+
+        // Write positive length and class name
+        buffer.putInt(classNameLength);
+        buffer.put(classNameBytes);
+
+        // Store the position where we wrote this class
+        class2BufferOffset.put(clazz, currentPosition);
+        LOGGER.finest(() -> "Wrote class name: " + className +
+            " at offset " + currentPosition +
+            ", length=" + classNameLength +
+            ", new buffer position=" + buffer.position());
+      }
+    }
+
+    /// Helper method to read a class name from a buffer with deduplication support.
+    ///
+    /// @param buffer The buffer to read from
+    /// @param bufferOffset2Class Map tracking buffer position to class
+    /// @return The loaded class
+    public static Class<?> resolveClass(ByteBuffer buffer,
+                                        Map<Integer, Class<?>> bufferOffset2Class)
+        throws ClassNotFoundException {
+
+      int bufferPosition = buffer.position();
+
+      LOGGER.finest(() -> "resolveClass: buffer position=" + bufferPosition +
+          ", remaining=" + buffer.remaining());
+
+      // Read the class name length or reference
+      int componentTypeLength = buffer.getInt();
+
+      if (componentTypeLength > Short.MAX_VALUE) {
+        final var msg = "The max length of a string in java is 65535 bytes, " +
+            "but the length of the class name is " + componentTypeLength;
+        LOGGER.severe(() -> msg);
+        throw new IllegalArgumentException(msg);
+      }
+
+      LOGGER.finest(() -> "Read length/reference value: " + componentTypeLength +
+          ", buffer position after read=" + buffer.position());
+
+      if (componentTypeLength < 0) {
+        // This is a reference to a previously seen class
+        int offset = ~componentTypeLength; // Decode the reference using bitwise complement
+        Class<?> referencedClass = bufferOffset2Class.get(offset);
+
+        LOGGER.finest(() -> "Reference detected. Offset=" + offset +
+            ", map contains offset=" + bufferOffset2Class.containsKey(offset) +
+            ", referenced class=" + (referencedClass != null ? referencedClass.getName() : "null"));
+
+        if (referencedClass == null) {
+          final var msg = "Invalid class reference offset: " + offset;
+          LOGGER.severe(() -> msg);
+          throw new IllegalArgumentException(msg);
+        }
+        return referencedClass;
+      } else {
+        // This is a new class name
+        int currentPosition = buffer.position() - 4; // Position before reading the length
+
+        LOGGER.finest(() -> "New class name detected. Length=" + componentTypeLength +
+            ", stored position=" + currentPosition +
+            ", remaining bytes=" + buffer.remaining());
+
+        if (buffer.remaining() < componentTypeLength) {
+          final var msg = "Buffer underflow: needed " + componentTypeLength +
+              " bytes but only " + buffer.remaining() + " remaining";
+          LOGGER.severe(() -> msg);
+          throw new IllegalArgumentException(msg);
+        }
+
+        // Read the class name
+        byte[] classNameBytes = new byte[componentTypeLength];
+        buffer.get(classNameBytes);
+        String className = new String(classNameBytes, UTF_8);
+
+        // Validate class name - add basic validation that allows array type names like `[I`, `[[I`, `[L`java.lang.String;` etc.
+        if (!className.matches("[\\[\\]a-zA-Z0-9_.$;]+")) {
+          final var msg = "Invalid class name format: " + className;
+          LOGGER.severe(msg);
+          throw new IllegalArgumentException(msg);
+        }
+
+        // Load the class using our helper method
+        Class<?> loadedClass = getClassForName(className);
+
+        // Store in our map for future references
+        bufferOffset2Class.put(currentPosition, loadedClass);
+        LOGGER.finest(() -> "Read class name at offset " + currentPosition +
+            ": " + className +
+            ", new buffer position=" + buffer.position());
+
+        return loadedClass;
+      }
+    }
+
+    /// Helper method to get an enum constant with proper type witness
+    ///
+    /// @param enumClass The enum class
+    /// @param enumName The name of the enum constant
+    /// @return The enum constant
+    @SuppressWarnings("unchecked")
+    public static <E extends Enum<E>> Object enumValueOf(Class<?> enumClass, String enumName) {
+      return Enum.valueOf((Class<E>) enumClass, enumName);
+    }
 
     abstract Object[] staticGetComponents(R record);
 

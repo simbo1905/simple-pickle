@@ -1,9 +1,12 @@
 package io.github.simbo1905;
 
+import io.github.simbo1905.simple_pickle.Pickler;
+
 import java.nio.ByteBuffer;
-import java.util.Arrays;
+import java.util.List;
 
 import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedInterface;
+import static io.github.simbo1905.simple_pickle.Pickler.recordsOf;
 
 
 public class PublicApiDemo {
@@ -28,13 +31,17 @@ public class PublicApiDemo {
     // Get a pickler for the sealed trait Animal
     var animalPickler = picklerForSealedInterface(Animal.class);
 
-    // Serialize and deserialize the Dog instance
-    var dogBuffer = ByteBuffer.allocate(64);
-    animalPickler.serialize(dog, dogBuffer);
-    int bytesWritten = dogBuffer.position();
-    dogBuffer.flip();
-    var returnedDog = animalPickler.deserialize(dogBuffer);
+    // preallocate a buffer for the Dog instance
+    var buffer = ByteBuffer.allocate(animalPickler.sizeOf(dog));
 
+    // Serialize and deserialize the Dog instance
+    animalPickler.serialize(dog, buffer);
+    // Flip the buffer to prepare for reading
+    int bytesWritten = buffer.position();
+    buffer.flip();
+    // Deserialize the Dog instance
+    var returnedDog = animalPickler.deserialize(buffer);
+    // Check if the deserialized Dog instance is equal to the original
     if (dog.equals(returnedDog)) {
       System.out.println("Dog serialized and deserialized correctly");
     } else {
@@ -42,34 +49,25 @@ public class PublicApiDemo {
           ¯\\_(ツ)_/¯
           """);
     }
-
+    // Check if the number of bytes written is correct
     if (bytesWritten != animalPickler.sizeOf(dog)) {
       throw new AssertionError("wrong number of bytes written");
     }
 
-    // Demo Eagle serialization/deserialization
-    var eagleBuffer = ByteBuffer.allocate(64);
-    animalPickler.serialize(eagle, eagleBuffer);
-    eagleBuffer.flip();
-    var returnedEagle = animalPickler.deserialize(eagleBuffer);
+    List<Animal> animals = List.of(dog, eagle, alicorn);
 
-    if (eagle.equals(returnedEagle)) {
-      System.out.println("Eagle serialized and deserialized correctly");
-    } else {
-      throw new AssertionError("Eagle serialization failed");
-    }
+    // sum the size of all the different records
+    int size = recordsOf(animals.stream())
+        .mapToInt(Pickler::sized)
+        .sum();
 
-    // Demo Alicorn serialization/deserialization
-    var alicornBuffer = ByteBuffer.allocate(256);
-    animalPickler.serialize(alicorn, alicornBuffer);
-    alicornBuffer.flip();
-    var returnedAlicorn = (Alicorn) animalPickler.deserialize(alicornBuffer);
+    final var animalsBuffer = ByteBuffer.allocate(size);
 
-    if (Arrays.equals(alicorn.magicPowers(), returnedAlicorn.magicPowers())) {
-      System.out.println("Alicorn serialized and deserialized correctly");
-    } else {
-      throw new AssertionError("Alicorn serialization failed");
-    }
+    // Serialize the list of animals
+    animals.forEach(i -> {
+      animalPickler.serialize(i, animalsBuffer);
+    });
   }
+
 }
 

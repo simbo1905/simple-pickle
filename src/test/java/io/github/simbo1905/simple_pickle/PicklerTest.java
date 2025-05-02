@@ -666,7 +666,7 @@ class PicklerTest {
     
     // Write component type
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-    Pickler.writeClassNameWithDeduplication(buffer, Shape.class, class2BufferOffset);
+    Pickler.PicklerBase.writeClassNameWithDeduplication(buffer, Shape.class, class2BufferOffset);
     
     // Write array length
     buffer.putInt(shapes.length);
@@ -684,7 +684,7 @@ class PicklerTest {
     // Read component type
     Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
     try {
-      Class<?> componentType = Pickler.resolveClass(buffer, bufferOffset2Class);
+      Class<?> componentType = Pickler.PicklerBase.resolveClass(buffer, bufferOffset2Class);
       assertEquals(Shape.class, componentType);
     } catch (ClassNotFoundException e) {
       fail("Failed to read component type: " + e.getMessage());
@@ -1195,7 +1195,7 @@ class PicklerTest {
 
     // Write outer component type (Person[].class)
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-    Pickler.writeClassNameWithDeduplication(buffer, Person[].class, class2BufferOffset);
+    Pickler.PicklerBase.writeClassNameWithDeduplication(buffer, Person[].class, class2BufferOffset);
 
     // Write outer array length
     buffer.putInt(teams.length);
@@ -1206,7 +1206,7 @@ class PicklerTest {
       buffer.put(Pickler.Constants.ARRAY.marker());
 
       // Write inner component type (Person.class)
-      Pickler.writeClassNameWithDeduplication(buffer, Person.class, class2BufferOffset);
+      Pickler.PicklerBase.writeClassNameWithDeduplication(buffer, Person.class, class2BufferOffset);
 
       // Write inner array length
       buffer.putInt(team.length);
@@ -1226,7 +1226,7 @@ class PicklerTest {
     // Read outer component type
     Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
     try {
-      Class<?> componentType = Pickler.resolveClass(buffer, bufferOffset2Class);
+      Class<?> componentType = Pickler.PicklerBase.resolveClass(buffer, bufferOffset2Class);
       assertEquals(Person[].class, componentType);
     } catch (ClassNotFoundException e) {
       fail("Failed to read component type: " + e.getMessage());
@@ -1243,7 +1243,7 @@ class PicklerTest {
 
       // Read inner component type
       try {
-        final Class<?> innerComponentType = Pickler.resolveClass(buffer, bufferOffset2Class);
+        final Class<?> innerComponentType = Pickler.PicklerBase.resolveClass(buffer, bufferOffset2Class);
         assertEquals(Person.class, innerComponentType);
       } catch (ClassNotFoundException e) {
         fail("Failed to read inner component type: " + e.getMessage());

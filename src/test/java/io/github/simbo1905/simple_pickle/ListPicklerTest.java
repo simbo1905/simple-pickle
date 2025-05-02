@@ -35,11 +35,12 @@ public class ListPicklerTest {
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
-    Pickler.serializeList(ListRecord.class, outerList, buffer);
+    Pickler.serializeCollection(ListRecord.class, outerList, buffer);
+
     // Flip the buffer to prepare for reading
     buffer.flip();
     // Deserialize
-    final List<ListRecord> deserialized = Pickler.deserializeList(ListRecord.class, buffer);
+    final List<ListRecord> deserialized = Pickler.deserialize(ListRecord.class, buffer);
 
     // Verify the record counts
     assertEquals(original.list().size(), deserialized.size());
@@ -121,11 +122,11 @@ public class ListPicklerTest {
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
-    Pickler.serializeList(NestedListRecord.class, original, buffer);
+    Pickler.serializeCollection(NestedListRecord.class, original, buffer);
     buffer.flip();
 
     // Deserialize
-    List<NestedListRecord> deserialized = Pickler.deserializeList(NestedListRecord.class, buffer);
+    List<NestedListRecord> deserialized = Pickler.deserialize(NestedListRecord.class, buffer);
 
     // Verify the nested list structure
     assertEquals(original.size(), deserialized.size());
