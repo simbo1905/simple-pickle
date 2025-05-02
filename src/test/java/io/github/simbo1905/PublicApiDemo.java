@@ -19,7 +19,7 @@ public class PublicApiDemo {
   public record Dog(String name, int age) implements Mammal {}
   public record Cat(String name, boolean purrs) implements Mammal {}
   public record Eagle(double wingspan) implements Bird {}
-  record Penguin(boolean canSwim) implements Bird {}
+  public record Penguin(boolean canSwim) implements Bird {}
   // @formatter:on
 
   public static void main(String[] args) {
