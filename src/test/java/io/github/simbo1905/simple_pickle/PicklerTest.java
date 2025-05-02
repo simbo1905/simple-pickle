@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.logging.ConsoleHandler;
@@ -586,15 +587,15 @@ class PicklerTest {
     Person[] emptyArray = new Person[0];
     
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfArray(emptyArray);
+    int size = Pickler.sizeOfMany(emptyArray);
     ByteBuffer buffer = ByteBuffer.allocate(size);
     
     // Serialize the array
-    Pickler.serializeArray(emptyArray, buffer);
+    Pickler.serializeMany(emptyArray, buffer);
     buffer.flip();
     
     // Deserialize the array
-    Person[] deserialized = Pickler.deserializeArray(Person.class, buffer);
+    @SuppressWarnings("MismatchedReadAndWriteOfArray") Person[] deserialized = Pickler.deserialize(Person.class, buffer).toArray(Person[]::new);
     
     // Verify the array is empty
     assertEquals(0, deserialized.length);
@@ -605,23 +606,26 @@ class PicklerTest {
   
   @Test
   void testRecordArray() {
-    // Create an array of records
-    Person[] people = new Person[] {
+
+    List<Person> personList = List.of(
         new Person("Alice", 30),
         new Person("Bob", 25),
         new Person("Charlie", 40)
-    };
+    );
+
+    // Create an array of records
+    Person[] people = personList.toArray(Person[]::new);
     
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfArray(people);
+    int size = Pickler.sizeOfMany(people);
     ByteBuffer buffer = ByteBuffer.allocate(size);
     
     // Serialize the array
-    Pickler.serializeArray(people, buffer);
+    Pickler.serializeMany(people, buffer);
     buffer.flip();
     
     // Deserialize the array
-    Person[] deserialized = Pickler.deserializeArray(Person.class, buffer);
+    Person[] deserialized = Pickler.deserialize(Person.class, buffer).toArray(Person[]::new);
     
     // Verify array length
     assertEquals(people.length, deserialized.length);

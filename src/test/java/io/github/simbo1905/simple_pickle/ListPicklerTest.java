@@ -31,11 +31,11 @@ public class ListPicklerTest {
     final List<ListRecord> outerList = List.of(original, new ListRecord(List.of("X", "Y")));
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfList(ListRecord.class, outerList);
+    int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
-    Pickler.serializeCollection(ListRecord.class, outerList, buffer);
+    Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
 
     // Flip the buffer to prepare for reading
     buffer.flip();
@@ -118,11 +118,11 @@ public class ListPicklerTest {
     }
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfList(NestedListRecord.class, original);
+    int size = Pickler.sizeOfMany(original.toArray(NestedListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
-    Pickler.serializeCollection(NestedListRecord.class, original, buffer);
+    Pickler.serializeMany(original.toArray(NestedListRecord[]::new), buffer);
     buffer.flip();
 
     // Deserialize

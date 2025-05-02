@@ -79,7 +79,7 @@ public interface Pickler<T> {
   /// @param array The array of records to serialize
   /// @param buffer The buffer to write to
   /// @param <R> The record type
-  static <R extends Record> void serializeArray(R[] array, ByteBuffer buffer) {
+  static <R extends Record> void serializeMany(R[] array, ByteBuffer buffer) {
     // Get the pickler for the component type
     @SuppressWarnings("unchecked")
     Pickler<R> pickler = picklerForRecord((Class<R>) array.getClass().getComponentType());
@@ -96,89 +96,6 @@ public interface Pickler<T> {
 
     // Write each element
     for (R element : array) {
-      pickler.serialize(element, buffer);
-    }
-  }
-
-  /// Deserialize an array of records
-  ///
-  /// @param <R>           The record type
-  /// @param componentType The component type of the array
-  /// @param buffer        The buffer to read from
-  /// @return The deserialized array
-  @SuppressWarnings("unchecked")
-  static <R extends Record> R[] deserializeArray(Class<R> componentType, ByteBuffer buffer) {
-    // Skip the array marker if present
-    if (buffer.get(buffer.position()) == Constants.ARRAY.marker()) {
-      buffer.get(); // Consume the marker
-
-      // Read component type
-      Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
-      try {
-        Class<?> readComponentType = PicklerBase.resolveClass(buffer, bufferOffset2Class);
-        if (!componentType.equals(readComponentType)) {
-          final var msg = "Component type mismatch: expected " + componentType.getName() +
-              " but got " + readComponentType.getName();
-          LOGGER.severe(() -> msg);
-          throw new IllegalArgumentException(msg);
-        }
-      } catch (ClassNotFoundException e) {
-        final var msg = "Failed to load component type class: " + e.getMessage();
-        LOGGER.severe(() -> msg);
-        throw new IllegalArgumentException(msg, e);
-      }
-    } else {
-      // If no array marker, rewind to original position
-      buffer.position(buffer.position() - 1);
-    }
-
-    // Read array length
-    int length = buffer.getInt();
-
-    // Create array of the right type and size
-    R[] array = (R[]) Array.newInstance(componentType, length);
-
-    // Get the pickler for the component type
-    Pickler<R> pickler = picklerForRecord(componentType);
-
-    // Deserialize each element
-    for (int i = 0; i < length; i++) {
-      array[i] = pickler.deserialize(buffer);
-    }
-
-    return array;
-  }
-
-
-  /// Serialize a collection of records. It is not possible statically state that there is some generic type that is
-  /// both a record and implements a sealed interface. This is due to limitations of Java generics. This means we cannot
-  /// have a Collection<SealedInterface> that we know is also Collection<Record> at the same time. This means we have to
-  /// pass the component type of the collection as a parameter. In contrast we have another method that takes an array
-  /// and arrays are not generic they have a runtime type so we do no have to repeat ourselves. It is therefore less
-  /// error-prone to use the very clunky way to convert a collection to an array and then use the array method which is
-  /// `SealedTrait[] array = collection.toArray(new SealedTrait[0]);`
-  ///
-  /// @param componentType The class that is common to all the objects in the collection
-  /// @param collection The array of records to serialize
-  /// @param buffer The buffer to write to
-  /// @param <R> The record type
-  static <R extends Record> void serializeCollection(Class<R> componentType, Collection<R> collection, ByteBuffer buffer) {
-    // Get the pickler for the component type
-    Pickler<R> pickler = picklerForRecord(componentType);
-
-    // Write array marker
-    buffer.put(Constants.ARRAY.marker());
-
-    // Write component type
-    Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-
-    PicklerBase.writeClassNameWithDeduplication(buffer, componentType, class2BufferOffset);
-
-    // Write array length
-    buffer.putInt(collection.size());
-
-    // Write each element
-    for (R element : collection) {
       pickler.serialize(element, buffer);
     }
   }
@@ -242,44 +159,13 @@ public interface Pickler<T> {
     return picklerForRecord((Class<T>) value.getClass()).sizeOf(value);
   }
 
-  /// Calculate the size of a list of records
-  ///
-  /// @param <R>  The record type
-  /// @param list The array of records
-  /// @return The size in bytes
-  static <R extends Record> int sizeOfList(Class<R> componentType, List<R> list) {
-    if (list == null) {
-      return 1; // Just the NULL marker
-    }
-
-    // This feels unnatural yet the final array can go into a lambda and hopefully escape analysis puts it onto the stack
-    final var size = new int[]{1};
-
-    // Add size for component type name (4 bytes for length + name bytes)
-    final var componentTypeName = componentType.getName();
-    size[0] += 4 + componentTypeName.getBytes(UTF_8).length;
-
-    // Add 4 bytes for array length
-    size[0] += 4;
-
-    // Get the pickler for the component type
-    final var pickler = picklerForRecord(componentType);
-
-    // Add size of each element using streams
-    list.stream()
-        .mapToInt(pickler::sizeOf)
-        .forEach(elementSize -> size[0] += elementSize);
-
-    return size[0];
-  }
-
 
   /// Calculate the size of an array of records
   ///
   /// @param array The array of records
   /// @param <R> The record type
   /// @return The size in bytes
-  static <R extends Record> int sizeOfArray(R[] array) {
+  static <R extends Record> int sizeOfMany(R[] array) {
     if (array == null) {
       return 1; // Just the NULL marker
     }

@@ -98,6 +98,8 @@ This means that you cannot attack this library to try to get it to deserialize a
 
 ## Usage Examples
 
+Below are some examples of how to use the library. You will notice that `serialize(T[], buffer)` takes an array as input yet when we read back we get a `List<T>`. Regrettably this is due to the limitations of generics in Java. See the section below "Type Safety Of Many Sealed Interfaces Things" for more details.
+
 ### Basic Record Serialization
 
 ```java
@@ -132,16 +134,18 @@ public record ListRecord(List<String> list) {
 
 final List<ListRecord> outerList = List.of(new ListRecord(List.of("A", "B")), new ListRecord(List.of("X", "Y")));
 
-// Calculate size and allocate buffer
-int size = Pickler.sizeOfList(ListRecord.class, outerList);
+// Calculate size and allocate buffer. Limitations of generics means we have shallow copy into an array.
+int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
-// Serialize
-Pickler.serializeList(ListRecord.class, outerList, buffer);
+// Serialize. Limitations of generics means we have to pass the sealed interface class. 
+Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
+
 // Flip the buffer to prepare for reading
 buffer.flip();
-// Deserialize
-final List<ListRecord> deserialized = Pickler.deserializeList(ListRecord.class, buffer);
+
+// Deserialize. Limitations of generics means we have to pass the sealed interface class. 
+final List<ListRecord> deserialized = Pickler.deserialize(ListRecord.class, buffer);
 // will throw an exception if you try to modify the list of the deserialized record
 try {
   deserialized.removeFirst();
@@ -204,15 +208,15 @@ Person[] people = {
 };
 
 // Calculate size and allocate buffer
-int size = pickler.sizeOf(people);
+int size = pickler.sizeOfMany(people);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize the array
-Pickler.serializeArray(people, buffer);
+Pickler.serializeMany(people, buffer);
 buffer.flip();
 
 // Deserialize the array
-Person[] deserializedPeople = Pickler.deserializeArray(buffer, Person.class);
+Person[] deserializedPeople = Pickler.deserialize(buffer, Person.class).toArary(Person[]::new);
 
 // Verify the array was properly deserialized
 assertEquals(people.length, deserializedPeople.length);
@@ -247,24 +251,20 @@ final var originalAnimals = new Animal[]{dog, cat, eagle, penguin, alicorn};
 // Get a pickler for the Animal sealed interface
 final var pickler = picklerForSealedTrait(Animal.class);
 
-// Calculate total buffer size needed using streams
-final var totalSize = Arrays.stream(originalAnimals)
-    .mapToInt(pickler::sizeOf)
-    .sum();
+// Calculate total buffer of the heterogeneous array
+final var totalSize = Pickler.sizeOfArray(emptyArray);
 
 // Allocate a single buffer to hold all animals
 final var buffer = ByteBuffer.allocate(totalSize);
 
-// Serialize all animals into the buffer using streams
-Arrays.stream(originalAnimals)
-  .forEach(animal -> pickler.serialize(animal, buffer));
+// Serialize all animals into the buffer
+Pickler.serializeArray(emptyArray, buffer);
 
 // Prepare buffer for reading
 buffer.flip();
 
 // Deserialize all animals from the buffer
-final var deserializedAnimals = new Animal[originalAnimals.length];
-Arrays.setAll(deserializedAnimals, i -> pickler.deserialize(buffer));
+Person[] deserialized = Pickler.deserializeArray(Person.class, buffer);
 ```
 
 ### Nested Record Tree
@@ -338,6 +338,23 @@ NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
 // see the unit test that validates the deserialized map matches the original map. 
 ```
 
+### Type Safety Of Many Sealed Interfaces Things
+
+You will notice that to serialize many things we have the parameters `static void serialize(T[], buffer)` which takes an array as input. Yet when we read back we get a list and have to pass in the class to type the list `final List<Animal> returned = deserialize(Animal.class, buffer)`. Regrettably this is due to the limitations of generics in Java. 
+
+Arrays are mutable which means that if we read back an array it would not be immutable. So we prefer to read back a list.
+Yet Java Generics cannot enforce that a list of things that are in a sealed trait are all Records. AFAIK this due to the 
+famous erasure. So we are forces to pass in the class of the sealed interface as an additional parameter. That forces 
+the knowledge of actual specialist Pickler of sealed traits to resolve. We do not need to do that with arrays as they 
+have a runtime type. If I say deserialize to an array then the type of the array is known to be the sealed interface. 
+Yet I cannot allocate the array until I read the stream. In my eyes this is the lesser of all evils is to pass in the class 
+that you are intended to read back when you serialize the stream. YMMV. 
+
+We cannot serialize a Stream<T> which would unify `List<T>` and `Array[T]` as we need to write the size before we write 
+other things. That would terminate the stream and blow someone else using after we drained it. The API makes you shallow copy of any collection into an array. In my eyes this is the lesser of all evils. YMMV. 
+
+If people know a better way to deal with this then please raise an issue with a pull request.
+ 
 ## Schema Evolution
 
 While Java Record Pickler is primarily designed for type-safe serialization of message protocols with simple data transfer records rather than long-term storage, it does support limited schema evolution to facilitate communication between microservices running different versions of a protocol.
