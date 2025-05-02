@@ -3,7 +3,9 @@ package io.github.simbo1905;
 import io.github.simbo1905.simple_pickle.Pickler;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedInterface;
 import static io.github.simbo1905.simple_pickle.Pickler.recordsOf;
@@ -12,14 +14,14 @@ import static io.github.simbo1905.simple_pickle.Pickler.recordsOf;
 public class PublicApiDemo {
 
   // @formatter:off
-  sealed interface Animal permits Mammal, Bird, Alicorn {}
-  sealed interface Mammal extends Animal permits Dog, Cat { }
-  sealed interface Bird extends Animal permits Eagle, Penguin {}
+  public sealed interface Animal permits Mammal, Bird, Alicorn {}
+  public sealed interface Mammal extends Animal permits Dog, Cat { }
+  public sealed interface Bird extends Animal permits Eagle, Penguin {}
   public record Alicorn(String name, String[] magicPowers) implements Animal {}
   public record Dog(String name, int age) implements Mammal {}
   public record Cat(String name, boolean purrs) implements Mammal {}
   public record Eagle(double wingspan) implements Bird {}
-  record Penguin(boolean canSwim) implements Bird {}
+  public record Penguin(boolean canSwim) implements Bird {}
   // @formatter:on
 
   public static void main(String[] args) {
@@ -63,10 +65,24 @@ public class PublicApiDemo {
 
     final var animalsBuffer = ByteBuffer.allocate(size);
 
+    final Animal[] array = animals.toArray(Animal[]::new);
+
+    final Stream<Record> records = Pickler.recordsOf(Arrays.stream(array));
+
+    //final Record[] recordsArray = records.toArray(Record[]::new);
+
+    //final Stream<Animal> r = Pickler.permittedOf(records, Animal.class);
+
     // Serialize the list of animals
-    animals.forEach(i -> {
-      animalPickler.serialize(i, animalsBuffer);
-    });
+    Pickler.serializeMany(records.toArray(Animal[]::new), animalsBuffer);
+
+//    final var cat = new Cat("Whiskers", true);
+//    final var penguin = new Penguin(true);
+//
+//    final var animalsStream = Stream.of(dog, cat, eagle, penguin, alicorn);
+//    final Stream<Record> animalRecord = recordsOf(animalsStream);
+//    final Stream<Animal> animalStream2 = recordsOf(animalsStream)
+//        .map(i -> (Animal) i);
   }
 
 }

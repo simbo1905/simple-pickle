@@ -56,7 +56,7 @@ public interface Pickler<T> {
     // Check if we already have a Pickler for this record class
     return (Pickler<R>) PICKLER_REGISTRY.computeIfAbsent(recordClass, clazz -> {
       // Check if the class is a record
-      if (!clazz.isRecord()) {
+      if (!(Record.class.isAssignableFrom(clazz))) {
         final var msg = "Class is not a record: " + clazz.getName();
         LOGGER.severe(() -> msg);
         throw new IllegalArgumentException(msg);
@@ -139,12 +139,19 @@ public interface Pickler<T> {
         .toList();
   }
 
-  /// In order to have a static method that enforces a stream to be records we must do a runtime check.
-  /// If there are permitted subclasses of the sealed interface that are not records then they are ignored.
+  /// A runtime check is required to know that every instance of a sealed trait is a record type.
+  /// If there are other subclasses of the sealed interface that are not records then they are removed.
   /// If we try to create a pickler for such as sealed interface we will get runtime exception when instantiate a pickler.
   static <S> Stream<Record> recordsOf(Stream<S> stream) {
     return stream.filter(Record.class::isInstance)
         .map(Record.class::cast);
+  }
+
+  /// Due to Java generics limitations if we want to convert back from a stream of records to a stream of
+  /// permitted subclasses of a sealed interface we have to pass the class to do a cast.
+  static <A> Stream<A> permittedOf(Stream<Record> stream, Class<A> permitted) {
+    return stream.filter(permitted::isInstance)
+        .map(permitted::cast);
   }
 
   /// This method is to work around restrictions in Java generics. It is not possible to say that something is a type
