@@ -542,7 +542,7 @@ public interface Pickler<T> {
       return size;
     }
 
-    int staticSizeOf(Object c, Set<Class<?>> classes) {
+    static int staticSizeOf(Object c, Set<Class<?>> classes) {
       if (c == null) {
         LOGGER.finest(() -> "Size of null is 1 byte");
         return 1;
@@ -837,7 +837,7 @@ public interface Pickler<T> {
       return this.staticCreateFromComponents(components);
     }
 
-    Object deserializeValue(Map<Integer, Class<?>> bufferOffset2Class, ByteBuffer buffer) {
+    static Object deserializeValue(Map<Integer, Class<?>> bufferOffset2Class, ByteBuffer buffer) {
       final byte type = buffer.get();
       final Constants typeEnum = fromMarker(type);
       return switch (typeEnum) {
