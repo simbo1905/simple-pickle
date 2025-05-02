@@ -25,12 +25,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /// Tests for schema evolution in records.
 /// This class demonstrates how records can evolve over time while maintaining
 /// compatibility with previously serialized data.
-class SchemaEvolutionTest {
+public class SchemaEvolutionTest {
 
-    private static final Logger LOGGER = Logger.getLogger(SchemaEvolutionTest.class.getName());
+    static final Logger LOGGER = Logger.getLogger(SchemaEvolutionTest.class.getName());
 
-    // Original schema with just one field
-    private static final String ORIGINAL_SCHEMA = """
+    /// Original schema with just one field
+    static final String ORIGINAL_SCHEMA = """
             package io.github.simbo1905.simple_pickle.evolution;
             
             /// A simple record with a single field.
@@ -38,18 +38,19 @@ class SchemaEvolutionTest {
             }
             """;
 
-    // Evolved schema with an additional field and backward compatibility constructor
-    private static final String EVOLVED_SCHEMA = """
-            package io.github.simbo1905.simple_pickle.evolution;
-            
-            /// An evolved record with an additional field and backward compatibility.
-            public record TestRecord(int myInt, int myNewInt) {
+    /// Evolved schema with an additional field and backward compatibility constructor
+    /// IMPORTANT note that it has renamed the int field to `blah` it is only changing the type or reordering that is a problem.
+    static final String EVOLVED_SCHEMA = """
+        package io.github.simbo1905.simple_pickle.evolution;
+        
+        /// An evolved record with an additional field and backward compatibility.
+        public record TestRecord(int blah, int myNewInt) {
                 /// Backward compatibility constructor that sets default value for new field.
-                public TestRecord(int myInt) {
-                    this(myInt, 42); // Default value for the new field
+                public TestRecord(int xxx) {
+                    this(xxx, 42); // Default value for the new field
                 }
             }
-            """;
+        """;
 
     /// Tests schema evolution by:
     /// 1. Compiling and loading the original schema
@@ -139,7 +140,7 @@ class SchemaEvolutionTest {
     ///
     /// @param sourceCode The source code
     /// @return The loaded class
-    static Class<?> compileAndLoadClass(String sourceCode) throws Exception {
+    public static Class<?> compileAndLoadClass(String sourceCode) throws Exception {
         final String fullClassName = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
         
         // Compile the source code
@@ -154,7 +155,7 @@ class SchemaEvolutionTest {
     /// @param sourceCode The source code to compile
     /// @param fullClassName The fully qualified class name
     /// @return The compiled bytecode
-    private static byte[] compileSource(String sourceCode, String fullClassName) {
+    public static byte[] compileSource(String sourceCode, String fullClassName) {
         // Get the Java compiler
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
@@ -185,7 +186,7 @@ class SchemaEvolutionTest {
     /// Throws a runtime exception with compilation error details.
     ///
     /// @param diagnostics The compilation diagnostics
-    private static void throwCompilationError(DiagnosticCollector<JavaFileObject> diagnostics) {
+    public static void throwCompilationError(DiagnosticCollector<JavaFileObject> diagnostics) {
         StringBuilder errorMsg = new StringBuilder("Compilation failed:\n");
         for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
             errorMsg.append(diagnostic).append("\n");
@@ -198,7 +199,7 @@ class SchemaEvolutionTest {
     /// @param fullClassName The fully qualified class name
     /// @param classBytes The class bytecode
     /// @return The loaded class
-    private static Class<?> loadCompiledClass(String fullClassName, byte[] classBytes) throws ClassNotFoundException {
+    public static Class<?> loadCompiledClass(String fullClassName, byte[] classBytes) throws ClassNotFoundException {
         InMemoryClassLoader classLoader = new InMemoryClassLoader(
             SchemaEvolutionTest.class.getClassLoader(), 
             Map.of(fullClassName, classBytes));
@@ -211,7 +212,7 @@ class SchemaEvolutionTest {
     /// @param recordClass The record class
     /// @param args The constructor arguments
     /// @return A new instance of the record
-    static Object createRecordInstance(Class<?> recordClass, Object[] args) throws Exception {
+    public static Object createRecordInstance(Class<?> recordClass, Object[] args) throws Exception {
         // Get constructor matching the record components
         Constructor<?> constructor = getRecordConstructor(recordClass);
         
@@ -223,7 +224,7 @@ class SchemaEvolutionTest {
     ///
     /// @param recordClass The record class
     /// @return The canonical constructor
-    private static Constructor<?> getRecordConstructor(Class<?> recordClass) throws NoSuchMethodException {
+    public static Constructor<?> getRecordConstructor(Class<?> recordClass) throws NoSuchMethodException {
         // Get the record components to determine constructor parameter types
         RecordComponent[] components = recordClass.getRecordComponents();
         Class<?>[] paramTypes = Arrays.stream(components)
@@ -239,7 +240,7 @@ class SchemaEvolutionTest {
     /// @param record The record instance
     /// @return The serialized bytes
     @SuppressWarnings({"unchecked", "rawtypes"})
-    static byte[] serializeRecord(Object record) {
+    public static byte[] serializeRecord(Object record) {
         // Get the pickler for the record class
         Class<? extends Record> recordClass = (Class<? extends Record>) record.getClass();
         Pickler pickler = picklerForRecord(recordClass);
@@ -264,7 +265,7 @@ class SchemaEvolutionTest {
     /// @param bytes The serialized bytes
     /// @return The deserialized record instance
     @SuppressWarnings({"unchecked", "rawtypes"})
-    static Object deserializeRecord(Class<?> recordClass, byte[] bytes) {
+    public static Object deserializeRecord(Class<?> recordClass, byte[] bytes) {
         // Get the pickler for the record class
         Pickler pickler = picklerForRecord((Class<? extends Record>) recordClass);
         
@@ -279,7 +280,7 @@ class SchemaEvolutionTest {
     /// 
     /// @param record The record instance
     /// @param expectedValues Map of component names to expected values
-    static void verifyRecordComponents(Object record, Map<String, Object> expectedValues) {
+    public static void verifyRecordComponents(Object record, Map<String, Object> expectedValues) {
         Class<?> recordClass = record.getClass();
         RecordComponent[] components = recordClass.getRecordComponents();
         
@@ -293,7 +294,7 @@ class SchemaEvolutionTest {
     /// @param record The record instance
     /// @param component The record component to verify
     /// @param expectedValues Map of component names to expected values
-    private static void verifyComponent(Object record, RecordComponent component, Map<String, Object> expectedValues) {
+    public static void verifyComponent(Object record, RecordComponent component, Map<String, Object> expectedValues) {
         String name = component.getName();
         try {
             Method accessor = component.getAccessor();
@@ -313,7 +314,7 @@ class SchemaEvolutionTest {
     // Inner classes for in-memory compilation
 
     /// A JavaFileObject implementation that holds source code in memory.
-    static class InMemorySourceFile extends SimpleJavaFileObject {
+    public static class InMemorySourceFile extends SimpleJavaFileObject {
         private final String code;
 
         InMemorySourceFile(String className, String code) {
@@ -329,7 +330,7 @@ class SchemaEvolutionTest {
     }
 
     /// A JavaFileObject implementation that collects compiled bytecode in memory.
-    static class InMemoryClassFile extends SimpleJavaFileObject {
+    public static class InMemoryClassFile extends SimpleJavaFileObject {
         private final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
         InMemoryClassFile(String className) {
@@ -348,7 +349,7 @@ class SchemaEvolutionTest {
     }
 
     /// A JavaFileManager that keeps compiled classes in memory.
-    static class InMemoryFileManager extends ForwardingJavaFileManager<StandardJavaFileManager> {
+    public static class InMemoryFileManager extends ForwardingJavaFileManager<StandardJavaFileManager> {
         private final Map<String, InMemoryClassFile> classFiles = new HashMap<>();
 
         InMemoryFileManager(StandardJavaFileManager fileManager) {
@@ -380,7 +381,7 @@ class SchemaEvolutionTest {
     }
 
     /// A ClassLoader that loads classes from in-memory bytecode.
-    static class InMemoryClassLoader extends ClassLoader {
+    public static class InMemoryClassLoader extends ClassLoader {
         private final Map<String, byte[]> classBytes;
 
         InMemoryClassLoader(ClassLoader parent, Map<String, byte[]> classBytes) {
