@@ -7,6 +7,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.util.*;
@@ -29,9 +30,60 @@ public interface Pickler<T> {
   /// Registry to store Picklers by class to avoid redundant creation and infinite recursion
   ConcurrentHashMap<Class<?>, Pickler<?>> PICKLER_REGISTRY = new ConcurrentHashMap<>();
 
+  /// Helper method to recursively find all permitted record classes
+  static Stream<Class<?>> allPermittedRecordClasses(Class<?> sealedClass) {
+    if (!sealedClass.isSealed()) {
+      final var msg = "Class is not sealed: " + sealedClass.getName();
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg);
+    }
+
+    return Arrays.stream(sealedClass.getPermittedSubclasses())
+        .flatMap(subclass -> {
+          if (subclass.isRecord()) {
+            return Stream.of(subclass);
+          } else if (subclass.isSealed()) {
+            return allPermittedRecordClasses(subclass);
+          } else {
+            final var msg = "Permitted subclass must be either a record or sealed interface: " +
+                subclass.getName();
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg);
+          }
+        });
+  }
+
+  static List<Class<?>> allConcreteTypesFromSealedHierarchy(Class<?> rootClass) {
+    if (!rootClass.isSealed()) {
+      throw new IllegalArgumentException(rootClass + " is not sealed");
+    }
+
+    List<Class<?>> concreteTypes = new ArrayList<>();
+    Deque<Class<?>> queue = new ArrayDeque<>();
+    queue.add(rootClass);
+
+    while (!queue.isEmpty()) {
+      Class<?> current = queue.poll();
+
+      if (current.isSealed()) {
+        for (Class<?> permitted : current.getPermittedSubclasses()) {
+          if (!permitted.isInterface() && !Modifier.isAbstract(permitted.getModifiers())) {
+            concreteTypes.add(permitted);
+          }
+          if (permitted.isSealed()) {
+            queue.add(permitted);
+          }
+        }
+      }
+    }
+
+    return concreteTypes;
+  }
+
+
   /// Serializes an object into a byte buffer.
   ///
-  /// @param object The object to serialize
+  /// @param object The object to serializeMany
   /// @param buffer The pre-allocated buffer to write to
   void serialize(T object, ByteBuffer buffer);
 
@@ -41,13 +93,13 @@ public interface Pickler<T> {
   /// @return The deserialized object
   T deserialize(ByteBuffer buffer);
 
-  /// Calculates the size in bytes required to serialize the given object
+  /// Calculates the size in bytes required to serializeMany the given object
   ///
   /// This allows for pre-allocating buffers of the correct size without
-  /// having to serialize the object first.
+  /// having to serializeMany the object first.
   ///
   /// @param value The object to calculate the size for
-  /// @return The number of bytes required to serialize the object
+  /// @return The number of bytes required to serializeMany the object
   int sizeOf(T value);
 
   /// Get a Pickler for a record class, creating one if it doesn't exist in the registry
@@ -55,6 +107,10 @@ public interface Pickler<T> {
   static <R extends Record> Pickler<R> picklerForRecord(Class<R> recordClass) {
     // Check if we already have a Pickler for this record class
     return (Pickler<R>) PICKLER_REGISTRY.computeIfAbsent(recordClass, clazz -> {
+      if (Record.class.equals(clazz)) {
+        throw new IllegalArgumentException("You have passed in Record.class as the type of your record. " +
+            "This is the base class with no components so we cannot use it to reflect on your actual subclasses.");
+      }
       // Check if the class is a record
       if (!clazz.isRecord()) {
         final var msg = "Class is not a record: " + clazz.getName();
@@ -76,7 +132,7 @@ public interface Pickler<T> {
 
   /// Serialize an array of records
   ///
-  /// @param array The array of records to serialize
+  /// @param array The array of records to serializeMany
   /// @param buffer The buffer to write to
   /// @param <R> The record type
   static <R extends Record> void serializeMany(R[] array, ByteBuffer buffer) {
@@ -165,7 +221,7 @@ public interface Pickler<T> {
   /// @param array The array of records
   /// @param <R> The record type
   /// @return The size in bytes
-  static <R extends Record> int sizeOfMany(R[] array) {
+  static <R extends Record> int sizeOfHomogeneousArray(R[] array) {
     if (array == null) {
       return 1; // Just the NULL marker
     }
@@ -705,7 +761,7 @@ public interface Pickler<T> {
           @SuppressWarnings("unchecked")
           PicklerInternal<Record> nestedPickler = (PicklerInternal<Record>) Pickler.picklerForRecord(record.getClass());
 
-          // Use that pickler to serialize the nested record
+          // Use that pickler to serializeMany the nested record
           nestedPickler.serialize(record, buffer, class2BufferOffset);
         }
         case Map<?, ?> map -> {
@@ -1076,30 +1132,6 @@ public interface Pickler<T> {
       };
     }
 
-    // Helper method to recursively find all permitted record classes
-    static Stream<Class<?>> getAllPermittedRecordClasses(Class<?> sealedClass) {
-      if (!sealedClass.isSealed()) {
-        final var msg = "Class is not sealed: " + sealedClass.getName();
-        LOGGER.severe(() -> msg);
-        throw new IllegalArgumentException(msg);
-      }
-
-      return Arrays.stream(sealedClass.getPermittedSubclasses())
-          .flatMap(subclass -> {
-            if (subclass.isRecord()) {
-              return Stream.of(subclass);
-            } else if (subclass.isSealed()) {
-              return getAllPermittedRecordClasses(subclass);
-            } else {
-              final var msg = "Permitted subclass must be either a record or sealed interface: " +
-                  subclass.getName();
-              LOGGER.severe(() -> msg);
-              throw new IllegalArgumentException(msg);
-            }
-          });
-    }
-
-
     /// Creates an anonymous dispatcher pickler for a sealed interface. This will create a pickler for each permitted
     /// record.
     ///
@@ -1110,7 +1142,7 @@ public interface Pickler<T> {
     /// 2. Special handling for null values (type marker 11)
     /// 3. Writes the class name for proper deserialization
     /// 4. Retrieves the appropriate pickler for the concrete type
-    /// 5. Uses the specific pickler to serialize the object
+    /// 5. Uses the specific pickler to serializeMany the object
     /// 6. Checks for null values and consumes the null marker (11)
     /// 7. Reads and loads the class name for deserialization
     /// 8. Loads the concrete class and gets its pickler
@@ -1133,7 +1165,7 @@ public interface Pickler<T> {
       }
 
       // Get all permitted record subclasses, recursively traversing sealed interfaces
-      Class<?>[] subclasses = getAllPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
+      Class<?>[] subclasses = allPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
 
       // Force the pre-creation and caching of picklers for all permitted record of all nested permitted sealed interfaces
       //noinspection unchecked
@@ -1172,7 +1204,7 @@ public interface Pickler<T> {
           LOGGER.fine(() -> "Serializing " + object.getClass().getName() +
               " with pickler: " + concretePickler.hashCode());
 
-          // Use that pickler to serialize the object
+          // Use that pickler to serializeMany the object
           concretePickler.serialize((Record) object, buffer, class2BufferOffset);
         }
 

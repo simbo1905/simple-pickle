@@ -102,79 +102,14 @@ Below are some examples of how to use the library. You will notice that `seriali
 
 ### Basic Record Serialization
 
-```java
-/// Define a simple record
-/// The constructor must be public so that we can invoke the canonical constructor form the pickler package
-public record Person(String name, int age) {
-}
-
-// Create an instance
-var person = new Person("Alice", 30);
-
-// Get a pickler for the record type
-Pickler<Person> pickler = Pickler.picklerForRecord(Person.class);
-
-// Calculate size and allocate buffer
-int size = pickler.sizeOf(person);
-ByteBuffer buffer = ByteBuffer.allocate(size);
-
-// Serialize to a ByteBuffer
-pickler.serialize(person, buffer);
-buffer.flip();
-
-// Deserialize from the ByteBuffer
-Person deserializedPerson = pickler.deserialize(buffer);
-```
-
-### Immutable List Of Records Of Immutable Lists
+The library supports serialization of records containing simple types such as Strings or primatives but also plain  enums that have **no** custom fields:
 
 ```java
-public record ListRecord(List<String> list) { 
-}
-
-final List<ListRecord> outerList = List.of(new ListRecord(List.of("A", "B")), new ListRecord(List.of("X", "Y")));
-
-// Calculate size and allocate buffer. Limitations of generics means we have shallow copy into an array.
-int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
-ByteBuffer buffer = ByteBuffer.allocate(size);
-
-// Serialize. Limitations of generics means we have to pass the sealed interface class. 
-Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
-
-// Flip the buffer to prepare for reading
-buffer.flip();
-
-// Deserialize. Limitations of generics means we have to pass the sealed interface class. 
-final List<ListRecord> deserialized = Pickler.deserialize(ListRecord.class, buffer);
-// will throw an exception if you try to modify the list of the deserialized record
-try {
-  deserialized.removeFirst();
-}
-catch (UnsupportedOperationException e) {
-    // Expected exception, as the list is immutable
-    System.out.println("Works As Expected");
-}
-// will throw an exception if you try to modify a list inside of the deserialized record
-try {
-    deserialized.forEach(l -> l.list().removeFirst());
-}
-    catch (UnsupportedOperationException e) {
-    // Expected exception, as the list is immutable
-    System.out.println("Works As Expected");
-}
-```
-
-### Enum Serialization
-
-The library supports serialization of records containing plain Java enums (enums **without** custom fields or methods). Here's how to serialize a record with an enum component:
-
-```java
-/// Define a simple enum
-public enum Season { SPRING, SUMMER, FALL, WINTER }
-
-/// Define a record using the enum
-/// Constructor must be public for the pickler
+/// Define a record using the enum. It **must** be public
 public record Month(Season season, String name) {}
+
+/// Define a simple enum with no fields so no custom constructor. It **must** be public
+public enum Season { SPRING, SUMMER, FALL, WINTER }
 
 // Create an instance
 var december = new Month(Season.WINTER, "December");
@@ -192,6 +127,119 @@ buffer.flip();
 
 // Deserialize from the ByteBuffer
 Month deserializedMonth = pickler.deserialize(buffer);
+
+// Verify the deserialized enum value
+if (!deserializedMonth.equals(december)) {
+    throw new AssertionError("should not be reached");
+}
+```
+
+### Nested Record Tree
+
+```java
+/// The sealed interface and all permitted record subclasses must be public
+/// Nested sealed interfaces are supported. Yet all concrete types must be records with support components
+public sealed interface TreeNode permits RootNode, InternalNode, LeafNode {}
+public record RootNode(TreeNode left, TreeNode right) implements TreeNode {}
+public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {}
+public record LeafNode(int value) implements TreeNode {}
+
+final var leaf1 = new LeafNode(42);
+final var leaf2 = new LeafNode(99);
+final var leaf3 = new LeafNode(123);
+// A lob sided tree
+final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
+final var internal2 = new InternalNode("Branch2", leaf3, null);
+final var originalRoot = new RootNode(internal1, internal2);
+
+// Get a pickler for the TreeNode sealed interface
+final var pickler = Pickler.picklerForSealedInterface(TreeNode.class);
+
+// Calculate buffer size needed for the whole graph reachable from the root node
+final var bufferSize = pickler.sizeOf(originalRoot);
+
+// Allocate a buffer to hold just the root node
+final var buffer = ByteBuffer.allocate(bufferSize);
+
+// Serialize only the root node (which should include the entire graph)
+pickler.serialize(originalRoot, buffer);
+
+// Prepare buffer for reading
+buffer.flip();
+
+// Deserialize the root node (which will reconstruct the entire graph)
+final var deserializedRoot = pickler.deserialize(buffer);
+
+// See junit tests that Validates the entire tree structure was properly deserialized
+validateTreeStructure(deserializedRoot);
+
+// A lob sided tree
+final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
+final var internal2 = new InternalNode("Branch2", leaf3, null);
+final var root = new RootNode(internal1, internal2);
+
+// Get a pickler for the TreeNode sealed interface
+final var pickler = picklerForSealedTrait(TreeNode.class);
+
+// Calculate buffer size needed for the whole graph reachable from the root node
+final var bufferSize = pickler.sizeOf(originalRoot);
+
+// Allocate a buffer to hold just the root node
+final var buffer = ByteBuffer.allocate(bufferSize);
+
+// Serialize only the root node (which should include the entire graph)
+pickler.serialize(originalRoot, buffer);
+
+// Prepare buffer for reading
+buffer.flip();
+
+// Deserialize the root node (which will reconstruct the entire graph)
+final var deserializedRoot = pickler.deserialize(buffer);
+
+// See junit tests that Validates the entire tree structure was properly deserialized
+validateTreeStructure(deserializedRoot);
+```
+
+### Returned Lists Are Immutable
+
+Even if you do not use a canonical constructor to make inner lists immutable the deserialized list will be immutable. This includes any out list of item:
+
+```java
+/// record must be public
+public record ListRecord(List<String> list) {
+  // for test purpose there is no canonical constructor that make an immutable copy. 
+  // you should use one to avoid any confusion about internal mutability
+}
+
+final List<ListRecord> outerList = List.of(new ListRecord(List.of("A", "B")), new ListRecord(List.of("X", "Y")));
+
+// Calculate size and allocate buffer. Limitations of generics means we have shallow copy into an array.
+int size = Pickler.sizeOfHomogeneousArray(outerList.toArray(ListRecord[]::new));
+
+ByteBuffer buffer = ByteBuffer.allocate(size);
+
+// Serialize. Limitations of generics means we have to pass the sealed interface class.
+Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
+
+// Flip the buffer to prepare for reading
+buffer.flip();
+
+// Deserialize. Limitations of generics means we have to pass the sealed interface class.
+final List<ListRecord> deserialized = Pickler.deserialize(ListRecord.class, buffer);
+
+// will throw an exception if you try to modify the outer list of the deserialized record
+try {
+    deserialized.removeFirst();
+    throw new AssertionError("should not be reached");
+} catch (UnsupportedOperationException e) {
+}
+// will throw an exception if you try to modify an inner list inside the deserialized record
+try {
+  deserialized.forEach(l -> l.list().removeFirst());
+  throw new AssertionError("should not be reached");
+} catch (UnsupportedOperationException e) {
+}
+
 ```
 
 ### Array of Records Serialization
@@ -200,15 +248,8 @@ Month deserializedMonth = pickler.deserialize(buffer);
 // Define a simple record
 public record Person(String name, int age) {}
 
-// Create an array of Person records
-Person[] people = {
-    new Person("Alice", 30),
-    new Person("Bob", 25),
-    new Person("Charlie", 40)
-};
-
 // Calculate size and allocate buffer
-int size = pickler.sizeOfMany(people);
+int size = Pickler.sizeOfHomogeneousArray(people);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize the array
@@ -216,13 +257,15 @@ Pickler.serializeMany(people, buffer);
 buffer.flip();
 
 // Deserialize the array
-Person[] deserializedPeople = Pickler.deserialize(buffer, Person.class).toArary(Person[]::new);
+List<Person> deserializedPeople = Pickler.deserialize(Person.class, buffer);
 
 // Verify the array was properly deserialized
-assertEquals(people.length, deserializedPeople.length);
+assertEquals(people.length, deserializedPeople.size());
+
 // Use streams to verify each element matches
 IntStream.range(0, people.length)
-    .forEach(i -> assertEquals(people[i], deserializedPeople[i]));
+    .forEach(i -> assertEquals(people[i], deserializedPeople.get(i)));
+}
 ```
 
 ### Complex Nested Sealed Interfaces
@@ -265,46 +308,6 @@ buffer.flip();
 
 // Deserialize all animals from the buffer
 Person[] deserialized = Pickler.deserializeArray(Person.class, buffer);
-```
-
-### Nested Record Tree
-
-```java
-/// Internal node that may have left and right children
-/// Note the real coded in the unit tests has a null safe equals to compare the nodes with null children
-public sealed interface TreeNode permits RootNode, InternalNode, LeafNode {}
-public record RootNode(TreeNode left, TreeNode right) implements TreeNode {}
-public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {}
-public record LeafNode(int value) implements TreeNode {}
-final var leaf1 = new LeafNode(42);
-final var leaf2 = new LeafNode(99);
-final var leaf3 = new LeafNode(123);
-
-// A lob sided tree
-final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
-final var internal2 = new InternalNode("Branch2", leaf3, null);
-final var root = new RootNode(internal1, internal2);
-
-// Get a pickler for the TreeNode sealed interface
-final var pickler = picklerForSealedTrait(TreeNode.class);
-
-// Calculate buffer size needed for the whole graph reachable from the root node
-final var bufferSize = pickler.sizeOf(originalRoot);
-
-// Allocate a buffer to hold just the root node
-final var buffer = ByteBuffer.allocate(bufferSize);
-
-// Serialize only the root node (which should include the entire graph)
-pickler.serialize(originalRoot, buffer);
-
-// Prepare buffer for reading
-buffer.flip();
-
-// Deserialize the root node (which will reconstruct the entire graph)
-final var deserializedRoot = pickler.deserialize(buffer);
-
-// See junit tests that Validates the entire tree structure was properly deserialized
-validateTreeStructure(deserializedRoot);
 ```
 
 ### Maps

@@ -24,7 +24,8 @@ import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedInterfac
 import static io.github.simbo1905.simple_pickle.PicklerTest.stripOutAsciiStrings;
 import static org.junit.jupiter.api.Assertions.*;
 
-class MorePicklerTests {
+@SuppressWarnings("ALL")
+public class MorePicklerTests {
   @BeforeAll
   static void setupLogging() {
     final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "WARNING");
@@ -51,7 +52,7 @@ class MorePicklerTests {
   /**
    * Validates that the tree structure matches the expected structure
    */
-  static void validateTreeStructure(TreeNode deserializedRoot) {
+  public static void validateTreeStructure(TreeNode deserializedRoot) {
     // Verify root node structure
     assertInstanceOf(RootNode.class, deserializedRoot);
     final var root = (RootNode) deserializedRoot;
@@ -429,6 +430,7 @@ class MorePicklerTests {
   }
 
   // Record for testing Unicode content
+  @SuppressWarnings("NonAsciiCharacters")
   public record UnicodeData(
       String ಢ_ಢ,
       String[] tags,
@@ -437,6 +439,7 @@ class MorePicklerTests {
   }
 
   // Record using valid Unicode characters in name
+  @SuppressWarnings("NonAsciiCharacters")
   public record データ_αβγ_КПД(
       String デ,
       String[] タ,

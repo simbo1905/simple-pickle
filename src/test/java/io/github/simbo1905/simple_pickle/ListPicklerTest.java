@@ -1,5 +1,6 @@
 package io.github.simbo1905.simple_pickle;
 
+import io.github.simbo1905.simple_pickle.animal.*;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -7,9 +8,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static io.github.simbo1905.simple_pickle.Pickler.PicklerBase.LOGGER;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class ListPicklerTest {
 
@@ -31,7 +33,7 @@ public class ListPicklerTest {
     final List<ListRecord> outerList = List.of(original, new ListRecord(List.of("X", "Y")));
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
+    int size = Pickler.sizeOfHomogeneousArray(outerList.toArray(ListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
@@ -118,7 +120,7 @@ public class ListPicklerTest {
     }
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(original.toArray(NestedListRecord[]::new));
+    int size = Pickler.sizeOfHomogeneousArray(original.toArray(NestedListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
@@ -133,13 +135,85 @@ public class ListPicklerTest {
 
     IntStream.range(0, original.size()).forEach(i -> {
       assertEquals(original.get(i).nestedList().size(), deserialized.get(i).nestedList().size());
-      IntStream.range(0, original.get(i).nestedList().size()).forEach(j -> {
-        assertEquals(original.get(i).nestedList().get(j), deserialized.get(i).nestedList().get(j));
-      });
+      IntStream.range(0, original.get(i).nestedList().size()).forEach(j -> assertEquals(original.get(i).nestedList().get(j), deserialized.get(i).nestedList().get(j)));
     });
 
     // Verify buffer is fully consumed
     assertEquals(buffer.limit(), buffer.position());
   }
 
+  @Test
+  void demoTests() {
+    // Create instances of different Animal implementations
+    Dog dog = new Dog("Buddy", 3);
+    Dog dog2 = new Dog("Fido", 2);
+    Animal eagle = new Eagle(2.1);
+    Penguin penguin = new Penguin(true);
+    Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
+
+    // Get a pickler for the sealed trait Animal
+    var animalPickler = Pickler.picklerForSealedInterface(Animal.class);
+
+    // preallocate a buffer for the Dog instance
+    var buffer = ByteBuffer.allocate(animalPickler.sizeOf(dog));
+
+    // Serialize and deserialize the Dog instance
+    animalPickler.serialize(dog, buffer);
+    // Flip the buffer to prepare for reading
+    int bytesWritten = buffer.position();
+    buffer.flip();
+    // Deserialize the Dog instance
+    var returnedDog = animalPickler.deserialize(buffer);
+    // Check if the deserialized Dog instance is equal to the original
+    if (dog.equals(returnedDog)) {
+      LOGGER.info("Dog serialized and deserialized correctly");
+    } else {
+      throw new AssertionError("""
+          ¯\\_(ツ)_/¯
+          """);
+    }
+    // Check if the number of bytes written is correct
+    if (bytesWritten != animalPickler.sizeOf(dog)) {
+      throw new AssertionError("wrong number of bytes written");
+    }
+
+    List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
+
+    Dog[] dogs = animals.stream().filter(i -> i instanceof Dog).toArray(Dog[]::new);
+    Eagle[] eagles = animals.stream().filter(i -> i instanceof Eagle).toArray(Eagle[]::new);
+    Penguin[] penguins = animals.stream().filter(i -> i instanceof Penguin).toArray(Penguin[]::new);
+    Alicorn[] alicorns = animals.stream().filter(i -> i instanceof Alicorn).toArray(Alicorn[]::new);
+
+    int size = Stream.of(dogs, eagles, penguins, alicorns)
+        .mapToInt(Pickler::sizeOfHomogeneousArray)
+        .sum();
+
+    final var animalsBuffer = ByteBuffer.allocate(size);
+
+    // Serialize the list of animals
+    Stream.of(dogs, eagles, penguins, alicorns)
+        .forEach(i -> Pickler.serializeMany(i, animalsBuffer));
+
+    // Flip the buffer to prepare for reading
+    animalsBuffer.flip();
+
+    final List<Animal> allReturnedAnimals = new ArrayList<>();
+
+    Stream.of(Dog.class, Eagle.class, Penguin.class, Alicorn.class)
+        .forEach(i -> {
+          // Deserialize the list of animals
+          //var returnedAnimals = PicklerOld.deserializeArray(i, animalsBuffer);
+          var returnedAnimals = Pickler.deserialize(i, animalsBuffer);
+          // Check if the deserialized Dog instance is equal to the original
+          if (animals.containsAll(returnedAnimals)) {
+            LOGGER.info(i.getSimpleName() + " serialized and deserialized correctly");
+          } else {
+            throw new AssertionError("""
+                ¯\\_(ツ)_/¯
+                """);
+          }
+          allReturnedAnimals.addAll(returnedAnimals);
+        });
+    assertArrayEquals(animals.toArray(), allReturnedAnimals.toArray(), "Animals should be equal");
+  }
 }

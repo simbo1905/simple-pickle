@@ -48,13 +48,13 @@ class MapPicklerTest {
     /// Record for documentation example
     record DocumentationContainer(Person subject, Map<String, Person> relationships) {}
 
-    /// Helper method to serialize and deserialize a record
-    /// @param original The original record to serialize
+  /// Helper method to serializeMany and deserialize a record
+  /// @param original The original record to serializeMany
     /// @param <T> The record type
     /// @return The deserialized record
     private <T extends Record> T serializeAndDeserialize(T original) {
         // Get a pickler for the record type
-        final var pickler = picklerForRecord((Class<T>) original.getClass());
+      @SuppressWarnings("unchecked") final var pickler = picklerForRecord((Class<T>) original.getClass());
         
         // Calculate size and allocate buffer
         final var size = pickler.sizeOf(original);

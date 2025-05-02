@@ -587,7 +587,7 @@ class PicklerTest {
     Person[] emptyArray = new Person[0];
     
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(emptyArray);
+    int size = Pickler.sizeOfHomogeneousArray(emptyArray);
     ByteBuffer buffer = ByteBuffer.allocate(size);
     
     // Serialize the array
@@ -617,7 +617,7 @@ class PicklerTest {
     Person[] people = personList.toArray(Person[]::new);
     
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(people);
+    int size = Pickler.sizeOfHomogeneousArray(people);
     ByteBuffer buffer = ByteBuffer.allocate(size);
     
     // Serialize the array
@@ -1165,8 +1165,8 @@ class PicklerTest {
     // Attempt to get a pickler for the record should throw an exception
     assertThrows(UnsupportedOperationException.class, () -> {
       Pickler<ComplexEnumRecord> pickler = Pickler.picklerForRecord(ComplexEnumRecord.class);
-      
-      // This should never execute, but if it does, try to serialize
+
+      // This should never execute, but if it does, try to serializeMany
       int size = pickler.sizeOf(original);
       ByteBuffer buffer = ByteBuffer.allocate(size);
       pickler.serialize(original, buffer);
