@@ -664,21 +664,21 @@ class Companion {
   ///
   /// @param buffer The buffer to write to
   /// @param clazz The class to write
-  /// @param class2BufferOffset Map tracking class to buffer position
-  public static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz,
-                                                     Map<Class<?>, Integer> class2BufferOffset) {
-    LOGGER.finest(() -> "writeClassNameWithDeduplication: class=" + clazz.getName() +
+  /// @param classToOffset Map tracking class to buffer position offset
+  public static void writeDeduplicatedClassName(ByteBuffer buffer, Class<?> clazz,
+                                               Map<Class<?>, Integer> classToOffset) {
+    LOGGER.finest(() -> "writeDeduplicatedClassName: class=" + clazz.getName() +
         ", buffer position=" + buffer.position() +
-        ", map contains class=" + class2BufferOffset.containsKey(clazz));
+        ", map contains class=" + classToOffset.containsKey(clazz));
 
     // Check if we've seen this class before
-    Integer existingOffset = class2BufferOffset.get(clazz);
-    if (existingOffset != null) {
+    Integer offset = classToOffset.get(clazz);
+    if (offset != null) {
       // We've seen this class before, write a negative reference
-      int reference = ~existingOffset;
-      buffer.putInt(reference); // Using bitwise complement for negative reference
+      int reference = ~offset; // Using bitwise complement for negative reference
+      buffer.putInt(reference);
       LOGGER.finest(() -> "Wrote class reference: " + clazz.getName() +
-          " at offset " + existingOffset + ", value=" + reference);
+          " at offset " + offset + ", value=" + reference);
     } else {
       // First time seeing this class, write the full name
       String className = clazz.getName();
@@ -693,7 +693,7 @@ class Companion {
       buffer.put(classNameBytes);
 
       // Store the position where we wrote this class
-      class2BufferOffset.put(clazz, currentPosition);
+      classToOffset.put(clazz, currentPosition);
       LOGGER.finest(() -> "Wrote class name: " + className +
           " at offset " + currentPosition +
           ", length=" + classNameLength +
@@ -843,10 +843,10 @@ class Companion {
   /// Helper method to read a class name from a buffer with deduplication support.
   ///
   /// @param buffer The buffer to read from
-  /// @param bufferOffset2Class Map tracking buffer position to class
+  /// @param offsetToClass Map tracking buffer position to class
   /// @return The loaded class
-  public static Class<?> resolveClass(ByteBuffer buffer,
-                                      Map<Integer, Class<?>> bufferOffset2Class)
+  public static Class<?> readDeduplicatedClassName(ByteBuffer buffer,
+                                                  Map<Integer, Class<?>> offsetToClass)
       throws ClassNotFoundException {
 
     int bufferPosition = buffer.position();
