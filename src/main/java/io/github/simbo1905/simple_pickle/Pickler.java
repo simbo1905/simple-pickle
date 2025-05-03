@@ -667,15 +667,15 @@ class Companion {
   ///
   /// @param buffer The buffer to write to
   /// @param clazz The class to write
-  /// @param class2BufferOffset Map tracking class to buffer position
-  public static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz,
-                                                     Map<Class<?>, Integer> class2BufferOffset) {
+  /// @param classToOffset Map tracking class to buffer position offset
+  public static void writeDeduplicatedClassName(ByteBuffer buffer, Class<?> clazz,
+                                               Map<Class<?>, Integer> classToOffset) {
     LOGGER.finest(() -> "writeClassNameWithDeduplication: class=" + clazz.getName() +
         ", buffer position=" + buffer.position() +
         ", map contains class=" + class2BufferOffset.containsKey(clazz));
 
     // Check if we've seen this class before
-    Integer existingOffset = class2BufferOffset.get(clazz);
+    Integer offset = classToOffset.get(clazz);
     if (existingOffset != null) {
       // We've seen this class before, write a negative reference
       int reference = ~existingOffset;
