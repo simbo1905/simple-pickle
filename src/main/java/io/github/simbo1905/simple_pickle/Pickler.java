@@ -51,7 +51,7 @@ public interface Pickler<T> {
     buffer.put(classNameBytes);
     buffer.putInt(array.length);
 
-    Pickler<R> pickler = Pickler.forRecord((Class<R>) array.getClass().getComponentType());
+    @SuppressWarnings("unchecked") Pickler<R> pickler = Pickler.forRecord((Class<R>) array.getClass().getComponentType());
     Arrays.stream(array).forEach(element -> pickler.serialize(element, buffer));
   }
 
@@ -78,6 +78,7 @@ public interface Pickler<T> {
   }
 
   static <R extends Record> int sizeOfMany(R[] array) {
+    //noinspection unchecked
     return Optional.ofNullable(array)
         .map(arr -> 1 + 4 // 4 bytes for the length prefix (int)
             + arr.getClass().getComponentType().getName().getBytes(UTF_8).length + 4 +
@@ -116,6 +117,7 @@ public interface Pickler<T> {
           // Load class and validate
           Class<? extends S> concreteType;
           try {
+            //noinspection unchecked
             concreteType = (Class<? extends S>) Class.forName(className);
           } catch (ClassNotFoundException e) {
             throw new IllegalArgumentException("Unknown subtype: " + className);
@@ -131,6 +133,7 @@ public interface Pickler<T> {
   }
 
   static <S> int sizeOfManySealed(List<? extends S> list) {
+    //noinspection unchecked
     return Optional.ofNullable(list)
         .map(l -> 1 + 4 + l.stream()
             .mapToInt(element ->
@@ -664,21 +667,21 @@ class Companion {
   ///
   /// @param buffer The buffer to write to
   /// @param clazz The class to write
-  /// @param classToOffset Map tracking class to buffer position offset
-  public static void writeDeduplicatedClassName(ByteBuffer buffer, Class<?> clazz,
-                                               Map<Class<?>, Integer> classToOffset) {
-    LOGGER.finest(() -> "writeDeduplicatedClassName: class=" + clazz.getName() +
+  /// @param class2BufferOffset Map tracking class to buffer position
+  public static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz,
+                                                     Map<Class<?>, Integer> class2BufferOffset) {
+    LOGGER.finest(() -> "writeClassNameWithDeduplication: class=" + clazz.getName() +
         ", buffer position=" + buffer.position() +
-        ", map contains class=" + classToOffset.containsKey(clazz));
+        ", map contains class=" + class2BufferOffset.containsKey(clazz));
 
     // Check if we've seen this class before
-    Integer offset = classToOffset.get(clazz);
-    if (offset != null) {
+    Integer existingOffset = class2BufferOffset.get(clazz);
+    if (existingOffset != null) {
       // We've seen this class before, write a negative reference
-      int reference = ~offset; // Using bitwise complement for negative reference
-      buffer.putInt(reference);
+      int reference = ~existingOffset;
+      buffer.putInt(reference); // Using bitwise complement for negative reference
       LOGGER.finest(() -> "Wrote class reference: " + clazz.getName() +
-          " at offset " + offset + ", value=" + reference);
+          " at offset " + existingOffset + ", value=" + reference);
     } else {
       // First time seeing this class, write the full name
       String className = clazz.getName();
@@ -693,7 +696,7 @@ class Companion {
       buffer.put(classNameBytes);
 
       // Store the position where we wrote this class
-      classToOffset.put(clazz, currentPosition);
+      class2BufferOffset.put(clazz, currentPosition);
       LOGGER.finest(() -> "Wrote class name: " + className +
           " at offset " + currentPosition +
           ", length=" + classNameLength +
@@ -804,8 +807,8 @@ class Companion {
           IntStream.range(0, buffer.getInt())
               .mapToObj(i ->
                   Map.entry(
-                      deserializeValue(bufferOffset2Class, buffer),
-                      deserializeValue(bufferOffset2Class, buffer)))
+                      Objects.requireNonNull(deserializeValue(bufferOffset2Class, buffer)),
+                      Objects.requireNonNull(deserializeValue(bufferOffset2Class, buffer))))
               .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
       case LIST -> // Handle Lists
           IntStream.range(0, buffer.getInt())
@@ -843,10 +846,10 @@ class Companion {
   /// Helper method to read a class name from a buffer with deduplication support.
   ///
   /// @param buffer The buffer to read from
-  /// @param offsetToClass Map tracking buffer position to class
+  /// @param bufferOffset2Class Map tracking buffer position to class
   /// @return The loaded class
-  public static Class<?> readDeduplicatedClassName(ByteBuffer buffer,
-                                                  Map<Integer, Class<?>> offsetToClass)
+  public static Class<?> resolveClass(ByteBuffer buffer,
+                                      Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
 
     int bufferPosition = buffer.position();
@@ -1072,15 +1075,5 @@ class Companion {
       size += plainSize;
     }
     return size;
-  }
-
-  static <S> void validateType(Class<S> sealedInterface, Class<?> concreteType) {
-    if (!sealedInterface.isAssignableFrom(concreteType)) {
-      throw new IllegalArgumentException(String.format(
-          "Type %s is not a subtype of %s",
-          concreteType.getName(),
-          sealedInterface.getName()
-      ));
-    }
   }
 }
