@@ -10,7 +10,7 @@ public class Demo1 {
     var december = new Month(Season.WINTER, "December");
 
 // Get a pickler for the record type containing the enum
-    Pickler<Month> pickler = Pickler.picklerForRecord(Month.class);
+    Pickler<Month> pickler = Pickler.forRecord(Month.class);
 
 // Calculate size and allocate buffer
     int size = pickler.sizeOf(december);

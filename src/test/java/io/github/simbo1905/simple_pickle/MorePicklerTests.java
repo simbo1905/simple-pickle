@@ -18,9 +18,7 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static io.github.simbo1905.simple_pickle.Pickler.PicklerBase.LOGGER;
-import static io.github.simbo1905.simple_pickle.Pickler.picklerForRecord;
-import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedInterface;
+import static io.github.simbo1905.simple_pickle.Pickler.LOGGER;
 import static io.github.simbo1905.simple_pickle.PicklerTest.stripOutAsciiStrings;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -99,7 +97,7 @@ public class MorePicklerTests {
     final var originalAnimals = new Animal[]{dog, cat, eagle, penguin, alicorn};
 
     // Get a pickler for the Animal sealed interface
-    final var pickler = picklerForSealedInterface(Animal.class);
+    final var pickler = Pickler.forSealedInterface(Animal.class);
 
     // Calculate total buffer size needed using streams
     final var totalSize = Arrays.stream(originalAnimals).mapToInt(pickler::sizeOf).sum();
@@ -172,7 +170,7 @@ public class MorePicklerTests {
     final var originalNodes = getTreeNodes();
 
     // Get a pickler for the TreeNode sealed interface
-    final var pickler = picklerForSealedInterface(TreeNode.class);
+    final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
     // Calculate total buffer size needed - handle each node individually to avoid NPE with null children
     final var totalSize = Arrays.stream(originalNodes)
@@ -289,7 +287,7 @@ public class MorePicklerTests {
   @Test
   void testClassNameCompression() {
     // Get a pickler for the Chained sealed interface
-    final var pickler = picklerForRecord(Link.class);
+    final var pickler = Pickler.forRecord(Link.class);
 
     // Create a chain of links
     final var link0 = new Link(null);
@@ -332,7 +330,7 @@ public class MorePicklerTests {
   @Test
   void testClassNameCompressionSealedTrait() {
     // Get a pickler for the Chained sealed interface
-    final var pickler = picklerForSealedInterface(Chained.class);
+    final var pickler = Pickler.forSealedInterface(Chained.class);
 
     // Create a chain of links
     final var link1 = new Link(null);
@@ -375,7 +373,7 @@ public class MorePicklerTests {
     final var originalRoot = originalNodes[0];
     
     // Get a pickler for the TreeNode sealed interface
-    final var pickler = picklerForSealedInterface(TreeNode.class);
+    final var pickler = Pickler.forSealedInterface(TreeNode.class);
     
     // Calculate buffer size needed for just the root node
     final var bufferSize = pickler.sizeOf(originalRoot);
@@ -449,7 +447,7 @@ public class MorePicklerTests {
 
   @Test
   void testUnicodeContentRoundTrip() {
-    var pickler = picklerForRecord(データ_αβγ_КПД.class);
+    var pickler = Pickler.forRecord(データ_αβγ_КПД.class);
 
     var original = new データ_αβγ_КПД(
         "Rainbow ✨",

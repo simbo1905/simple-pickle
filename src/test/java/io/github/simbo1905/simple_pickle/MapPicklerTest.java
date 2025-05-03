@@ -11,7 +11,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static io.github.simbo1905.simple_pickle.Pickler.picklerForRecord;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Tests for Map serialization and deserialization.
@@ -54,7 +53,7 @@ class MapPicklerTest {
     /// @return The deserialized record
     private <T extends Record> T serializeAndDeserialize(T original) {
         // Get a pickler for the record type
-      @SuppressWarnings("unchecked") final var pickler = picklerForRecord((Class<T>) original.getClass());
+      @SuppressWarnings("unchecked") final var pickler = Pickler.forRecord((Class<T>) original.getClass());
         
         // Calculate size and allocate buffer
         final var size = pickler.sizeOf(original);
