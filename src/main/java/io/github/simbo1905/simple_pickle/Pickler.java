@@ -228,8 +228,7 @@ abstract class SealedPickler<S> implements Pickler<S> {
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
         Pickler<? extends S> pickler = subPicklers.get(concreteType);
 
-        // Write type identifier
-        writeClassName(buffer, concreteType);
+        writeDeduplicatedClassName(buffer, concreteType, new HashMap<>());
 
         // Delegate to subtype pickler
         //noinspection unchecked
@@ -273,13 +272,6 @@ abstract class SealedPickler<S> implements Pickler<S> {
         return classNameSize + pickler.sizeOf(object);
       }
 
-      private void writeClassName(ByteBuffer buffer, Class<?> type) {
-        byte[] classNameBytes = type.getName().getBytes(UTF_8);
-        buffer.putInt(classNameBytes.length);
-        buffer.put(classNameBytes);
-      }
-
-      @SuppressWarnings("unchecked")
       private Class<? extends S> readClass(ByteBuffer buffer) {
         final int classNameLength = buffer.getInt();
         final byte[] classNameBytes = new byte[classNameLength];
@@ -295,6 +287,8 @@ abstract class SealedPickler<S> implements Pickler<S> {
 }
 
 abstract class RecordPickler<R extends Record> implements Pickler<R> {
+
+  abstract void serializeWithMap(R object, ByteBuffer buffer, Map<Class<?>, Integer> classToOffset);
 
   static <R extends Record> Pickler<R> create(Class<R> recordClass) {
     return Pickler.getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass));
@@ -409,6 +403,23 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
         Collections.unmodifiableMap(fallbackConstructorHandles);
 
     return new RecordPickler<>() {
+      @Override
+      void serializeWithMap(R object, ByteBuffer buffer, Map<Class<?>, Integer> classToOffset) {
+        final var components = components(object);
+        // Write the number of components as an unsigned byte (max 255)
+        writeUnsignedByte(buffer, (short) components.length);
+        Arrays.stream(components).forEach(c -> Companion.write(classToOffset, buffer, c));
+      }
+
+      @Override
+      R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
+        // Read the number of components as an unsigned byte
+        final short length = readUnsignedByte(buffer);
+        final var components = new Object[length];
+        Arrays.setAll(components, ignored -> deserializeValue(bufferOffset2Class, buffer));
+        return this.staticCreateFromComponents(components);
+      }
+
       private Object[] components(R record) {
         Object[] result = new Object[componentAccessors.length];
         Arrays.setAll(result, i -> {
@@ -463,19 +474,12 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
 
       @Override
       public void serialize(R object, ByteBuffer buffer) {
-        final var components = components(object);
-        // Write the number of components as an unsigned byte (max 255)
-        writeUnsignedByte(buffer, (short) components.length);
-        Arrays.stream(components).forEach(c -> Companion.write(new HashMap<>(), buffer, c));
+        serializeWithMap(object, buffer, new HashMap<>());
       }
 
       @Override
       public R deserialize(ByteBuffer buffer) {
-        // Read the number of components as an unsigned byte
-        final short length = readUnsignedByte(buffer);
-        final var components = new Object[length];
-        Arrays.setAll(components, ignored -> deserializeValue(new HashMap<>(), buffer));
-        return this.staticCreateFromComponents(components);
+        return deserializeWithMap(buffer, new HashMap<>());
       }
 
       @Override
@@ -493,6 +497,8 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
       }
     };
   }
+
+  abstract R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class);
 }
 
 /// Enum containing constants used throughout the Pickler implementation
@@ -633,9 +639,9 @@ class Companion {
 
         // Get the appropriate pickler for this record type
         @SuppressWarnings("unchecked")
-        Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.forRecord(record.getClass());
+        RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
 
-        nestedPickler.serialize(record, buffer);
+        nestedPickler.serializeWithMap(record, buffer, classToOffset);
       }
       case Map<?, ?> map -> {
         buffer.put(typeMarker(c));
@@ -700,7 +706,7 @@ class Companion {
   /// @param buffer The buffer to write to
   /// @param clazz The class to write
   /// @param classToOffset Map tracking class to buffer position offset
-  public static void writeDeduplicatedClassName(ByteBuffer buffer, Class<?> clazz,
+  static void writeDeduplicatedClassName(ByteBuffer buffer, Class<?> clazz,
                                                 Map<Class<?>, Integer> classToOffset) {
     LOGGER.finest(() -> "writeDeduplicatedClassName: class=" + clazz.getName() +
         ", buffer position=" + buffer.position() +
@@ -798,10 +804,10 @@ class Companion {
 
           // Get or create the pickler for this class
           @SuppressWarnings("unchecked")
-          Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.forRecord((Class<? extends Record>) recordClass);
+          RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord((Class<? extends Record>) recordClass);
 
           // Deserialize the nested record
-          yield nestedPickler.deserialize(buffer);
+          yield nestedPickler.deserializeWithMap(buffer, bufferOffset2Class);
         } catch (ClassNotFoundException e) {
           final var msg = "Failed to load class: " + e.getMessage();
           LOGGER.severe(() -> msg);

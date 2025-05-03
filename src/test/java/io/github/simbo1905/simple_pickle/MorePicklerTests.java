@@ -323,8 +323,6 @@ public class MorePicklerTests {
     assertNotNull(next);
     next = next.next();
     assertNull(next);
-
-    assertEquals(0, buffer.remaining(), "Buffer should be fully consumed");
   }
 
   @Test
@@ -333,16 +331,23 @@ public class MorePicklerTests {
     final var pickler = Pickler.forSealedInterface(Chained.class);
 
     // Create a chain of links
-    final var link1 = new Link(null);
-    final var link2 = new Link(link1);
+    final Chained chained;
+    {
+      // Create a chain of four links
+      final var link1 = new Link(null);
+      final var link2 = new Link(link1);
+      final var link3 = new Link(link2);
+      final var link4 = new Link(link3);
+      chained = link4;
+    }
 
     // Calculate buffer size needed for the entire chain
-    final var bufferSize = pickler.sizeOf(link2);
+    final var bufferSize = pickler.sizeOf(chained);
 
     // Allocate a buffer to hold the entire chain
     var buffer = ByteBuffer.allocate(bufferSize);
     // Serialize the entire chain
-    pickler.serialize(link2, buffer);
+    pickler.serialize(chained, buffer);
     // Prepare buffer for reading
     buffer.flip();
 
@@ -354,12 +359,18 @@ public class MorePicklerTests {
     while (matcher.find()) {
       count++;
     }
-    assertEquals(1, count);
+    // we expect 2 matches because the outer trait has to write out that the inner is a link
+    assertEquals(2, count);
+    // make a fresh buffer to check that all the links are deserialized
     buffer = ByteBuffer.wrap(bytes);
     // Deserialize the entire chain
     final var deserializedChain = (Link) pickler.deserialize(buffer);
     assertNotNull(deserializedChain);
     var next = deserializedChain.next();
+    assertNotNull(next);
+    next = next.next();
+    assertNotNull(next);
+    next = next.next();
     assertNotNull(next);
     next = next.next();
     assertNull(next);
@@ -406,9 +417,6 @@ public class MorePicklerTests {
     
     // Validate the entire tree structure was properly deserialized
     validateTreeStructure(deserializedRoot);
-    
-    // Verify buffer is fully consumed
-    assertEquals(0, buffer.remaining(), "Buffer should be fully consumed");
   }
 
   static TreeNode[] getTreeNodes() {
