@@ -192,8 +192,15 @@ abstract class SealedPickler<S> implements Pickler<S> {
 
   private static <S> Pickler<S> manufactureSealedPickler(Class<S> sealedClass) {
     // Get all permitted record subclasses
-    Class<?>[] subclasses = allPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
+    final Class<?>[] subclasses = allPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
+    @SuppressWarnings("unchecked") final Map<String, Class<? extends S>> permittedRecordClasses = Arrays.stream(subclasses)
+        .collect(Collectors.toMap(
+            Class::getName,
+            c -> (Class<? extends S>) c
+        ));
 
+    // note that we cannot add these pickers to the cache map as we are inside a computeIfAbsent yet
+    // practically speaking mix picklers into the same logical stream  is hard so preemptive caching wasteful
     @SuppressWarnings("unchecked") Map<Class<? extends S>, Pickler<? extends S>> subPicklers = Arrays.stream(subclasses)
         .filter(cls -> cls.isRecord() || cls.isSealed())
         .map(cls -> (Class<? extends S>) cls) // Safe due to sealed hierarchy
@@ -204,11 +211,9 @@ abstract class SealedPickler<S> implements Pickler<S> {
                 // Double cast required to satisfy compiler
                 @SuppressWarnings("unchecked")
                 Class<? extends Record> recordCls = (Class<? extends Record>) cls;
-                @SuppressWarnings("unchecked")
-                Pickler<S> pickler = (Pickler<S>) Pickler.forRecord(recordCls);
-                return pickler;
+                return (Pickler<S>) RecordPickler.manufactureRecordPickler(recordCls);
               } else {
-                return Pickler.forSealedInterface(cls);
+                return SealedPickler.manufactureSealedPickler(cls);
               }
             }
         ));
@@ -276,16 +281,14 @@ abstract class SealedPickler<S> implements Pickler<S> {
 
       @SuppressWarnings("unchecked")
       private Class<? extends S> readClass(ByteBuffer buffer) {
-        int classNameLength = buffer.getInt();
-        byte[] classNameBytes = new byte[classNameLength];
+        final int classNameLength = buffer.getInt();
+        final byte[] classNameBytes = new byte[classNameLength];
         buffer.get(classNameBytes);
-        String className = new String(classNameBytes, UTF_8);
-
-        try {
-          return (Class<? extends S>) Class.forName(className);
-        } catch (ClassNotFoundException e) {
+        final String className = new String(classNameBytes, UTF_8);
+        if (!permittedRecordClasses.containsKey(className)) {
           throw new IllegalArgumentException("Unknown subtype: " + className);
         }
+        return permittedRecordClasses.get(className);
       }
     };
   }
@@ -297,7 +300,7 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     return Pickler.getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass));
   }
 
-  private static <R extends Record> Pickler<R> manufactureRecordPickler(Class<R> recordClass) {
+  static <R extends Record> Pickler<R> manufactureRecordPickler(Class<R> recordClass) {
     final Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
     final MethodHandle[] componentAccessors;
     final int canonicalParamCount;
@@ -698,7 +701,7 @@ class Companion {
   /// @param clazz The class to write
   /// @param classToOffset Map tracking class to buffer position offset
   public static void writeDeduplicatedClassName(ByteBuffer buffer, Class<?> clazz,
-                                               Map<Class<?>, Integer> classToOffset) {
+                                                Map<Class<?>, Integer> classToOffset) {
     LOGGER.finest(() -> "writeDeduplicatedClassName: class=" + clazz.getName() +
         ", buffer position=" + buffer.position() +
         ", map contains class=" + classToOffset.containsKey(clazz));
