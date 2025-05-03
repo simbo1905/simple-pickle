@@ -253,30 +253,19 @@ abstract class SealedPickler<S> implements Pickler<S> {
         if (object == null) {
           return 1; // Size of NULL marker
         }
-        
-        // Calculate size of class name
-        int classNameSize = classNameSize(object.getClass(), new HashSet<>());
-        
+
+        Class<?> clazz = object.getClass();
+        int classNameLength = clazz.getName().getBytes(UTF_8).length;
+
+        // Size of length prefix (4 bytes) plus class name bytes
+        int classNameSize = 4 + classNameLength;
+
         // Get the concrete pickler for this object type
         @SuppressWarnings("unchecked")
         Pickler<S> pickler = (Pickler<S>) subPicklers.get(object.getClass());
-        
+
         // Total size is class name size + object size
         return classNameSize + pickler.sizeOf(object);
-      }
-
-      private static int classNameSize(Class<?> clazz, Set<Class<?>> seenClasses) {
-        int classNameLength = clazz.getName().getBytes(UTF_8).length;
-        
-        if (seenClasses.contains(clazz)) {
-          // If already seen, just the reference size (4 bytes)
-          return 4;
-        } else {
-          // Add class to seen set
-          seenClasses.add(clazz);
-          // Size of length prefix (4 bytes) plus class name bytes
-          return 4 + classNameLength;
-        }
       }
 
       private void writeClassName(ByteBuffer buffer, Class<?> type) {
