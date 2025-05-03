@@ -1159,7 +1159,7 @@ class PicklerTest {
   enum ComplexEnum {
     @SuppressWarnings("unused") ONE(1), TWO(2), @SuppressWarnings("unused") THREE(3);
 
-    public int value = 0;
+    public final int value;
 
     ComplexEnum(@SuppressWarnings("unused") int value) {
       this.value = value;

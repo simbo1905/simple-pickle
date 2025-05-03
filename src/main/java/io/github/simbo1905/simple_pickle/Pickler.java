@@ -233,6 +233,12 @@ abstract class SealedPickler<S> implements Pickler<S> {
 
       @Override
       public S deserialize(ByteBuffer buffer) {
+        // if the type is NULL, return null, else read the type identifier
+        buffer.mark();
+        if (buffer.get() == NULL.marker()) {
+          return null;
+        }
+        buffer.reset();
         // Read type identifier
         Class<? extends S> concreteType = readClass(buffer);
 
@@ -240,6 +246,15 @@ abstract class SealedPickler<S> implements Pickler<S> {
         Pickler<? extends S> pickler = subPicklers.get(concreteType);
 
         return pickler.deserialize(buffer);
+      }
+
+      @Override
+      public int sizeOf(S object) {
+        if (object == null) {
+          return 1; // Size of NULL marker
+        }
+        // TODO: size of the class name of the type then resolve the pickler and ask it to calculate the size and add
+        return 0;
       }
 
       private void writeClassName(ByteBuffer buffer, Class<?> type) {
@@ -272,13 +287,13 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
   }
 
   private static <R extends Record> Pickler<R> manufactureRecordPickler(Class<R> recordClass) {
-    MethodHandle[] componentAccessors;
+    final Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
+    final MethodHandle[] componentAccessors;
+    final int canonicalParamCount;
+    final MethodHandles.Lookup lookup = MethodHandles.lookup();
     MethodHandle canonicalConstructorHandle;
-    Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
-    int canonicalParamCount;
 
     // Get lookup object
-    MethodHandles.Lookup lookup = MethodHandles.lookup();
 
     // First we get the accessor method handles for the record components and add them to the array used
     // that is used by the base class to pull all the components out of the record to load into the byte buffer
@@ -309,15 +324,15 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     // Get the canonical constructor and any fallback constructors for schema evolution
     try {
       // Get the record components
-      RecordComponent[] components = recordClass.getRecordComponents();
+      final RecordComponent[] components = recordClass.getRecordComponents();
       // Extract component types for the canonical constructor
-      Class<?>[] canonicalParamTypes = Arrays.stream(components)
+      final Class<?>[] canonicalParamTypes = Arrays.stream(components)
           .map(RecordComponent::getType)
           .toArray(Class<?>[]::new);
       canonicalParamCount = canonicalParamTypes.length;
 
       // Get all public constructors
-      Constructor<?>[] allConstructors = recordClass.getConstructors();
+      final Constructor<?>[] allConstructors = recordClass.getConstructors();
 
       // Find the canonical constructor and potential fallback constructors
       canonicalConstructorHandle = null;
@@ -375,7 +390,6 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
 
     // Capture these values for use in the anonymous class
     final MethodHandle finalCanonicalConstructorHandle = canonicalConstructorHandle;
-    final int finalCanonicalParamCount = canonicalParamCount;
     final String recordClassName = recordClass.getName();
     final Map<Integer, MethodHandle> finalFallbackConstructorHandles =
         Collections.unmodifiableMap(fallbackConstructorHandles);
@@ -403,7 +417,7 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
           int numComponents = components.length;
           MethodHandle constructorToUse;
 
-          if (numComponents == finalCanonicalParamCount) {
+          if (numComponents == canonicalParamCount) {
             // Number of components matches the canonical constructor - use it directly
             constructorToUse = finalCanonicalConstructorHandle;
             LOGGER.finest(() -> "Using canonical constructor for " + recordClassName +
