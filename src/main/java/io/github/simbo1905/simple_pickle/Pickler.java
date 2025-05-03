@@ -538,7 +538,7 @@ class Companion {
     return (short) (buffer.get() & 0xFF);
   }
 
-  static void write(Map<Class<?>, Integer> class2BufferOffset, ByteBuffer buffer, Object c) {
+  static void write(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer, Object c) {
     int startPosition = buffer.position();
     LOGGER.finest(() -> "Starting write at position " + startPosition +
         " for " + (c != null ? c.getClass().getName() : "null") +
@@ -553,7 +553,7 @@ class Companion {
     if (c.getClass().isArray()) {
       buffer.put(ARRAY.marker());
 
-      writeClassNameWithDeduplication(buffer, c.getClass().getComponentType(), class2BufferOffset);
+      writeDeduplicatedClassName(buffer, c.getClass().getComponentType(), classToOffset);
 
       // Write the array length
       int length = Array.getLength(c);
@@ -597,7 +597,7 @@ class Companion {
         buffer.put(typeMarker(c));
 
         // Write the class name with deduplication
-        writeClassNameWithDeduplication(buffer, record.getClass(), class2BufferOffset);
+        writeDeduplicatedClassName(buffer, record.getClass(), classToOffset);
 
         // Get the appropriate pickler for this record type
         @SuppressWarnings("unchecked")
@@ -637,7 +637,7 @@ class Companion {
 
         // Write the enum class name with deduplication
         int beforeClassName = buffer.position();
-        writeClassNameWithDeduplication(buffer, enumValue.getClass(), class2BufferOffset);
+        writeDeduplicatedClassName(buffer, enumValue.getClass(), classToOffset);
         int afterClassName = buffer.position();
         LOGGER.finest(() -> "Wrote enum class name from position " + beforeClassName +
             " to " + afterClassName + " (size: " + (afterClassName - beforeClassName) + ")");
@@ -670,18 +670,18 @@ class Companion {
   /// @param classToOffset Map tracking class to buffer position offset
   public static void writeDeduplicatedClassName(ByteBuffer buffer, Class<?> clazz,
                                                Map<Class<?>, Integer> classToOffset) {
-    LOGGER.finest(() -> "writeClassNameWithDeduplication: class=" + clazz.getName() +
+    LOGGER.finest(() -> "writeDeduplicatedClassName: class=" + clazz.getName() +
         ", buffer position=" + buffer.position() +
-        ", map contains class=" + class2BufferOffset.containsKey(clazz));
+        ", map contains class=" + classToOffset.containsKey(clazz));
 
     // Check if we've seen this class before
     Integer offset = classToOffset.get(clazz);
-    if (existingOffset != null) {
+    if (offset != null) {
       // We've seen this class before, write a negative reference
-      int reference = ~existingOffset;
+      int reference = ~offset;
       buffer.putInt(reference); // Using bitwise complement for negative reference
       LOGGER.finest(() -> "Wrote class reference: " + clazz.getName() +
-          " at offset " + existingOffset + ", value=" + reference);
+          " at offset " + offset + ", value=" + reference);
     } else {
       // First time seeing this class, write the full name
       String className = clazz.getName();
@@ -696,7 +696,7 @@ class Companion {
       buffer.put(classNameBytes);
 
       // Store the position where we wrote this class
-      class2BufferOffset.put(clazz, currentPosition);
+      classToOffset.put(clazz, currentPosition);
       LOGGER.finest(() -> "Wrote class name: " + className +
           " at offset " + currentPosition +
           ", length=" + classNameLength +
