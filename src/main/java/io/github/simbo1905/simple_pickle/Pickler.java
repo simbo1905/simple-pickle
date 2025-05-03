@@ -216,6 +216,10 @@ abstract class SealedPickler<S> implements Pickler<S> {
     return new SealedPickler<>() {
       @Override
       public void serialize(S object, ByteBuffer buffer) {
+        if (object == null) {
+          buffer.put(NULL.marker());
+          return;
+        }
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
         Pickler<? extends S> pickler = subPicklers.get(concreteType);
 
