@@ -562,7 +562,7 @@ class Companion {
       if (byte.class.equals(c.getClass().getComponentType())) {
         buffer.put((byte[]) c);
       } else {
-        IntStream.range(0, length).forEach(i -> write(class2BufferOffset, buffer, Array.get(c, i)));
+        IntStream.range(0, length).forEach(i -> write(classToOffset, buffer, Array.get(c, i)));
       }
 
       return;
