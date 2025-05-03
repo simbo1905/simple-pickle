@@ -434,7 +434,7 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
         final var components = components(object);
         // Write the number of components as an unsigned byte (max 255)
         writeUnsignedByte(buffer, (short) components.length);
-        Arrays.stream(components).forEach(c -> write(new HashMap<>(), buffer, c));
+        Arrays.stream(components).forEach(c -> Companion.write(new HashMap<>(), buffer, c));
       }
 
       @Override
@@ -590,7 +590,7 @@ class Companion {
         } else {
           buffer.put((byte) 1); // 1 = present
           Object value = opt.get();
-          write(class2BufferOffset, buffer, value);
+          write(classToOffset, buffer, value);
         }
       }
       case Record record -> {
@@ -614,9 +614,9 @@ class Companion {
         // Write each key-value pair
         map.forEach((key, value) -> {
           // Write the key
-          write(class2BufferOffset, buffer, key);
+          write(classToOffset, buffer, key);
           // Write the value
-          write(class2BufferOffset, buffer, value);
+          write(classToOffset, buffer, value);
         });
       }
       case List<?> list -> {
@@ -626,7 +626,7 @@ class Companion {
         buffer.putInt(list.size());
 
         // Write each element
-        list.forEach(element -> write(class2BufferOffset, buffer, element));
+        list.forEach(element -> write(classToOffset, buffer, element));
       }
       case Enum<?> enumValue -> {
         int enumStartPos = buffer.position();
