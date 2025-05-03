@@ -33,7 +33,7 @@ public class ListPicklerTest {
     final List<ListRecord> outerList = List.of(original, new ListRecord(List.of("X", "Y")));
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfHomogeneousArray(outerList.toArray(ListRecord[]::new));
+    int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
@@ -120,7 +120,7 @@ public class ListPicklerTest {
     }
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfHomogeneousArray(original.toArray(NestedListRecord[]::new));
+    int size = Pickler.sizeOfMany(original.toArray(NestedListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
@@ -185,7 +185,7 @@ public class ListPicklerTest {
     Alicorn[] alicorns = animals.stream().filter(i -> i instanceof Alicorn).toArray(Alicorn[]::new);
 
     int size = Stream.of(dogs, eagles, penguins, alicorns)
-        .mapToInt(Pickler::sizeOfHomogeneousArray)
+        .mapToInt(Pickler::sizeOfMany)
         .sum();
 
     final var animalsBuffer = ByteBuffer.allocate(size);

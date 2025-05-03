@@ -6,6 +6,8 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.IntStream;
 
 public class DemoPickler2 {
   // @formatter:off
@@ -65,18 +67,15 @@ public class DemoPickler2 {
     // Deserialize
     int size = animalBuffer.getInt();
     Animal[] deserializedAnimals = new Animal[size];
-    for (int i = 0; i < size; i++) {
-      deserializedAnimals[i] = animalPickler.deserialize(animalBuffer);
-    }
+    Arrays.setAll(deserializedAnimals, i -> animalPickler.deserialize(animalBuffer));
 
     // Verify
-    boolean allMatch = true;
-    for (int i = 0; i < animals.size(); i++) {
+    AtomicBoolean allMatch = new AtomicBoolean(true);
+    IntStream.range(0, animals.size()).forEach(i -> {
       if (!animals.get(i).equals(deserializedAnimals[i])) {
-        allMatch = false;
-        break;
+        allMatch.set(false);
       }
-    }
-    System.out.println("Animal list round-trip: " + allMatch);
+    });
+    System.out.println("Animal list round-trip: " + allMatch.get());
   }
 }

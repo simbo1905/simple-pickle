@@ -30,20 +30,6 @@ public interface Pickler<T> {
     return (Pickler<T>) REGISTRY.computeIfAbsent(type, k -> supplier.get());
   }
 
-  static int sizeOfHomogeneousArray(Object[] emptyArray) {
-    // FIXME
-    return 0;
-  }
-
-  static void serializeMany(Record[] i, ByteBuffer animalsBuffer) {
-    // FIXME
-  }
-
-  static Collection<Object> deserializeMany(Class<?> personClass, ByteBuffer buffer) {
-    // FIXME
-    return null;
-  }
-
   void serialize(T object, ByteBuffer buffer);
 
   T deserialize(ByteBuffer buffer);
@@ -56,6 +42,104 @@ public interface Pickler<T> {
 
   static <S> Pickler<S> forSealedInterface(Class<S> sealedClass) {
     return SealedPickler.create(sealedClass);
+  }
+
+  static <R extends Record> void serializeMany(R[] array, ByteBuffer buffer) {
+    buffer.put(typeMarker(ARRAY));
+    byte[] classNameBytes = array.getClass().getComponentType().getName().getBytes(UTF_8);
+    buffer.putInt(classNameBytes.length);
+    buffer.put(classNameBytes);
+    buffer.putInt(array.length);
+
+    Pickler<R> pickler = Pickler.forRecord((Class<R>) array.getClass().getComponentType());
+    Arrays.stream(array).forEach(element -> pickler.serialize(element, buffer));
+  }
+
+  static <R extends Record> List<R> deserializeMany(Class<R> componentType, ByteBuffer buffer) {
+    byte marker = buffer.get();
+    if (marker != typeMarker(ARRAY)) throw new IllegalArgumentException("Invalid array marker");
+
+    Class<?> readType;
+    int classNameLength = buffer.getInt();
+    byte[] classNameBytes = new byte[classNameLength];
+    buffer.get(classNameBytes);
+    String className = new String(classNameBytes, UTF_8);
+
+    try {
+      readType = Class.forName(className);
+    } catch (ClassNotFoundException e) {
+      throw new IllegalArgumentException("Unknown subtype: " + className);
+    }
+    if (!componentType.equals(readType)) throw new IllegalArgumentException("Type mismatch");
+
+    return IntStream.range(0, buffer.getInt())
+        .mapToObj(i -> Pickler.forRecord(componentType).deserialize(buffer))
+        .toList();
+  }
+
+  static <R extends Record> int sizeOfMany(R[] array) {
+    return Optional.ofNullable(array)
+        .map(arr -> 1 + 4 // 4 bytes for the length prefix (int)
+            + arr.getClass().getComponentType().getName().getBytes(UTF_8).length + 4 +
+            Arrays.stream(arr)
+                .mapToInt(Pickler.forRecord((Class<R>) arr.getClass().getComponentType())::sizeOf)
+                .sum())
+        .orElse(1);
+  }
+
+  static <S> void serializeManySealed(List<? extends S> list, ByteBuffer buffer) {
+    buffer.put(typeMarker(LIST));
+    buffer.putInt(list.size());
+
+    list.forEach(element -> {
+      byte[] classNameBytes = element.getClass().getComponentType().getName().getBytes(UTF_8);
+      buffer.putInt(classNameBytes.length);
+      buffer.put(classNameBytes);
+      @SuppressWarnings("unchecked")
+      Pickler<S> pickler = (Pickler<S>) forSealedInterface(element.getClass());
+      pickler.serialize(element, buffer);
+    });
+  }
+
+  static <S> List<S> deserializeManySealed(Class<S> sealedInterface, ByteBuffer buffer) {
+    byte marker = buffer.get();
+    if (marker != typeMarker(LIST)) throw new IllegalArgumentException("Invalid list marker");
+
+    return IntStream.range(0, buffer.getInt())
+        .mapToObj(i -> {
+          // Read class name from buffer
+          int classNameLength = buffer.getInt();
+          byte[] classNameBytes = new byte[classNameLength];
+          buffer.get(classNameBytes);
+          String className = new String(classNameBytes, UTF_8);
+
+          // Load class and validate
+          Class<? extends S> concreteType;
+          try {
+            concreteType = (Class<? extends S>) Class.forName(className);
+          } catch (ClassNotFoundException e) {
+            throw new IllegalArgumentException("Unknown subtype: " + className);
+          }
+          if (!sealedInterface.isAssignableFrom(concreteType)) {
+            throw new IllegalArgumentException("Invalid type: " + className);
+          }
+
+          // Deserialize using concrete pickler
+          return (S) Pickler.forSealedInterface(concreteType).deserialize(buffer);
+        })
+        .toList();
+  }
+
+  static <S> int sizeOfManySealed(List<? extends S> list) {
+    return Optional.ofNullable(list)
+        .map(l -> 1 + 4 + l.stream()
+            .mapToInt(element ->
+                4 // 4 bytes for the length prefix (int)
+                    + element.getClass().getName().getBytes(UTF_8).length +
+                    ((Pickler<S>) forSealedInterface(element.getClass())).sizeOf(element)
+            )
+            .sum())
+        .orElse(1);
   }
 }
 
@@ -103,8 +187,7 @@ abstract class SealedPickler<S> implements Pickler<S> {
     return Pickler.getOrCreate(sealedClass, () -> manufactureSealedPickler(sealedClass));
   }
 
-
-  static <S> Pickler<S> manufactureSealedPickler(Class<S> sealedClass) {
+  private static <S> Pickler<S> manufactureSealedPickler(Class<S> sealedClass) {
     // Get all permitted record subclasses
     Class<?>[] subclasses = allPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
 
@@ -991,4 +1074,13 @@ class Companion {
     return size;
   }
 
+  static <S> void validateType(Class<S> sealedInterface, Class<?> concreteType) {
+    if (!sealedInterface.isAssignableFrom(concreteType)) {
+      throw new IllegalArgumentException(String.format(
+          "Type %s is not a subtype of %s",
+          concreteType.getName(),
+          sealedInterface.getName()
+      ));
+    }
+  }
 }

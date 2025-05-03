@@ -58,7 +58,7 @@ public class PublicApiDemo {
         .toList();
     
     int size = animalsByActualType.stream()
-        .mapToInt(Pickler::sizeOfHomogeneousArray)
+        .mapToInt(Pickler::sizeOfMany)
         .sum();
 
     final var animalsBuffer = ByteBuffer.allocate(size);

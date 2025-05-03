@@ -590,7 +590,7 @@ class PicklerTest {
     Person[] emptyArray = new Person[0];
     
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfHomogeneousArray(emptyArray);
+    int size = Pickler.sizeOfMany(emptyArray);
     ByteBuffer buffer = ByteBuffer.allocate(size);
     
     // Serialize the array
@@ -620,7 +620,7 @@ class PicklerTest {
     Person[] people = personList.toArray(Person[]::new);
     
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfHomogeneousArray(people);
+    int size = Pickler.sizeOfMany(people);
     ByteBuffer buffer = ByteBuffer.allocate(size);
     
     // Serialize the array
