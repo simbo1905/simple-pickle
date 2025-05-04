@@ -1,6 +1,6 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.simple_pickle.Pickler;
+import io.github.simbo1905.no.framework.Pickler;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

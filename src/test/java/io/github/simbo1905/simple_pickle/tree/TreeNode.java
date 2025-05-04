@@ -1,7 +1,0 @@
-// SPDX-FileCopyrightText: 2025 Simon Massey
-// SPDX-License-Identifier: Apache-2.0
-package io.github.simbo1905.simple_pickle.tree;
-
-/// A sealed interface representing a node in a tree structure
-public sealed interface TreeNode permits RootNode, InternalNode, LeafNode {
-}

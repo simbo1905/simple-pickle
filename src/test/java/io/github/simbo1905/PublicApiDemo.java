@@ -1,6 +1,6 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.simple_pickle.Pickler;
+import io.github.simbo1905.no.framework.Pickler;
 import org.junit.jupiter.api.Assertions;
 
 import java.nio.ByteBuffer;
@@ -59,10 +59,10 @@ public class PublicApiDemo {
       Assertions.assertEquals(animal, deserializedAnimal);
     }
 
-    listsCannotBeTypeOfSealedIntefaceAndPermiitedRecords();
+    listsCannotBeTypeOfSealedInterfaceAndPermittedRecords();
   }
 
-  private static void listsCannotBeTypeOfSealedIntefaceAndPermiitedRecords() {
+  private static void listsCannotBeTypeOfSealedInterfaceAndPermittedRecords() {
     final var buffer = ByteBuffer.allocate(1024);
 
 
