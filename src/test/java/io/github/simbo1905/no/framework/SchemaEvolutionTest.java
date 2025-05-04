@@ -17,7 +17,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,8 +24,6 @@ import static org.junit.jupiter.api.Assertions.*;
 /// This class demonstrates how records can evolve over time while maintaining
 /// compatibility with previously serialized data.
 public class SchemaEvolutionTest {
-
-  static final Logger LOGGER = Logger.getLogger(SchemaEvolutionTest.class.getName());
 
   /// Original schema with just one field
   static final String ORIGINAL_SCHEMA = """
@@ -71,7 +68,6 @@ public class SchemaEvolutionTest {
 
       // Step 2: Create an instance of the original record
       Object originalInstance = createRecordInstance(originalClass, new Object[]{123});
-      LOGGER.fine("Original instance: " + originalInstance);
 
       // Step 3: Serialize the original instance
       byte[] serializedData = serializeRecord(originalInstance);
@@ -81,7 +77,6 @@ public class SchemaEvolutionTest {
 
       // Step 5: Deserialize using the evolved schema
       Object evolvedInstance = deserializeRecord(evolvedClass, serializedData);
-      LOGGER.fine("Evolved instance: " + evolvedInstance);
 
       // Step 6: Verify the fields
       verifyRecordComponents(evolvedInstance, Map.of(
@@ -102,7 +97,6 @@ public class SchemaEvolutionTest {
 
     // Step 2: Create an instance of the original record
     Object originalInstance = createRecordInstance(originalClass, new Object[]{123});
-    LOGGER.fine("Original instance: " + originalInstance);
 
     // Step 3: Serialize the original instance
     byte[] serializedData = serializeRecord(originalInstance);
@@ -116,7 +110,7 @@ public class SchemaEvolutionTest {
       Object evolvedInstance = deserializeRecord(evolvedClass, serializedData);
       throw new AssertionError("should get error" + evolvedInstance);
     } catch (IllegalArgumentException e) {
-      LOGGER.info("got expected error: " + e.getMessage());
+      // Expected exception
     }
   }
 
@@ -163,12 +157,10 @@ public class SchemaEvolutionTest {
 
     // Create an instance with both fields specified
     Object originalInstance = createRecordInstance(evolvedClass, new Object[]{123, 456});
-    LOGGER.fine("Original evolved instance: " + originalInstance);
 
     // Serialize and then deserialize
     byte[] serializedData = serializeRecord(originalInstance);
     Object deserializedInstance = deserializeRecord(evolvedClass, serializedData);
-    LOGGER.fine("Deserialized evolved instance: " + deserializedInstance);
 
     // Verify both fields are preserved
     verifyRecordComponents(deserializedInstance, Map.of(
@@ -266,7 +258,6 @@ public class SchemaEvolutionTest {
     Exception exception = assertThrows(RuntimeException.class,
         () -> deserializeRecord(originalClass, serializedData));
 
-    LOGGER.fine("Expected exception: " + exception.getMessage());
     // The exception should contain a message about schema evolution
     assertTrue(exception.getMessage().contains("Schema evolution error") ||
             exception.getMessage().contains("Failed to create instance"),
@@ -365,14 +356,10 @@ public class SchemaEvolutionTest {
       assertEquals(expectedValue, actualValue,
           "Component '" + name + "' has value " + actualValue +
               " but expected " + expectedValue);
-
-      LOGGER.fine("Verified component '" + name + "' = " + actualValue);
     } catch (Exception e) {
       fail("Failed to access component '" + name + "': " + e.getMessage());
     }
   }
-
-  // Inner classes for in-memory compilation
 
   /// A JavaFileObject implementation that holds source code in memory.
   public static class InMemorySourceFile extends SimpleJavaFileObject {
