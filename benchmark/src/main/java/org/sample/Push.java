@@ -2,5 +2,5 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.sample;
 
-public record Push(String item) implements StackCommand {
+public record Push(String item) implements StackCommand, java.io.Serializable {
 }
