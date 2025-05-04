@@ -5,7 +5,6 @@ import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
 import java.nio.ByteBuffer;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @State(Scope.Thread)
@@ -26,16 +25,12 @@ public class MyBenchmark {
 
   @Benchmark
   public void helloWorld(Blackhole bh) {
-    final List<Push> original = List.of(
-        new Push("hello"),
-        new Push("world"),
-        new Push("yes"),
-        new Push("no"));
-    int size = Pickler.sizeOfList(Push.class, original);
+    final Push[] original = {new Push("hello"), new Push("world"), new Push("yes"), new Push("no")};
+    int size = Pickler.sizeOfMany(original);
     ByteBuffer buffer = ByteBuffer.allocate(size);
-    Pickler.serializeList(Push.class, original, buffer);
+    Pickler.serializeMany(original, buffer);
     buffer.flip();
-    final var back = Pickler.deserializeList(Push.class, buffer);
+    final var back = Pickler.deserializeMany(Push.class, buffer);
     bh.consume(back);
   }
 }
