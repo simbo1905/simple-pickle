@@ -1,6 +1,6 @@
 package org.sample;
 
-import io.github.simbo1905.simple_pickle.Pickler;
+import io.github.simbo1905.no.framework.Pickler;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
