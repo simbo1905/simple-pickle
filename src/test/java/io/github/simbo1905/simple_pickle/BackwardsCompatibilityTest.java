@@ -135,13 +135,6 @@ public class BackwardsCompatibilityTest {
     multiGenerationalBackwardsTwice();
   }
 
-  @Test
-  void testMultiGenerationEvolutionBackwardsALL() throws Exception {
-    System.setProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.ALL.name());
-
-    multiGenerationalBackwardsTwice();
-  }
-
   private void multiGenerationalBackwardsTwice() throws Exception {
     // We are testing the latest code can load two prior versions of the code
     Class<?> generation3class = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_3);

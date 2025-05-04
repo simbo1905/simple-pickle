@@ -404,7 +404,7 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
 
     // we are security by default so if we are set to strict mode do not allow fallback constructors
     final Map<Integer, MethodHandle> finalFallbackConstructorHandles =
-        (Compatibility.BACKWARDS == compatibility) ?
+        (Compatibility.BACKWARDS == compatibility || Compatibility.ALL == compatibility) ?
             Collections.unmodifiableMap(fallbackConstructorHandles) : Collections.emptyMap();
     
     return new RecordPickler<>() {
