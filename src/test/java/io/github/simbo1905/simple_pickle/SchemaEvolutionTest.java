@@ -42,7 +42,7 @@ public class SchemaEvolutionTest {
     static final String EVOLVED_SCHEMA = """
         package io.github.simbo1905.simple_pickle.evolution;
         
-        /// An evolved record with an additional field and backward compatibility.
+        // An evolved record with an additional field and backward compatibility.
         public record TestRecord(int blah, int myNewInt) {
                 /// Backward compatibility constructor that sets default value for new field.
                 public TestRecord(int xxx) {
@@ -51,7 +51,11 @@ public class SchemaEvolutionTest {
             }
         """;
 
-    /// Tests schema evolution by:
+  final String CLASS_NAME = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
+
+  JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+
+  /// Tests schema evolution by:
     /// 1. Compiling and loading the original schema
     /// 2. Creating and serializing an instance
     /// 3. Compiling and loading the evolved schema
@@ -62,7 +66,7 @@ public class SchemaEvolutionTest {
       try {
         System.setProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
         // Step 1: Compile and load the original schema
-        Class<?> originalClass = compileAndLoadClass(ORIGINAL_SCHEMA);
+        Class<?> originalClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
         assertTrue(originalClass.isRecord(), "Compiled class should be a record");
 
         // Step 2: Create an instance of the original record
@@ -72,8 +76,7 @@ public class SchemaEvolutionTest {
         // Step 3: Serialize the original instance
         byte[] serializedData = serializeRecord(originalInstance);
 
-        // Step 4: Compile and load the evolved schema
-        Class<?> evolvedClass = compileAndLoadClass(EVOLVED_SCHEMA);
+        Class<?> evolvedClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
         assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
 
         // Step 5: Deserialize using the evolved schema
@@ -93,7 +96,8 @@ public class SchemaEvolutionTest {
   @Test
   void testBasicSchemaEvolutionDisabledByDefault() throws Exception {
     // Step 1: Compile and load the original schema
-    Class<?> originalClass = compileAndLoadClass(ORIGINAL_SCHEMA);
+    // Step 1: Compile and load the original schema
+    Class<?> originalClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
     assertTrue(originalClass.isRecord(), "Compiled class should be a record");
 
     // Step 2: Create an instance of the original record
@@ -104,13 +108,13 @@ public class SchemaEvolutionTest {
     byte[] serializedData = serializeRecord(originalInstance);
 
     // Step 4: Compile and load the evolved schema
-    Class<?> evolvedClass = compileAndLoadClass(EVOLVED_SCHEMA);
+    Class<?> evolvedClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
     assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
 
     // Step 5: Deserialize using the evolved schema
     try {
       Object evolvedInstance = deserializeRecord(evolvedClass, serializedData);
-      throw new AssertionError("should get error");
+      throw new AssertionError("should get error" + evolvedInstance);
     } catch (IllegalArgumentException e) {
 
     }
@@ -121,7 +125,41 @@ public class SchemaEvolutionTest {
     @Test
     void testRoundTripWithEvolvedSchema() throws Exception {
         // Compile and load the evolved schema
-        Class<?> evolvedClass = compileAndLoadClass(EVOLVED_SCHEMA);
+      final String fullClassName = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
+
+      // Compile the source code
+      // Get the Java compiler
+      JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+      if (compiler == null) {
+        throw new IllegalStateException("Java compiler not available. Make sure you're running with JDK.");
+      }
+
+      // Set up the compilation
+      DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+      InMemoryFileManager fileManager = new InMemoryFileManager(
+          compiler.getStandardFileManager(diagnostics, null, null));
+
+      // Create the source file object
+      JavaFileObject sourceFile = new InMemorySourceFile(fullClassName, EVOLVED_SCHEMA);
+
+      // Compile the source
+      JavaCompiler.CompilationTask task = compiler.getTask(
+          null, fileManager, diagnostics, null, null, List.of(sourceFile));
+
+      boolean success = task.call();
+      if (!success) {
+        throwCompilationError(diagnostics);
+      }
+
+      // Return the compiled bytecode
+      byte[] classBytes = fileManager.getClassBytes(fullClassName);
+
+      // Load the compiled class
+      InMemoryClassLoader classLoader = new InMemoryClassLoader(
+          SchemaEvolutionTest.class.getClassLoader(),
+          Map.of(fullClassName, classBytes));
+
+      Class<?> evolvedClass = classLoader.loadClass(fullClassName);
         
         // Create an instance with both fields specified
         Object originalInstance = createRecordInstance(evolvedClass, new Object[]{123, 456});
@@ -147,74 +185,95 @@ public class SchemaEvolutionTest {
     @Test
     void testBackwardIncompatibility() throws Exception {
         // Compile and load both schemas
-        Class<?> originalClass = compileAndLoadClass(ORIGINAL_SCHEMA);
-        Class<?> evolvedClass = compileAndLoadClass(EVOLVED_SCHEMA);
-        
-        // Create an instance of the evolved record
-        Object evolvedInstance = createRecordInstance(evolvedClass, new Object[]{123, 456});
-        
-        // Serialize the evolved instance
-        byte[] serializedData = serializeRecord(evolvedInstance);
-        
-        // Attempting to deserialize with the original schema should fail
-        Exception exception = assertThrows(RuntimeException.class, 
-                () -> deserializeRecord(originalClass, serializedData));
-        
-        LOGGER.fine("Expected exception: " + exception.getMessage());
-        // The exception should contain a message about schema evolution
-        assertTrue(exception.getMessage().contains("Schema evolution error") || 
-                   exception.getMessage().contains("Failed to create instance"),
-                "Exception should be related to schema evolution or constructor mismatch");
+      final String fullClassName1 = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
+
+      // Compile the source code
+      // Get the Java compiler
+      JavaCompiler compiler1 = ToolProvider.getSystemJavaCompiler();
+      if (compiler1 == null) {
+        throw new IllegalStateException("Java compiler not available. Make sure you're running with JDK.");
+      }
+
+      // Set up the compilation
+      DiagnosticCollector<JavaFileObject> diagnostics1 = new DiagnosticCollector<>();
+      InMemoryFileManager fileManager1 = new InMemoryFileManager(
+          compiler1.getStandardFileManager(diagnostics1, null, null));
+
+      // Create the source file object
+      JavaFileObject sourceFile1 = new InMemorySourceFile(fullClassName1, ORIGINAL_SCHEMA);
+
+      // Compile the source
+      JavaCompiler.CompilationTask task1 = compiler1.getTask(
+          null, fileManager1, diagnostics1, null, null, List.of(sourceFile1));
+
+      boolean success1 = task1.call();
+      if (!success1) {
+        throwCompilationError(diagnostics1);
+      }
+
+      // Return the compiled bytecode
+      byte[] classBytes1 = fileManager1.getClassBytes(fullClassName1);
+
+      // Load the compiled class
+      InMemoryClassLoader classLoader1 = new InMemoryClassLoader(
+          SchemaEvolutionTest.class.getClassLoader(),
+          Map.of(fullClassName1, classBytes1));
+
+      Class<?> originalClass = classLoader1.loadClass(fullClassName1);
+      final String fullClassName = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
+
+      // Compile the source code
+      // Get the Java compiler
+      JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+      if (compiler == null) {
+        throw new IllegalStateException("Java compiler not available. Make sure you're running with JDK.");
+      }
+
+      // Set up the compilation
+      DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+      InMemoryFileManager fileManager = new InMemoryFileManager(
+          compiler.getStandardFileManager(diagnostics, null, null));
+
+      // Create the source file object
+      JavaFileObject sourceFile = new InMemorySourceFile(fullClassName, EVOLVED_SCHEMA);
+
+      // Compile the source
+      JavaCompiler.CompilationTask task = compiler.getTask(
+          null, fileManager, diagnostics, null, null, List.of(sourceFile));
+
+      boolean success = task.call();
+      if (!success) {
+        throwCompilationError(diagnostics);
+      }
+
+      // Return the compiled bytecode
+      byte[] classBytes = fileManager.getClassBytes(fullClassName);
+
+      // Load the compiled class
+      InMemoryClassLoader classLoader = new InMemoryClassLoader(
+          SchemaEvolutionTest.class.getClassLoader(),
+          Map.of(fullClassName, classBytes));
+
+      Class<?> evolvedClass = classLoader.loadClass(fullClassName);
+
+      // Create an instance of the evolved record
+      Object evolvedInstance = createRecordInstance(evolvedClass, new Object[]{123, 456});
+
+      // Serialize the evolved instance
+      byte[] serializedData = serializeRecord(evolvedInstance);
+
+      // Attempting to deserialize with the original schema should fail
+      Exception exception = assertThrows(RuntimeException.class,
+          () -> deserializeRecord(originalClass, serializedData));
+
+      LOGGER.fine("Expected exception: " + exception.getMessage());
+      // The exception should contain a message about schema evolution
+      assertTrue(exception.getMessage().contains("Schema evolution error") ||
+              exception.getMessage().contains("Failed to create instance"),
+          "Exception should be related to schema evolution or constructor mismatch");
     }
 
-    /// Compiles and loads a class from source code.
-    ///
-    /// @param sourceCode The source code
-    /// @return The loaded class
-    public static Class<?> compileAndLoadClass(String sourceCode) throws Exception {
-        final String fullClassName = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
-        
-        // Compile the source code
-        byte[] classBytes = compileSource(sourceCode, fullClassName);
-        
-        // Load the compiled class
-        return loadCompiledClass(fullClassName, classBytes);
-    }
-    
-    /// Compiles source code into bytecode.
-    ///
-    /// @param sourceCode The source code to compile
-    /// @param fullClassName The fully qualified class name
-    /// @return The compiled bytecode
-    public static byte[] compileSource(String sourceCode, String fullClassName) {
-        // Get the Java compiler
-        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        if (compiler == null) {
-            throw new IllegalStateException("Java compiler not available. Make sure you're running with JDK.");
-        }
-
-        // Set up the compilation
-        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        InMemoryFileManager fileManager = new InMemoryFileManager(
-            compiler.getStandardFileManager(diagnostics, null, null));
-
-        // Create the source file object
-        JavaFileObject sourceFile = new InMemorySourceFile(fullClassName, sourceCode);
-
-        // Compile the source
-        JavaCompiler.CompilationTask task = compiler.getTask(
-            null, fileManager, diagnostics, null, null, List.of(sourceFile));
-
-        boolean success = task.call();
-        if (!success) {
-            throwCompilationError(diagnostics);
-        }
-
-        // Return the compiled bytecode
-        return fileManager.getClassBytes(fullClassName);
-    }
-    
-    /// Throws a runtime exception with compilation error details.
+  /// Throws a runtime exception with compilation error details.
     ///
     /// @param diagnostics The compilation diagnostics
     public static void throwCompilationError(DiagnosticCollector<JavaFileObject> diagnostics) {
@@ -224,21 +283,8 @@ public class SchemaEvolutionTest {
         }
         throw new RuntimeException(errorMsg.toString());
     }
-    
-    /// Loads a class from its bytecode.
-    ///
-    /// @param fullClassName The fully qualified class name
-    /// @param classBytes The class bytecode
-    /// @return The loaded class
-    public static Class<?> loadCompiledClass(String fullClassName, byte[] classBytes) throws ClassNotFoundException {
-        InMemoryClassLoader classLoader = new InMemoryClassLoader(
-            SchemaEvolutionTest.class.getClassLoader(), 
-            Map.of(fullClassName, classBytes));
-        
-        return classLoader.loadClass(fullClassName);
-    }
 
-    /// Creates an instance of a record using reflection.
+  /// Creates an instance of a record using reflection.
     /// 
     /// @param recordClass The record class
     /// @param args The constructor arguments
