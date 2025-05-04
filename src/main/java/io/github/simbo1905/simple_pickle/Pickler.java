@@ -89,13 +89,13 @@ public interface Pickler<T> {
   }
 
   enum Compatibility {
-    STRICT,
+    NONE,
     BACKWARDS,
     FORWARDS;
 
     static void validate(final Compatibility compatibility, final String recordClassName, final int componentCount, final int bufferLength) {
-      if (compatibility == Compatibility.STRICT && bufferLength != componentCount) {
-        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.STRICT yet buffer length %s != component count %s"
+      if (compatibility == Compatibility.NONE && bufferLength != componentCount) {
+        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.NONE yet buffer length %s != component count %s"
             .formatted(recordClassName, bufferLength, componentCount));
       } else if (compatibility == Compatibility.BACKWARDS && bufferLength > componentCount) {
         throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.BACKWARDS and count of components %s > buffer size %s"
@@ -205,7 +205,7 @@ abstract class SealedPickler<S> implements Pickler<S> {
       /// There is nothing effective we can do here.
       @Override
       public Compatibility compatibility() {
-        return Compatibility.STRICT;
+        return Compatibility.NONE;
       }
 
       @Override
@@ -390,10 +390,10 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     final MethodHandle finalCanonicalConstructorHandle = canonicalConstructorHandle;
 
     final Compatibility compatibility = Compatibility.valueOf(
-        System.getProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, "STRICT"));
+        System.getProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, "NONE"));
 
     final String recordClassName = recordClass.getName();
-    if (compatibility != Compatibility.STRICT) {
+    if (compatibility != Compatibility.NONE) {
       // We are secure by default this is opt-in and should not be left on forever so best to nag
       LOGGER.warning(() -> "Pickler for " + recordClassName + " has Compatibility set to " + compatibility.name());
     }
