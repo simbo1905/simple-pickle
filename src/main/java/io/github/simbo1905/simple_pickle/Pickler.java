@@ -89,8 +89,6 @@ public interface Pickler<T> {
         LOGGER.severe(() -> msg);
         throw new IllegalArgumentException(msg);
       }
-      // Validate record components for enum types
-      PicklerBase.validateRecordComponents((Class<R>) clazz);
       return PicklerBase.createPicklerForRecord((Class<R>) clazz);
     });
   }
@@ -242,79 +240,6 @@ public interface Pickler<T> {
   /// @see Record
   abstract class PicklerBase<R extends Record> implements PicklerInternal<R> {
 
-    /// Validates that all enum types used in record components are simple enums.
-    /// A simple enum has no instance fields, no custom constructors, and no class bodies.
-    ///
-    /// @param recordClass The record class to validate
-    /// @throws UnsupportedOperationException if a complex enum is found
-    public static <R extends Record> void validateRecordComponents(Class<R> recordClass) {
-      RecordComponent[] components = recordClass.getRecordComponents();
-      for (RecordComponent component : components) {
-        Class<?> type = component.getType();
-
-        // Check if the type is an enum
-        if (type.isEnum()) {
-          validateSimpleEnum(type);
-        }
-
-        // Check if it's an array of enums
-        if (type.isArray() && type.getComponentType().isEnum()) {
-          validateSimpleEnum(type.getComponentType());
-        }
-
-      }
-    }
-
-    /// Validates that an enum is a simple enum without custom fields, methods, or constructors.
-    ///
-    /// @param enumClass The enum class to validate
-    /// @throws UnsupportedOperationException if the enum is complex
-    public static void validateSimpleEnum(Class<?> enumClass) {
-      if (!enumClass.isEnum()) {
-        return;
-      }
-
-      // Check for instance fields (excluding compiler-generated ones)
-      final var fields = enumClass.getDeclaredFields();
-      Arrays.stream(fields)
-          .filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers()) &&
-              !field.isSynthetic() &&
-              !field.getName().equals("$VALUES") &&
-              !field.getName().equals("name") &&
-              !field.getName().equals("ordinal"))
-          .findFirst()
-          .ifPresent(field -> {
-            final var msg = "Complex enum not supported: " + enumClass.getName() +
-                " has instance field: " + field.getName();
-            LOGGER.severe(msg);
-            throw new UnsupportedOperationException(msg);
-          });
-
-      // Check for custom constructors
-      final var constructors = enumClass.getDeclaredConstructors();
-      Arrays.stream(constructors)
-          .filter(constructor -> !constructor.isSynthetic() && constructor.getParameterCount() > 2)
-          .findFirst()
-          .ifPresent(constructor -> {
-            final var msg = "Complex enum not supported: " + enumClass.getName() +
-                " has custom constructor with " + constructor.getParameterCount() + " parameters";
-            LOGGER.severe(msg);
-            throw new UnsupportedOperationException(msg);
-          });
-
-      // Check for enum constants with class bodies
-      final var constants = enumClass.getEnumConstants();
-      Arrays.stream(constants)
-          .filter(constant -> constant.getClass() != enumClass)
-          .findFirst()
-          .ifPresent(constant -> {
-            final var msg = "Complex enum not supported: " + enumClass.getName() +
-                " has enum constant with class body: " + ((Enum<?>) constant).name();
-            LOGGER.severe(msg);
-            throw new UnsupportedOperationException(msg);
-          });
-    }
-
     /// Helper method to write a class name to a buffer with deduplication.
     /// If the class has been seen before, writes a negative reference instead of the full name.
     ///
@@ -323,18 +248,12 @@ public interface Pickler<T> {
     /// @param class2BufferOffset Map tracking class to buffer position
     public static void writeClassNameWithDeduplication(ByteBuffer buffer, Class<?> clazz,
                                                        Map<Class<?>, Integer> class2BufferOffset) {
-      LOGGER.finest(() -> "writeClassNameWithDeduplication: class=" + clazz.getName() +
-          ", buffer position=" + buffer.position() +
-          ", map contains class=" + class2BufferOffset.containsKey(clazz));
-
       // Check if we've seen this class before
       Integer existingOffset = class2BufferOffset.get(clazz);
       if (existingOffset != null) {
         // We've seen this class before, write a negative reference
         int reference = ~existingOffset;
         buffer.putInt(reference); // Using bitwise complement for negative reference
-        LOGGER.finest(() -> "Wrote class reference: " + clazz.getName() +
-            " at offset " + existingOffset + ", value=" + reference);
       } else {
         // First time seeing this class, write the full name
         String className = clazz.getName();
@@ -350,10 +269,6 @@ public interface Pickler<T> {
 
         // Store the position where we wrote this class
         class2BufferOffset.put(clazz, currentPosition);
-        LOGGER.finest(() -> "Wrote class name: " + className +
-            " at offset " + currentPosition +
-            ", length=" + classNameLength +
-            ", new buffer position=" + buffer.position());
       }
     }
 
@@ -366,11 +281,6 @@ public interface Pickler<T> {
                                         Map<Integer, Class<?>> bufferOffset2Class)
         throws ClassNotFoundException {
 
-      int bufferPosition = buffer.position();
-
-      LOGGER.finest(() -> "resolveClass: buffer position=" + bufferPosition +
-          ", remaining=" + buffer.remaining());
-
       // Read the class name length or reference
       int componentTypeLength = buffer.getInt();
 
@@ -381,17 +291,10 @@ public interface Pickler<T> {
         throw new IllegalArgumentException(msg);
       }
 
-      LOGGER.finest(() -> "Read length/reference value: " + componentTypeLength +
-          ", buffer position after read=" + buffer.position());
-
       if (componentTypeLength < 0) {
         // This is a reference to a previously seen class
         int offset = ~componentTypeLength; // Decode the reference using bitwise complement
         Class<?> referencedClass = bufferOffset2Class.get(offset);
-
-        LOGGER.finest(() -> "Reference detected. Offset=" + offset +
-            ", map contains offset=" + bufferOffset2Class.containsKey(offset) +
-            ", referenced class=" + (referencedClass != null ? referencedClass.getName() : "null"));
 
         if (referencedClass == null) {
           final var msg = "Invalid class reference offset: " + offset;
@@ -402,10 +305,6 @@ public interface Pickler<T> {
       } else {
         // This is a new class name
         int currentPosition = buffer.position() - 4; // Position before reading the length
-
-        LOGGER.finest(() -> "New class name detected. Length=" + componentTypeLength +
-            ", stored position=" + currentPosition +
-            ", remaining bytes=" + buffer.remaining());
 
         if (buffer.remaining() < componentTypeLength) {
           final var msg = "Buffer underflow: needed " + componentTypeLength +
@@ -431,10 +330,6 @@ public interface Pickler<T> {
 
         // Store in our map for future references
         bufferOffset2Class.put(currentPosition, loadedClass);
-        LOGGER.finest(() -> "Read class name at offset " + currentPosition +
-            ": " + className +
-            ", new buffer position=" + buffer.position());
-
         return loadedClass;
       }
     }
@@ -509,7 +404,6 @@ public interface Pickler<T> {
 
     int staticSizeOf(Object c, Set<Class<?>> classes) {
       if (c == null) {
-        LOGGER.finest(() -> "Size of null is 1 byte");
         return 1;
       }
       int plainSize = switch (c) {
@@ -524,45 +418,27 @@ public interface Pickler<T> {
         default -> 0;
       };
       int size = 1; // Type marker byte
-      final int initialSize = size; // Make a final copy for the lambda
-      LOGGER.finest(() -> "Starting size calculation for " + c.getClass().getName() +
-          ", initial size (type marker): " + initialSize);
       if (c.getClass().isArray()) {
         final int[] arrayHeaderSize = {4 + 4}; // 4 bytes for length + 4 bytes for type name length - use array for mutability
-        LOGGER.finest(() -> "Array header base size: " + arrayHeaderSize[0]);
-
         if (!classes.contains(c.getClass())) {
           // Component type name size
           String componentTypeName = c.getClass().getComponentType().getName();
           byte[] componentTypeBytes = componentTypeName.getBytes(UTF_8);
           arrayHeaderSize[0] += componentTypeBytes.length;
-          LOGGER.finest(() -> "Adding component type name size: " + componentTypeBytes.length +
-              " for " + componentTypeName);
           classes.add(c.getClass());
-        } else {
-          LOGGER.finest(() -> "Component type already seen, using reference");
         }
 
         // Calculate size of all array elements
         int length = Array.getLength(c);
-        LOGGER.finest(() -> "Array length: " + length);
-
         final int[] elementsSize = {0};
 
         for (int i = 0; i < length; i++) {
-          final int index = i;
           final Object element = Array.get(c, i);
           final int elementSize = staticSizeOf(element, classes);
           elementsSize[0] += elementSize;
-          LOGGER.finest(() -> "Element " + index + " size: " + elementSize +
-              ", type: " + (element != null ? element.getClass().getName() : "null"));
         }
 
         size += arrayHeaderSize[0] + elementsSize[0];
-        final int finalElementsSize = elementsSize[0];
-        final int finalSize = size; // Make a final copy for the lambda
-        LOGGER.finest(() -> "Total array size: " + finalSize +
-            " (header: " + arrayHeaderSize[0] + ", elements: " + finalElementsSize + ")");
       } else if (c instanceof String) {
         size += ((String) c).getBytes(UTF_8).length + 2; // 2 bytes for the length of the string
       } else if (c instanceof Optional<?> opt) {
@@ -611,12 +487,7 @@ public interface Pickler<T> {
           byte[] enumClassNameBytes = enumClassName.getBytes(UTF_8);
           int classNameSize = 4 + enumClassNameBytes.length; // 4 bytes for length + name bytes
           size += classNameSize;
-          final int enumClassSize = classNameSize; // Make a final copy for the lambda
-          LOGGER.finest(() -> "Enum class name size: " + enumClassSize +
-              " for " + enumClassName);
           classes.add(c.getClass());
-        } else {
-          LOGGER.finest(() -> "Enum class already seen, using reference");
         }
 
         // Add size for enum constant name
@@ -624,9 +495,6 @@ public interface Pickler<T> {
         byte[] enumNameBytes = enumConstantName.getBytes(UTF_8);
         int constantNameSize = 4 + enumNameBytes.length; // 4 bytes for length + name bytes
         size += constantNameSize;
-        final int enumNameSize = constantNameSize; // Make a final copy for the lambda
-        LOGGER.finest(() -> "Enum constant name size: " + enumNameSize +
-            " for " + enumConstantName);
       } else {
         size += plainSize;
       }
@@ -662,14 +530,8 @@ public interface Pickler<T> {
     }
 
     static void write(Map<Class<?>, Integer> class2BufferOffset, ByteBuffer buffer, Object c) {
-      int startPosition = buffer.position();
-      LOGGER.finest(() -> "Starting write at position " + startPosition +
-          " for " + (c != null ? c.getClass().getName() : "null") +
-          ", remaining: " + buffer.remaining());
-
       if (c == null) {
         buffer.put(NULL.marker());
-        LOGGER.finest(() -> "Wrote NULL marker, new position: " + buffer.position());
         return;
       }
 
@@ -753,34 +615,17 @@ public interface Pickler<T> {
           list.forEach(element -> write(class2BufferOffset, buffer, element));
         }
         case Enum<?> enumValue -> {
-          int enumStartPos = buffer.position();
-          LOGGER.finest(() -> "Starting enum serialization at position " + enumStartPos);
-
           buffer.put(typeMarker(c));
-          LOGGER.finest(() -> "Wrote enum type marker: " + ENUM.marker());
 
           // Write the enum class name with deduplication
-          int beforeClassName = buffer.position();
           writeClassNameWithDeduplication(buffer, enumValue.getClass(), class2BufferOffset);
-          int afterClassName = buffer.position();
-          LOGGER.finest(() -> "Wrote enum class name from position " + beforeClassName +
-              " to " + afterClassName + " (size: " + (afterClassName - beforeClassName) + ")");
 
           // Write the enum constant name
           String enumConstantName = enumValue.name();
           byte[] enumNameBytes = enumConstantName.getBytes(UTF_8);
-          LOGGER.finest(() -> "Writing enum constant name: " + enumConstantName +
-              ", length: " + enumNameBytes.length);
 
-          int beforeConstantName = buffer.position();
           buffer.putInt(enumNameBytes.length);
           buffer.put(enumNameBytes);
-          int afterConstantName = buffer.position();
-          LOGGER.finest(() -> "Wrote enum constant name from position " + beforeConstantName +
-              " to " + afterConstantName + " (size: " + (afterConstantName - beforeConstantName) + ")");
-
-          LOGGER.finest(() -> "Completed enum serialization, total size: " +
-              (buffer.position() - enumStartPos));
         }
         default -> throw new IllegalArgumentException("Unsupported type: " + c.getClass());
       }
@@ -1068,8 +913,6 @@ public interface Pickler<T> {
             if (numComponents == finalCanonicalParamCount) {
               // Number of components matches the canonical constructor - use it directly
               constructorToUse = finalCanonicalConstructorHandle;
-              LOGGER.finest(() -> "Using canonical constructor for " + recordClassName +
-                  " with " + numComponents + " components");
             } else {
               // Number of components differs, look for a fallback constructor
               constructorToUse = finalFallbackConstructorHandles.get(numComponents);
@@ -1081,8 +924,6 @@ public interface Pickler<T> {
                 // No fallback constructor matches the number of components found
                 throw new IllegalArgumentException(msg);
               }
-              LOGGER.finest(() -> "Using fallback constructor for " + recordClassName +
-                  " with " + numComponents + " components");
             }
 
             // Invoke the selected constructor
@@ -1191,9 +1032,6 @@ public interface Pickler<T> {
           }
 
           String className;
-          int bufferPosition = buffer.position();
-          LOGGER.finest(() -> "resolveClass: buffer position=" + bufferPosition +
-              ", remaining=" + buffer.remaining());
           // Read the class name length or reference
           int componentTypeLength = buffer.getInt();
 
@@ -1204,17 +1042,10 @@ public interface Pickler<T> {
             throw new IllegalArgumentException(msg);
           }
 
-          LOGGER.finest(() -> "Read length/reference value: " + componentTypeLength +
-              ", buffer position after read=" + buffer.position());
-
           if (componentTypeLength < 0) {
             // This is a reference to a previously seen class
             int offset = ~componentTypeLength; // Decode the reference using bitwise complement
             Class<?> referencedClass = bufferOffset2Class.get(offset);
-
-            LOGGER.finest(() -> "Reference detected. Offset=" + offset +
-                ", map contains offset=" + bufferOffset2Class.containsKey(offset) +
-                ", referenced class=" + (referencedClass != null ? referencedClass.getName() : "null"));
 
             if (referencedClass == null) {
               final var msg = "Invalid class reference offset: " + offset;
@@ -1225,10 +1056,6 @@ public interface Pickler<T> {
           } else {
             // This is a new class name
             int currentPosition = buffer.position() - 4; // Position before reading the length
-
-            LOGGER.finest(() -> "New class name detected. Length=" + componentTypeLength +
-                ", stored position=" + currentPosition +
-                ", remaining bytes=" + buffer.remaining());
 
             if (buffer.remaining() < componentTypeLength) {
               final var msg = "Buffer underflow: needed " + componentTypeLength +
@@ -1249,19 +1076,10 @@ public interface Pickler<T> {
               throw new IllegalArgumentException(msg);
             }
 
-            String finalClassName = className;
-            LOGGER.finest(() -> "Read class name at offset " + currentPosition +
-                ": " + finalClassName +
-                ", new buffer position=" + buffer.position());
-
             final var classType = classNamesToPermittedRecords.get(className);
 
             // Store the position where we wrote this class
             bufferOffset2Class.put(currentPosition, classType);
-            LOGGER.finest(() -> "Wrote class name: " + className +
-                " at offset " + currentPosition +
-                ", length=" + componentTypeLength +
-                ", new buffer position=" + buffer.position());
           }
 
           final var permittedClass = classNamesToPermittedRecords.get(className);
