@@ -331,11 +331,16 @@ This means that you cannot attack this library to try to get it to deserialize a
 
 ## Schema Evolution
 
-While Java Record Pickler is primarily designed for type-safe serialization of message protocols with simple data transfer records rather than long-term storage, it does support limited schema evolution to facilitate communication between microservices running different versions of a protocol.
+While Java Record Pickler supports schema evolution through: 
 
-### Supported Evolution Pattern
+- **Additive-only schema evolution**: You can add new fields to the end of a record definition.
+- **Backward compatibility constructors**: You must add a constructor that matches the older version which means that the order of the fields matches the old code so that when the old code sends an array of components it matches your new constructor.
+- **Default values for new fields**: Java will force you to call the default constructor of your new code so it will force you to set the new fields added to the end as `null` or the default value that you want to use.
 
-To enable backward compatibility when adding fields to a record, ensure you define a public constructor that accepts the exact parameter list (number and types) of the previous version. The library supports additive-only schema evolution where new fields are added to the end of a record definition. Pickler will automatically use your compatibility constructor when deserializing data from older versions.
+To enable backward compatibility when adding fields to a record, ensure you define a public constructor that accepts the exact parameter list. This means the number of parameters, order of parameters and types of parameters must match what you old 
+code send. They are sent in source code order not by name so you must only add new components to the end of the record definition.
+
+As componts are written out and read back in based on source code order not by name you can rename your components in the new code.
 
 ### Example: Adding a Field to a Record
 
@@ -366,36 +371,20 @@ public record UserInfo(String username, int accessLevel, String department) {
 }
 ```
 
-### How It Works
-
-1. When the older microservice sends a serialized `UserInfo` record with just `username` and `accessLevel`, the newer microservice can deserialize it using the evolved `UserInfo` class.
-
-2. The Pickler detects that the serialized data has fewer components than the canonical constructor expects.
-
-3. It then looks for the public constructor you provide that accepts exactly the number and types of components in the serialized data.
-
-4. This backward compatibility constructor is invoked, which supplies the default value for the new `department` field.
-
-### Limitations
+### Summary
 
 - Only supports adding new fields at the end of the record definition
-- Requires explicit backward compatibility constructors with appropriate default values
+- Requires explicit backward compatibility constructors matching the canonical constructor of the old code
 - Cannot remove or reorder existing fields
 - Cannot change field types
 - You **can** change the name of components (`MethodHandle` is resolved by position in source file not by name)
-- Requires a default value for a new field. 
+- You can use `null` or set your own default value for new fields in your backward compatibility constructor
 
-### Schema Evolution Best Practices
+### Schema Evolution Testing
 
-1. Always add new fields at the end of record definitions
-2. Always provide backward compatibility constructors with meaningful default values
-3. Use clearly named constants for default values to document their purpose
-5. Test both serialization directions (old → new and new → old) to ensure compatibility
-
-**Note** To test forwards and backwards compatibility you can write tests that compile java source code for the old and new files
+To test forwards and backwards compatibility you can write tests that compile java source code for the old and new files
 which are demoed in `SchemaEvolutionTest.java` which has public static helpers that you can call yourself. Just drop 
 that file into your `src/test/java` directory and use the static methods.
-
 
 ## Wire Protocol
 
