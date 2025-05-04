@@ -88,6 +88,15 @@ public interface Pickler<T> {
         .orElse(1);
   }
 
+  enum Compatibility {
+    STRICT,
+    BACKWARDS,
+    FORWARDS
+  }
+
+  Compatibility compatibility();
+
+  final String COMPATIBLITY_SYSTEM_PROPERTY = "no-framework-pickler.Compatibility";
 }
 
 abstract class SealedPickler<S> implements Pickler<S> {
@@ -178,7 +187,20 @@ abstract class SealedPickler<S> implements Pickler<S> {
             c -> (Class<? extends S>) c
         ));
 
+    final Compatibility compatibility = Compatibility.valueOf(System.getProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY, "STRICT"));
+
+    if (compatibility != Compatibility.STRICT) {
+      // We are secure by default this is opt-in and should not be left on forever so best to nag
+      LOGGER.warning(() -> "Pickler for " + sealedClass.getName() + " has Compatibility set to " + compatibility.name());
+    }
+
     return new SealedPickler<>() {
+
+      @Override
+      public Compatibility compatibility() {
+        return compatibility;
+      }
+
       @Override
       public void serialize(S object, ByteBuffer buffer) {
         if (object == null) {
@@ -359,10 +381,26 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     // Capture these values for use in the anonymous class
     final MethodHandle finalCanonicalConstructorHandle = canonicalConstructorHandle;
     final String recordClassName = recordClass.getName();
-    final Map<Integer, MethodHandle> finalFallbackConstructorHandles =
-        Collections.unmodifiableMap(fallbackConstructorHandles);
 
+    final Compatibility compatibility = Compatibility.valueOf(System.getProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY, "STRICT"));
+
+    if (compatibility != Compatibility.STRICT) {
+      // We are secure by default this is opt-in and should not be left on forever so best to nag
+      LOGGER.warning(() -> "Pickler for " + recordClassName + " has Compatibility set to " + compatibility.name());
+    }
+
+    // we are security by default so if we are set to strict mode do not allow fallback constructors
+    final Map<Integer, MethodHandle> finalFallbackConstructorHandles =
+        (Compatibility.BACKWARDS == compatibility) ?
+            Collections.unmodifiableMap(fallbackConstructorHandles) : Collections.emptyMap();
+    
     return new RecordPickler<>() {
+
+      @Override
+      public Compatibility compatibility() {
+        return compatibility;
+      }
+
       @Override
       void serializeWithMap(R object, ByteBuffer buffer, Map<Class<?>, Integer> classToOffset) {
         final var components = components(object);

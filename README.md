@@ -331,16 +331,20 @@ This means that you cannot attack this library to try to get it to deserialize a
 
 ## Schema Evolution
 
-While Java Record Pickler supports schema evolution through: 
+While Java Record Pickler supports **opt-in** schema evolution through: 
 
 - **Additive-only schema evolution**: You can add new fields to the end of a record definition.
 - **Backward compatibility constructors**: You must add a constructor that matches the older version which means that the order of the fields matches the old code so that when the old code sends an array of components it matches your new constructor.
 - **Default values for new fields**: Java will force you to call the default constructor of your new code so it will force you to set the new fields added to the end as `null` or the default value that you want to use.
 
 To enable backward compatibility when adding fields to a record, ensure you define a public constructor that accepts the exact parameter list. This means the number of parameters, order of parameters and types of parameters must match what you old 
-code send. They are sent in source code order not by name so you must only add new components to the end of the record definition.
+code send. They are sent in source code order not by name so you must only add new components to the end of the record definition. As components are written out and read back in based on source code order not by name you can rename your components in the new code.
 
-As componts are written out and read back in based on source code order not by name you can rename your components in the new code.
+As the library is secure by default you must opt into this behaviour by setting a system prompt:
+
+```shell
+-D=o-framework-pickler.Compatibility=BACKWARDS
+```
 
 ### Example: Adding a Field to a Record
 

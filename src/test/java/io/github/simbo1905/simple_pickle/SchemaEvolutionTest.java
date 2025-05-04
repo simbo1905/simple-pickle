@@ -59,33 +59,65 @@ public class SchemaEvolutionTest {
     /// 5. Verifying all fields are correctly populated
     @Test
     void testBasicSchemaEvolution() throws Exception {
+      try {
+        System.setProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
         // Step 1: Compile and load the original schema
         Class<?> originalClass = compileAndLoadClass(ORIGINAL_SCHEMA);
         assertTrue(originalClass.isRecord(), "Compiled class should be a record");
-        
+
         // Step 2: Create an instance of the original record
         Object originalInstance = createRecordInstance(originalClass, new Object[]{123});
         LOGGER.fine("Original instance: " + originalInstance);
-        
+
         // Step 3: Serialize the original instance
         byte[] serializedData = serializeRecord(originalInstance);
-        
+
         // Step 4: Compile and load the evolved schema
         Class<?> evolvedClass = compileAndLoadClass(EVOLVED_SCHEMA);
         assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
-        
+
         // Step 5: Deserialize using the evolved schema
         Object evolvedInstance = deserializeRecord(evolvedClass, serializedData);
         LOGGER.fine("Evolved instance: " + evolvedInstance);
-        
+
         // Step 6: Verify the fields
         verifyRecordComponents(evolvedInstance, Map.of(
             "myInt", 123,
             "myNewInt", 42  // Should be the default value from the compatibility constructor
         ));
+      } finally {
+        System.clearProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY);
+      }
     }
 
-    /// Tests round-trip serialization with the evolved schema.
+  @Test
+  void testBasicSchemaEvolutionDisabledByDefault() throws Exception {
+    // Step 1: Compile and load the original schema
+    Class<?> originalClass = compileAndLoadClass(ORIGINAL_SCHEMA);
+    assertTrue(originalClass.isRecord(), "Compiled class should be a record");
+
+    // Step 2: Create an instance of the original record
+    Object originalInstance = createRecordInstance(originalClass, new Object[]{123});
+    LOGGER.fine("Original instance: " + originalInstance);
+
+    // Step 3: Serialize the original instance
+    byte[] serializedData = serializeRecord(originalInstance);
+
+    // Step 4: Compile and load the evolved schema
+    Class<?> evolvedClass = compileAndLoadClass(EVOLVED_SCHEMA);
+    assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
+
+    // Step 5: Deserialize using the evolved schema
+    try {
+      Object evolvedInstance = deserializeRecord(evolvedClass, serializedData);
+      throw new AssertionError("should get error");
+    } catch (IllegalArgumentException e) {
+
+    }
+  }
+
+
+  /// Tests round-trip serialization with the evolved schema.
     @Test
     void testRoundTripWithEvolvedSchema() throws Exception {
         // Compile and load the evolved schema
