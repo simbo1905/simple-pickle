@@ -137,11 +137,6 @@ abstract class SealedPickler<S> implements Pickler<S> {
   private static <S> Pickler<S> manufactureSealedPickler(Class<S> sealedClass) {
     // Get all permitted record subclasses
     final Class<?>[] subclasses = allPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
-    @SuppressWarnings("unchecked") final Map<String, Class<? extends S>> permittedRecordClasses = Arrays.stream(subclasses)
-        .collect(Collectors.toMap(
-            Class::getName,
-            c -> (Class<? extends S>) c
-        ));
 
     // note that we cannot add these pickers to the cache map as we are inside a computeIfAbsent yet
     // practically speaking mix picklers into the same logical stream  is hard so preemptive caching wasteful
@@ -162,6 +157,27 @@ abstract class SealedPickler<S> implements Pickler<S> {
             }
         ));
 
+    final Map<Class<? extends S>, String> shortNames = subPicklers.keySet().stream().
+        collect(Collectors.toMap(
+            cls -> cls,
+            cls -> cls.getName().substring(
+                subPicklers.keySet().stream()
+                    .map(Class::getName)
+                    .reduce((a, b) ->
+                        !a.isEmpty() && !b.isEmpty() ?
+                            a.substring(0,
+                                IntStream.range(0, Math.min(a.length(), b.length()))
+                                    .filter(i -> a.charAt(i) != b.charAt(i))
+                                    .findFirst()
+                                    .orElse(Math.min(a.length(), b.length()))) : "")
+                    .orElse("").length())));
+
+    @SuppressWarnings("unchecked") final Map<String, Class<? extends S>> permittedRecordClasses = Arrays.stream(subclasses)
+        .collect(Collectors.toMap(
+            c -> shortNames.get(c),
+            c -> (Class<? extends S>) c
+        ));
+
     return new SealedPickler<>() {
       @Override
       public void serialize(S object, ByteBuffer buffer) {
@@ -172,7 +188,7 @@ abstract class SealedPickler<S> implements Pickler<S> {
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
         Pickler<? extends S> pickler = subPicklers.get(concreteType);
 
-        writeDeduplicatedClassName(buffer, concreteType, new HashMap<>());
+        writeDeduplicatedClassName(buffer, concreteType, new HashMap<>(), shortNames.get(concreteType));
 
         // Delegate to subtype pickler
         //noinspection unchecked
@@ -203,7 +219,7 @@ abstract class SealedPickler<S> implements Pickler<S> {
         }
 
         Class<?> clazz = object.getClass();
-        int classNameLength = clazz.getName().getBytes(UTF_8).length;
+        int classNameLength = shortNames.get(clazz).getBytes(UTF_8).length;
 
         // Size of length prefix (4 bytes) plus class name bytes
         int classNameSize = 4 + classNameLength;
@@ -220,7 +236,8 @@ abstract class SealedPickler<S> implements Pickler<S> {
         final int classNameLength = buffer.getInt();
         final byte[] classNameBytes = new byte[classNameLength];
         buffer.get(classNameBytes);
-        final String className = new String(classNameBytes, UTF_8);
+        final String classNameShortened = new String(classNameBytes, UTF_8);
+        final String className = Optional.ofNullable(shortNames.get(classNameShortened)).orElse(classNameShortened);
         if (!permittedRecordClasses.containsKey(className)) {
           throw new IllegalArgumentException("Unknown subtype: " + className);
         }
@@ -535,7 +552,8 @@ class Companion {
     if (c.getClass().isArray()) {
       buffer.put(ARRAY.marker());
 
-      writeDeduplicatedClassName(buffer, c.getClass().getComponentType(), classToOffset);
+      writeDeduplicatedClassName(buffer, c.getClass().getComponentType(), classToOffset,
+          c.getClass().getComponentType().getName());
 
       // Write the array length
       int length = Array.getLength(c);
@@ -579,7 +597,7 @@ class Companion {
         buffer.put(typeMarker(c));
 
         // Write the class name with deduplication
-        writeDeduplicatedClassName(buffer, record.getClass(), classToOffset);
+        writeDeduplicatedClassName(buffer, record.getClass(), classToOffset, c.getClass().getName());
 
         // Get the appropriate pickler for this record type
         @SuppressWarnings("unchecked")
@@ -619,7 +637,7 @@ class Companion {
 
         // Write the enum class name with deduplication
         int beforeClassName = buffer.position();
-        writeDeduplicatedClassName(buffer, enumValue.getClass(), classToOffset);
+        writeDeduplicatedClassName(buffer, enumValue.getClass(), classToOffset, c.getClass().getName());
         int afterClassName = buffer.position();
         LOGGER.finest(() -> "Wrote enum class name from position " + beforeClassName +
             " to " + afterClassName + " (size: " + (afterClassName - beforeClassName) + ")");
@@ -651,7 +669,7 @@ class Companion {
   /// @param clazz The class to write
   /// @param classToOffset Map tracking class to buffer position offset
   static void writeDeduplicatedClassName(ByteBuffer buffer, Class<?> clazz,
-                                                Map<Class<?>, Integer> classToOffset) {
+                                         Map<Class<?>, Integer> classToOffset, String classNameShorted) {
     LOGGER.finest(() -> "writeDeduplicatedClassName: class=" + clazz.getName() +
         ", buffer position=" + buffer.position() +
         ", map contains class=" + classToOffset.containsKey(clazz));
@@ -666,8 +684,7 @@ class Companion {
           " at offset " + offset + ", value=" + reference);
     } else {
       // First time seeing this class, write the full name
-      String className = clazz.getName();
-      byte[] classNameBytes = className.getBytes(UTF_8);
+      byte[] classNameBytes = classNameShorted.getBytes(UTF_8);
       int classNameLength = classNameBytes.length;
 
       // Store current position before writing
@@ -679,7 +696,7 @@ class Companion {
 
       // Store the position where we wrote this class
       classToOffset.put(clazz, currentPosition);
-      LOGGER.finest(() -> "Wrote class name: " + className +
+      LOGGER.finest(() -> "Wrote class name: " + classNameShorted +
           " at offset " + currentPosition +
           ", length=" + classNameLength +
           ", new buffer position=" + buffer.position());
