@@ -88,62 +88,6 @@ public interface Pickler<T> {
         .orElse(1);
   }
 
-  static <S> void serializeManySealed(List<? extends S> list, ByteBuffer buffer) {
-    buffer.put(typeMarker(LIST));
-    buffer.putInt(list.size());
-
-    list.forEach(element -> {
-      byte[] classNameBytes = element.getClass().getComponentType().getName().getBytes(UTF_8);
-      buffer.putInt(classNameBytes.length);
-      buffer.put(classNameBytes);
-      @SuppressWarnings("unchecked")
-      Pickler<S> pickler = (Pickler<S>) forSealedInterface(element.getClass());
-      pickler.serialize(element, buffer);
-    });
-  }
-
-  static <S> List<S> deserializeManySealed(Class<S> sealedInterface, ByteBuffer buffer) {
-    byte marker = buffer.get();
-    if (marker != typeMarker(LIST)) throw new IllegalArgumentException("Invalid list marker");
-
-    return IntStream.range(0, buffer.getInt())
-        .mapToObj(i -> {
-          // Read class name from buffer
-          int classNameLength = buffer.getInt();
-          byte[] classNameBytes = new byte[classNameLength];
-          buffer.get(classNameBytes);
-          String className = new String(classNameBytes, UTF_8);
-
-          // Load class and validate
-          Class<? extends S> concreteType;
-          try {
-            //noinspection unchecked
-            concreteType = (Class<? extends S>) Class.forName(className);
-          } catch (ClassNotFoundException e) {
-            throw new IllegalArgumentException("Unknown subtype: " + className);
-          }
-          if (!sealedInterface.isAssignableFrom(concreteType)) {
-            throw new IllegalArgumentException("Invalid type: " + className);
-          }
-
-          // Deserialize using concrete pickler
-          return (S) Pickler.forSealedInterface(concreteType).deserialize(buffer);
-        })
-        .toList();
-  }
-
-  static <S> int sizeOfManySealed(List<? extends S> list) {
-    //noinspection unchecked
-    return Optional.ofNullable(list)
-        .map(l -> 1 + 4 + l.stream()
-            .mapToInt(element ->
-                4 // 4 bytes for the length prefix (int)
-                    + element.getClass().getName().getBytes(UTF_8).length +
-                    ((Pickler<S>) forSealedInterface(element.getClass())).sizeOf(element)
-            )
-            .sum())
-        .orElse(1);
-  }
 }
 
 abstract class SealedPickler<S> implements Pickler<S> {
