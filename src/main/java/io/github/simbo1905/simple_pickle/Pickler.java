@@ -172,7 +172,7 @@ abstract class SealedPickler<S> implements Pickler<S> {
                                     .orElse(Math.min(a.length(), b.length()))) : "")
                     .orElse("").length())));
 
-    @SuppressWarnings("unchecked") final Map<String, Class<? extends S>> permittedRecordClasses = Arrays.stream(subclasses)
+    @SuppressWarnings({"unchecked", "Convert2MethodRef"}) final Map<String, Class<? extends S>> permittedRecordClasses = Arrays.stream(subclasses)
         .collect(Collectors.toMap(
             c -> shortNames.get(c),
             c -> (Class<? extends S>) c
@@ -237,11 +237,10 @@ abstract class SealedPickler<S> implements Pickler<S> {
         final byte[] classNameBytes = new byte[classNameLength];
         buffer.get(classNameBytes);
         final String classNameShortened = new String(classNameBytes, UTF_8);
-        final String className = Optional.ofNullable(shortNames.get(classNameShortened)).orElse(classNameShortened);
-        if (!permittedRecordClasses.containsKey(className)) {
-          throw new IllegalArgumentException("Unknown subtype: " + className);
+        if (!permittedRecordClasses.containsKey(classNameShortened)) {
+          throw new IllegalArgumentException("Unknown subtype: " + classNameShortened);
         }
-        return permittedRecordClasses.get(className);
+        return permittedRecordClasses.get(classNameShortened);
       }
     };
   }
