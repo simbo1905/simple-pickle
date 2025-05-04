@@ -27,7 +27,7 @@ public class SchemaEvolutionTest {
 
   /// Original schema with just one field
   static final String ORIGINAL_SCHEMA = """
-      package io.github.simbo1905.simple_pickle.evolution;
+      package io.github.simbo1905.no.framework.evolution;
       
       /// A simple record with a single field.
       public record TestRecord(int myInt) {
@@ -37,7 +37,7 @@ public class SchemaEvolutionTest {
   /// Evolved schema with an additional field and backward compatibility constructor
   /// IMPORTANT note that it has renamed the int field to `blah` it is only changing the type or reordering that is a problem.
   static final String EVOLVED_SCHEMA = """
-      package io.github.simbo1905.simple_pickle.evolution;
+      package io.github.simbo1905.no.framework.evolution;
       
       // An evolved record with an additional field and backward compatibility.
       public record TestRecord(int blah, int myNewInt) {
@@ -48,7 +48,7 @@ public class SchemaEvolutionTest {
           }
       """;
 
-  final String CLASS_NAME = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
+  final String CLASS_NAME = "io.github.simbo1905.no.framework.evolution.TestRecord";
 
   JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
 
@@ -119,7 +119,7 @@ public class SchemaEvolutionTest {
   @Test
   void testRoundTripWithEvolvedSchema() throws Exception {
     // Compile and load the evolved schema
-    final String fullClassName = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
+    final String fullClassName = "io.github.simbo1905.no.framework.evolution.TestRecord";
 
     // Compile the source code
     // Get the Java compiler
@@ -177,7 +177,7 @@ public class SchemaEvolutionTest {
   @Test
   void testBackwardIncompatibility() throws Exception {
     // Compile and load both schemas
-    final String fullClassName1 = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
+    final String fullClassName1 = "io.github.simbo1905.no.framework.evolution.TestRecord";
 
     // Compile the source code
     // Get the Java compiler
@@ -212,7 +212,7 @@ public class SchemaEvolutionTest {
         Map.of(fullClassName1, classBytes1));
 
     Class<?> originalClass = classLoader1.loadClass(fullClassName1);
-    final String fullClassName = "io.github.simbo1905.simple_pickle.evolution.TestRecord";
+    final String fullClassName = "io.github.simbo1905.no.framework.evolution.TestRecord";
 
     // Compile the source code
     // Get the Java compiler

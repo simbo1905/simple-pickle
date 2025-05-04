@@ -30,7 +30,7 @@ public class BackwardsCompatibilityTest {
 
   // Original schema with just one field
   static final String GENERATION_1 = """
-      package io.github.simbo1905.simple_pickle.evolution;
+      package io.github.simbo1905.no.framework.evolution;
       
       /**
        * A simple record with a single field.
@@ -41,7 +41,7 @@ public class BackwardsCompatibilityTest {
 
   // Evolved schema with two additional fields and backward compatibility constructor
   static final String GENERATION_2 = """
-      package io.github.simbo1905.simple_pickle.evolution;
+      package io.github.simbo1905.no.framework.evolution;
       
       /**
        * An evolved record with additional fields and backward compatibility.
@@ -58,7 +58,7 @@ public class BackwardsCompatibilityTest {
 
   // Further evolved schema with even more fields
   static final String GENERATION_3 = """
-      package io.github.simbo1905.simple_pickle.evolution;
+      package io.github.simbo1905.no.framework.evolution;
       
       import java.time.Instant;
       
@@ -82,7 +82,7 @@ public class BackwardsCompatibilityTest {
       }
       """;
 
-  final String FULL_CLASS_NAME = "io.github.simbo1905.simple_pickle.evolution.SimpleRecord";
+  final String FULL_CLASS_NAME = "io.github.simbo1905.no.framework.evolution.SimpleRecord";
 
   @BeforeEach
   void setUp() {
@@ -280,7 +280,7 @@ public class BackwardsCompatibilityTest {
 
     // Define schema with renamed field but same structure
     final var renamedFieldSchema = """
-        package io.github.simbo1905.simple_pickle.evolution;
+        package io.github.simbo1905.no.framework.evolution;
         
         /**
          * A record with renamed field but compatible constructor.
