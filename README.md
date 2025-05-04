@@ -174,27 +174,41 @@ try {
 Arrays are supported. 
 
 ```java
-// Define a simple record
+// Record type must be public
 public record Person(String name, int age) {}
 
+// Create an array of Person records
+Person[] people = {
+    new Person("Alice", 30),
+    new Person("Bob", 25),
+    new Person("Charlie", 40)
+};
+
 // Calculate size and allocate buffer
-int size = Pickler.sizeOfHomogeneousArray(people);
+int size = Pickler.sizeOfMany(people);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize the array
 Pickler.serializeMany(people, buffer);
+// Prepare buffer for reading
 buffer.flip();
 
 // Deserialize the array
-List<Person> deserializedPeople = Pickler.deserialize(Person.class, buffer);
-
+List<Person> deserializedPeople = Pickler.deserializeMany(Person.class, buffer);
 // Verify the array was properly deserialized
 assertEquals(people.length, deserializedPeople.size());
 
-// Use streams to verify each element matches
+// The elements in the deserialized list should match the original array
 IntStream.range(0, people.length)
     .forEach(i -> assertEquals(people[i], deserializedPeople.get(i)));
 }
+
+// The returned list is immutable
+try {
+    deserialized.removeFirst();
+    throw new AssertionError("should not be reached");
+} catch (UnsupportedOperationException e) {
+    }
 ```
 
 ### Complex Nested Sealed Interfaces
@@ -213,32 +227,26 @@ public record Eagle(double wingspan) implements Bird {}
 record Penguin(boolean canSwim) implements Bird {}
 
 // Create instances of all animal types
-final var dog = new Dog("Buddy", 3);
-final var cat = new Cat("Whiskers", true);
-final var eagle = new Eagle(2.1);
-final var penguin = new Penguin(true);
-final var alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
+static Dog dog = new Dog("Buddy", 3);
+static Dog dog2 = new Dog("Fido", 2);
+static Animal eagle = new Eagle(2.1);
+static Penguin penguin = new Penguin(true);
+static Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
 
-// Create an array of all animals
-final var originalAnimals = new Animal[]{dog, cat, eagle, penguin, alicorn};
+static List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
+Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
+final var buffer = ByteBuffer.allocate(1024);
 
-// Get a pickler for the Animal sealed interface
-final var pickler = picklerForSealedTrait(Animal.class);
+for (Animal animal : animals) {
+    pickler.serialize(animal, buffer);
+}
 
-// Calculate total buffer of the heterogeneous array
-final var totalSize = Pickler.sizeOfArray(emptyArray);
+buffer.flip(); // Prepare for reading
 
-// Allocate a single buffer to hold all animals
-final var buffer = ByteBuffer.allocate(totalSize);
-
-// Serialize all animals into the buffer
-Pickler.serializeArray(emptyArray, buffer);
-
-// Prepare buffer for reading
-buffer.flip();
-
-// Deserialize all animals from the buffer
-Person[] deserialized = Pickler.deserializeArray(Person.class, buffer);
+for (Animal animal : animals) {
+  Animal deserializedAnimal = pickler.deserialize(buffer);
+  Assertions.assertEquals(animal, deserializedAnimal);
+}
 ```
 
 ### Maps

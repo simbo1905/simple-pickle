@@ -1,13 +1,13 @@
 package io.github.simbo1905;
 
 import io.github.simbo1905.simple_pickle.Pickler;
+import org.junit.jupiter.api.Assertions;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Stream;
+import java.util.stream.IntStream;
 
 
 public class PublicApiDemo {
@@ -35,69 +35,90 @@ public class PublicApiDemo {
   public record Penguin(boolean canSwim) implements Bird {}
   // @formatter:on
 
+  // Create instances of different Animal implementations
+  static Dog dog = new Dog("Buddy", 3);
+  static Dog dog2 = new Dog("Fido", 2);
+  static Animal eagle = new Eagle(2.1);
+  static Penguin penguin = new Penguin(true);
+  static Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
+
+  static List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
+
   public static void main(String[] args) {
-    // Create instances of different Animal implementations
-    Dog dog = new Dog("Buddy", 3);
-    Dog dog2 = new Dog("Fido", 2);
-    Animal eagle = new Eagle(2.1);
-    Penguin penguin = new Penguin(true);
-    Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
+    Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
+    final var buffer = ByteBuffer.allocate(1024);
 
-    List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
+    for (Animal animal : animals) {
+      pickler.serialize(animal, buffer);
+    }
 
-    List<Record[]> animalsByActualType = Arrays.stream(Animal.class.getPermittedSubclasses())
-        .flatMap(subclass -> {
-          if (subclass.isInterface() && subclass.isSealed()) {
-            return Arrays.stream(subclass.getPermittedSubclasses());
-          }
-          return Stream.of(subclass);
-        })
-        .map(concreteClass -> animals.stream()
-            .filter(concreteClass::isInstance)
-            .toArray(size -> (Record[]) java.lang.reflect.Array.newInstance(concreteClass, size)))
-        .toList();
-    
-    int size = animalsByActualType.stream()
-        .mapToInt(Pickler::sizeOfMany)
-        .sum();
+    buffer.flip(); // Prepare for reading
 
-    final var animalsBuffer = ByteBuffer.allocate(size);
+    for (Animal animal : animals) {
+      Animal deserializedAnimal = pickler.deserialize(buffer);
+      Assertions.assertEquals(animal, deserializedAnimal);
+    }
 
-    animalsByActualType.forEach(i -> Pickler.serializeMany(i, animalsBuffer));
+    listsCannotBeTypeOfSealedIntefaceAndPermiitedRecords();
+  }
 
-    // Flip the buffer to prepare for reading
-    animalsBuffer.flip();
+  private static void listsCannotBeTypeOfSealedIntefaceAndPermiitedRecords() {
+    final var buffer = ByteBuffer.allocate(1024);
 
-    final List<Animal> allReturnedAnimals = new ArrayList<>();
 
-//    Pickler2.allPermittedRecordClasses(Animal.class)
-//        .forEach(i -> {
-//          // Cast to Class<? extends Record> to help with type inference
-//          @SuppressWarnings("unchecked")
-//          Class<? extends Record> recordClass = (Class<? extends Record>) i;
-//
-//          // Deserialize the list of animals
-//          var returnedAnimals = Pickler.deserializeMany(recordClass, animalsBuffer);
-//
-//          // Cast the returned list to List<Animal> since we know all records implement Animal
-//          @SuppressWarnings("unchecked")
-//          List<Animal> animalList = (List<Animal>) (List<?>) returnedAnimals;
-//
-//          if (animals.containsAll(animalList)) {
-//            LOGGER.info(i.getSimpleName() + " serialized and deserialized correctly");
-//          } else {
-//            throw new AssertionError("¯\\_(ツ)_/¯");
-//          }
-//          allReturnedAnimals.addAll(animalList);
-//        });
-//
-//
-//    assertArrayEquals(animals.toArray(), allReturnedAnimals.toArray(), "Animals should be equal");
-//
-//    // buffer should be empty
-//    if (animalsBuffer.hasRemaining()) {
-//      throw new AssertionError("Buffer should be empty after deserialization");
-//    }
+    Dog[] dogs = animals.stream()
+        .filter(Dog.class::isInstance)
+        .map(Dog.class::cast)
+        .toArray(Dog[]::new);
+
+    Pickler.serializeMany(dogs, buffer);
+
+    Cat[] cats = animals.stream()
+        .filter(Cat.class::isInstance)
+        .map(Cat.class::cast)
+        .toArray(Cat[]::new);
+
+    Pickler.serializeMany(cats, buffer);
+
+    Eagle[] eagles = animals.stream()
+        .filter(Eagle.class::isInstance)
+        .map(Eagle.class::cast)
+        .toArray(Eagle[]::new);
+
+    Pickler.serializeMany(eagles, buffer);
+
+    Penguin[] penguins = animals.stream()
+        .filter(Penguin.class::isInstance)
+        .map(Penguin.class::cast)
+        .toArray(Penguin[]::new);
+
+    Pickler.serializeMany(penguins, buffer);
+
+    Alicorn[] alicorns = animals.stream()
+        .filter(Alicorn.class::isInstance)
+        .map(Alicorn.class::cast)
+        .toArray(Alicorn[]::new);
+
+    Pickler.serializeMany(alicorns, buffer);
+
+    // Deserialize the data back into objects
+    buffer.flip(); // Prepare for reading
+    Dog[] deserializedDogs = Pickler.deserializeMany(Dog.class, buffer).toArray(Dog[]::new);
+    Cat[] deserializedCats = Pickler.deserializeMany(Cat.class, buffer).toArray(Cat[]::new);
+    Eagle[] deserializedEagles = Pickler.deserializeMany(Eagle.class, buffer).toArray(Eagle[]::new);
+    Penguin[] deserializedPenguins = Pickler.deserializeMany(Penguin.class, buffer).toArray(Penguin[]::new);
+    Alicorn[] deserializedAlicorns = Pickler.deserializeMany(Alicorn.class, buffer).toArray(Alicorn[]::new);
+
+    IntStream.range(0, dogs.length)
+        .forEach(i -> Assertions.assertEquals(dogs[i], deserializedDogs[i]));
+    IntStream.range(0, cats.length)
+        .forEach(i -> Assertions.assertEquals(cats[i], deserializedCats[i]));
+    IntStream.range(0, eagles.length)
+        .forEach(i -> Assertions.assertEquals(eagles[i], deserializedEagles[i]));
+    IntStream.range(0, penguins.length)
+        .forEach(i -> Assertions.assertEquals(penguins[i], deserializedPenguins[i]));
+    IntStream.range(0, alicorns.length)
+        .forEach(i -> Assertions.assertEquals(alicorns[i], deserializedAlicorns[i]));
   }
 }
 
