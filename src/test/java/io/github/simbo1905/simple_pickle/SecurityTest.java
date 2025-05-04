@@ -64,7 +64,7 @@ class SecurityTest {
     // The format for sealed trait is: [classNameLength (int)] [classNameBytes (utf8)] [actual object data...]
     final int classNamePosition = buffer.position() + 4; // Position where class name bytes start
 
-    final String maliciousClassName = "io.github.simbo1905.simple_pickle.SecurityTest$Bad1";
+    final String maliciousClassName = "Bad1";
 
     final byte[] maliciousBytes = maliciousClassName.getBytes(StandardCharsets.UTF_8);
 
@@ -100,7 +100,7 @@ class SecurityTest {
     // The format for sealed trait is: [classNameLength (int)] [classNameBytes (utf8)] [actual object data...]
     final int classNamePosition = buffer.position() + 4; // Position where class name bytes start
 
-    final String maliciousClassName = "io.github.simbo1905.simple_pickle.SecurityTest$Bad2";
+    final String maliciousClassName = "Bad2";
 
     final byte[] maliciousBytes = maliciousClassName.getBytes(StandardCharsets.UTF_8);
 

@@ -3,6 +3,7 @@ package io.github.simbo1905;
 import io.github.simbo1905.simple_pickle.Pickler;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -50,6 +51,8 @@ public class DemoPickler2 {
     Dog deserializedDog = dogPickler.deserialize(dogBuffer);
     System.out.println("Dog2 round-trip: " + dog2.equals(deserializedDog));
 
+    ByteBuffer animalBuffer = ByteBuffer.allocate(4096);
+
     // Test 2: Round-trip list of animals
     List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
@@ -57,7 +60,6 @@ public class DemoPickler2 {
     Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
 
     // Serialize
-    ByteBuffer animalBuffer = ByteBuffer.allocate(4096);
     animalBuffer.putInt(animals.size());
     for (Animal animal : animals) {
       animalPickler.serialize(animal, animalBuffer);
@@ -66,13 +68,16 @@ public class DemoPickler2 {
 
     // Deserialize
     int size = animalBuffer.getInt();
-    Animal[] deserializedAnimals = new Animal[size];
-    Arrays.setAll(deserializedAnimals, i -> animalPickler.deserialize(animalBuffer));
+    List<Animal> deserializedAnimals = new ArrayList<>(size);
+    IntStream.range(0, size).forEach(i -> {
+      Animal animal = animalPickler.deserialize(animalBuffer);
+      deserializedAnimals.add(animal);
+    });
 
     // Verify
     AtomicBoolean allMatch = new AtomicBoolean(true);
     IntStream.range(0, animals.size()).forEach(i -> {
-      if (!animals.get(i).equals(deserializedAnimals[i])) {
+      if (!animals.get(i).equals(deserializedAnimals.get(i))) {
         allMatch.set(false);
       }
     });

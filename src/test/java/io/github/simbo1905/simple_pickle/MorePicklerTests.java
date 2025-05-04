@@ -17,6 +17,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 
 import static io.github.simbo1905.simple_pickle.Pickler.LOGGER;
 import static io.github.simbo1905.simple_pickle.PicklerTest.stripOutAsciiStrings;
@@ -354,13 +355,20 @@ public class MorePicklerTests {
     // Get the bytes from the buffer
     final var bytes = buffer.array();
     StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
-    Matcher matcher = Pattern.compile(Link.class.getName().replace("$", "\\$")).matcher(escapedSearchString.toString());
+    final String n1 = Chained.class.getName();
+    final String n2 = Link.class.getName();
+    final String shortestCommonPart = IntStream.range(0, Math.min(n1.length(), n2.length()))
+        .mapToObj(i -> n1.substring(0, i + 1))
+        .takeWhile(prefix -> n2.startsWith(prefix))
+        .reduce((first, second) -> second)
+        .orElse("");
+    Matcher matcher = Pattern.compile(shortestCommonPart.replace("$", "\\$")).matcher(escapedSearchString.toString());
     int count = 0;
     while (matcher.find()) {
       count++;
     }
     // we expect 2 matches because the outer trait has to write out that the inner is a link
-    assertEquals(2, count);
+    assertEquals(1, count);
     // make a fresh buffer to check that all the links are deserialized
     buffer = ByteBuffer.wrap(bytes);
     // Deserialize the entire chain

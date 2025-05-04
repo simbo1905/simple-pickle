@@ -672,7 +672,7 @@ class PicklerTest {
 
     // Write component type
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-    writeDeduplicatedClassName(buffer, Shape.class, class2BufferOffset);
+    writeDeduplicatedClassName(buffer, Shape.class, class2BufferOffset, Shape.class.getName());
 
     // Write array length
     buffer.putInt(shapes.length);
@@ -1212,7 +1212,7 @@ class PicklerTest {
 
     // Write outer component type (Person[].class)
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-    writeDeduplicatedClassName(buffer, Person[].class, class2BufferOffset);
+    writeDeduplicatedClassName(buffer, Person[].class, class2BufferOffset, Person[].class.getName());
 
     // Write outer array length
     buffer.putInt(teams.length);
@@ -1223,7 +1223,7 @@ class PicklerTest {
       buffer.put(ARRAY.marker());
 
       // Write inner component type (Person.class)
-      writeDeduplicatedClassName(buffer, Person.class, class2BufferOffset);
+      writeDeduplicatedClassName(buffer, Person.class, class2BufferOffset, Person.class.getName());
 
       // Write inner array length
       buffer.putInt(team.length);

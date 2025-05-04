@@ -23,9 +23,7 @@ It works with nested sealed interfaces of permitted record types or an outer arr
 
 When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. This allows you to use record patterns with type safe exhaustive switch statements. 
 
-This project is fully functional with 1 Java source file with less than 1,500 lines of code. It creates a single Jar file with no dependencies that is less than 35k in size. 
-
-This library if very fast as it avoids reflection on the hot patch by caching MethodHandle which are resolved through reflection when you construct the pickler. 
+This library if very fast as it avoids reflection on the hot patch by caching MethodHandle which are resolved through reflection when you construct the pickler.  This project is fully functional with 1 Java source file with less than 1,500 lines of code. It creates a single Jar file with no dependencies that is less than 35k in size. 
 
 ## Usage
 
@@ -166,12 +164,47 @@ try {
   throw new AssertionError("should not be reached");
 } catch (UnsupportedOperationException e) {
 }
+```
 
+###  Returned Maps Are Immutable
+
+Maps within records are returned as immutable.
+
+```java
+Person john = new Person("John", 40);
+Person michael = new Person("Michael", 65);
+Person sarah = new Person("Sarah", 63);
+
+Map<String, Person> familyMap = new HashMap<>();
+familyMap.put("father", michael);
+familyMap.put("mother", sarah);
+
+record NestedFamilyMapContainer(Person subject, Map<String, Person> relationships) {}
+
+// we need a wrapper to create a concrete type for the pickler due to erase of map types
+final var nestedFamilyMapContainer = new NestedFamilyMapContainer(john, familyMap);
+
+final var pickler = picklerForRecord(NestedFamilyMapContainer.class);
+
+// Calculate size and allocate buffer
+int size = pickler.sizeOf(nestedFamilyMapContainer);
+ByteBuffer buffer = ByteBuffer.allocate(size);
+// Serialize
+pickler.serialize(nestedFamilyMapContainer, buffer);
+buffer.flip();
+// Deserialize
+NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
+// will throw an exception if you try to modify an inner map inside the deserialized record
+try {
+    deserialized.relationships().put("brother", new Person("Tom", 35));
+    throw new AssertionError("should not be reached");
+} catch (UnsupportedOperationException e) {
+}
 ```
 
 ### Array of Records Serialization
 
-Arrays are supported. 
+Arrays are supported. See notes on erase below. 
 
 ```java
 // Record type must be public
@@ -237,48 +270,46 @@ static List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
 final var buffer = ByteBuffer.allocate(1024);
 
+// anyone reading back needs to know how many records to read back
+animalBuffer.putInt(animals.size());
+
 for (Animal animal : animals) {
     pickler.serialize(animal, buffer);
 }
 
 buffer.flip(); // Prepare for reading
 
-for (Animal animal : animals) {
-  Animal deserializedAnimal = pickler.deserialize(buffer);
-  Assertions.assertEquals(animal, deserializedAnimal);
-}
+// any service reading back needs to know how many records to read back
+int size = animalBuffer.getInt();
+
+// Deserialize the correct number of records
+List<Animal> deserializedAnimals = new ArrayList<>(size);
+IntStream.range(0, size).forEach(i -> {
+Animal animal = animalPickler.deserialize(animalBuffer);
+  deserializedAnimals.add(animal);
+});
 ```
 
-### Maps
+## Erasure
 
-Maps are supported.
+You will fail fast at compile time if you try this: 
 
 ```java
-Person john = new Person("John", 40);
-Person michael = new Person("Michael", 65);
-Person sarah = new Person("Sarah", 63);
-
-Map<String, Person> familyMap = new HashMap<>();
-familyMap.put("father", michael);
-familyMap.put("mother", sarah);
-
-record NestedFamilyMapContainer(Person subject, Map<String, Person> relationships) {}
-
-// we need a wrapper to create a concrete type for the pickler due to erase of map types
-final var nestedFamilyMapContainer = new NestedFamilyMapContainer(john, familyMap);
-
-final var pickler = picklerForRecord(NestedFamilyMapContainer.class);
-
-// Calculate size and allocate buffer
-int size = pickler.sizeOf(nestedFamilyMapContainer);
-ByteBuffer buffer = ByteBuffer.allocate(size);
-// Serialize
-pickler.serialize(nestedFamilyMapContainer, buffer);
-buffer.flip();
-// Deserialize
-NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
-// see the unit test that validates the deserialized map matches the original map. 
+Pickler<Dog> dogPickler = Pickler.forRecord(Dog.class);
+// Compile error java: incompatible types: no instance(s) of type variable(s) A exist so that A[] conforms to Dog
+dogPickler.serialize(List.of(dog, dog2).stream().toArray(Record[]::new), dogBuffer); 
 ```
+
+You will fail at runtime if you try this: 
+
+```java
+Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
+// Runtime error Caused by: java.lang.IllegalArgumentException: java.lang.Record is not actually a concrete record class. You may have tried to use a Record[]. 
+Pickler.serializeMany(List.of(dog, dog2).toArray(Record[]::new), dogBuffer);
+```
+
+That is why you should follow the simple example above of just writing out an int to say how many records you are writing out.
+Then the reader should read out that int and then read that many records in a loop. 
 
 ## Security
 
@@ -297,7 +328,6 @@ When `MethodHandle`s are invoked they validate the types and numbers of paramete
 If you instantiate a pickler for a `sealed interface` it ensures that the permitted types of the sealed interface are all `record` types else nested `sealed interface`s of records. It then builds a map of the validated classNames to the correct classes. When it reads back the class names this is via the `ByteBuffer` method `readUtf8` which ensures they are valid bytes then it creates the string explicitly using the UTF8 constructor. It then checks that string against the map of permitted class names to classes. Then it delegates to the pickler for the class.
 
 This means that you cannot attack this library to try to get it to deserialize a classes that are not validated record types in the correct type hierarchy with all code be validated and invoked in the correct order as though it was regular Java code not reflective Java code.
-
 
 ## Schema Evolution
 
