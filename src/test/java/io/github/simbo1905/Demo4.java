@@ -19,7 +19,7 @@ public class Demo4 {
     };
 
 // Calculate size and allocate buffer
-    int size = Pickler.sizeOfHomogeneousArray(people);
+    int size = Pickler.sizeOfMany(people);
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize the array

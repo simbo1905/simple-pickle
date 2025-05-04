@@ -102,7 +102,7 @@ Below are some examples of how to use the library. You will notice that `seriali
 
 ### Basic Record Serialization
 
-The library supports serialization of records containing simple types such as Strings or primatives but also plain  enums that have **no** custom fields:
+The library supports serialization of records containing simple types such as Strings or primitives enums::
 
 ```java
 /// Define a record using the enum. It **must** be public

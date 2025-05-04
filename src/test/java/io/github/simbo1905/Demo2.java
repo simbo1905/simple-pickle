@@ -22,7 +22,7 @@ public class Demo2 {
     final var originalRoot = new RootNode(internal1, internal2);
 
 // Get a pickler for the TreeNode sealed interface
-    final var pickler = Pickler.picklerForSealedInterface(TreeNode.class);
+    final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
 // Calculate buffer size needed for the whole graph reachable from the root node
     final var bufferSize = pickler.sizeOf(originalRoot);

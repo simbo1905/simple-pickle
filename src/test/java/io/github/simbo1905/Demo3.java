@@ -12,7 +12,7 @@ public class Demo3 {
     final List<ListRecord> outerList = List.of(new ListRecord(List.of("A", "B")), new ListRecord(List.of("X", "Y")));
 
 // Calculate size and allocate buffer. Limitations of generics means we have shallow copy into an array.
-    int size = Pickler.sizeOfHomogeneousArray(outerList.toArray(ListRecord[]::new));
+    int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
 
     ByteBuffer buffer = ByteBuffer.allocate(size);
 

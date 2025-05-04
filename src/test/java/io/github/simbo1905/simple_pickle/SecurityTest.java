@@ -10,7 +10,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static io.github.simbo1905.simple_pickle.Pickler.picklerForSealedInterface;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /// Tests related to security aspects of serialization/deserialization.
@@ -50,7 +49,7 @@ class SecurityTest {
   @Test
   void testSealedTraitNotRecordAttack() {
     // 1. Get Pickler for the sealed trait
-    final Pickler<MyInterface> pickler = picklerForSealedInterface(MyInterface.class);
+    final Pickler<MyInterface> pickler = Pickler.forSealedInterface(MyInterface.class);
 
     // 2. Create an instance of a permitted subtype
     final var original = new Good("safe_value");
@@ -86,7 +85,7 @@ class SecurityTest {
   @Test
   void testSealedTraitWrongRecordAttack() {
     // 1. Get Pickler for the sealed trait
-    final Pickler<MyInterface> pickler = picklerForSealedInterface(MyInterface.class);
+    final Pickler<MyInterface> pickler = Pickler.forSealedInterface(MyInterface.class);
 
     // 2. Create an instance of a permitted subtype
     final var original = new Good("safe_value");

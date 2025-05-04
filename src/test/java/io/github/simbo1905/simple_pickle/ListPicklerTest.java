@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.github.simbo1905.simple_pickle.Pickler.PicklerBase.LOGGER;
+import static io.github.simbo1905.simple_pickle.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ListPicklerTest {
@@ -33,7 +33,7 @@ public class ListPicklerTest {
     final List<ListRecord> outerList = List.of(original, new ListRecord(List.of("X", "Y")));
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfHomogeneousArray(outerList.toArray(ListRecord[]::new));
+    int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
@@ -67,7 +67,7 @@ public class ListPicklerTest {
     NestedListRecord original = new NestedListRecord(nestedList);
 
     // Get a pickler for the record
-    Pickler<NestedListRecord> pickler = Pickler.picklerForRecord(NestedListRecord.class);
+    Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
 
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
@@ -120,7 +120,7 @@ public class ListPicklerTest {
     }
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfHomogeneousArray(original.toArray(NestedListRecord[]::new));
+    int size = Pickler.sizeOfMany(original.toArray(NestedListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
@@ -152,7 +152,7 @@ public class ListPicklerTest {
     Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
 
     // Get a pickler for the sealed trait Animal
-    var animalPickler = Pickler.picklerForSealedInterface(Animal.class);
+    var animalPickler = Pickler.forSealedInterface(Animal.class);
 
     // preallocate a buffer for the Dog instance
     var buffer = ByteBuffer.allocate(animalPickler.sizeOf(dog));
@@ -185,7 +185,7 @@ public class ListPicklerTest {
     Alicorn[] alicorns = animals.stream().filter(i -> i instanceof Alicorn).toArray(Alicorn[]::new);
 
     int size = Stream.of(dogs, eagles, penguins, alicorns)
-        .mapToInt(Pickler::sizeOfHomogeneousArray)
+        .mapToInt(Pickler::sizeOfMany)
         .sum();
 
     final var animalsBuffer = ByteBuffer.allocate(size);

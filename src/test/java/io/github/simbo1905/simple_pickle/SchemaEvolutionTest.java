@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
-import static io.github.simbo1905.simple_pickle.Pickler.picklerForRecord;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Tests for schema evolution in records.
@@ -243,7 +242,7 @@ public class SchemaEvolutionTest {
     public static byte[] serializeRecord(Object record) {
         // Get the pickler for the record class
         Class<? extends Record> recordClass = (Class<? extends Record>) record.getClass();
-        Pickler pickler = picklerForRecord(recordClass);
+      Pickler pickler = Pickler.forRecord(recordClass);
         
         // Calculate buffer size and allocate buffer
         int size = pickler.sizeOf(record);
@@ -267,7 +266,7 @@ public class SchemaEvolutionTest {
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static Object deserializeRecord(Class<?> recordClass, byte[] bytes) {
         // Get the pickler for the record class
-        Pickler pickler = picklerForRecord((Class<? extends Record>) recordClass);
+      Pickler pickler = Pickler.forRecord((Class<? extends Record>) recordClass);
         
         // Wrap the bytes in a buffer
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
