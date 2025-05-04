@@ -21,88 +21,15 @@ It works with nested sealed interfaces of permitted record types or an outer arr
  - Enum.class
  - Arrays of the above
 
-When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. Upon initializing the pickler for the outermost sealed interface the logic proactively prepares and caches the necessary picklers for all permitted record in the sealed hierarchy. You get one Pickler to rule them all. 
+When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. This allows you to use record patterns with type safe exhaustive switch statements. 
 
-The above restrictions are broad enough to build a rich message protocol suitable for using with record patterns in switch statements. At the same time these restrictions are narrow enough to be easy to memorize the rules to create a pure message exchange protocol. 
+This project is fully functional with 1 Java source file with less than 1,500 lines of code. It creates a single Jar file with no dependencies that is less than 35k in size. 
 
-An additional payoff is that this project is fully functional with 1 Java source file with less than 1,500 lines of code. It creates a single Jar file with no dependencies that is less than 33k in size. 
+This library if very fast as it avoids reflection on the hot patch by caching MethodHandle which are resolved through reflection when you construct the pickler. 
 
-This library code avoids reflection when working with objects by caching MethodHandle which are resolved through reflection when you construct the pickler. The typesafe picklers are cached and reused. A sealed interface pickler creates and caches the record picklers ahead of time. This means that the picklers are both fast and secure by default.
-
-An example protocol could look like this:
-
-```java
-// Client to server messages
-sealed interface StackCommand permits Push, Pop, Peek {}
-record Push(String item) implements StackCommand {}
-record Pop() implements StackCommand {}
-record Peek() implements StackCommand {}
-// Server responses
-sealed interface StackResponse permits Success, Failure {
-  String payload();
-}
-record Success(Optional<String> value) implements StackResponse {
-  public String payload() { return value.orElse(null); }
-}
-record Failure(String errorMessage) implements StackResponse {
-  public String payload() { return errorMessage;}
-}
-```
-
-Note that there is deliberately no common interface between the client and server protocols. This means that we would 
-create two type-safe picklers, one for each side of the shared protocols. This is a deliberate design choice to avoid 
-needing to do unchecked casts when deserializing:
-
-```java
-import io.github.simbo1905.simple_pickle.Pickler;
-
-// Get picklers for the protocol interfaces
-Pickler<StackCommand> commandPickler = Pickler.picklerForSealedInterface(StackCommand.class);
-Pickler<StackResponse> responsePickler = Pickler.picklerForSealedInterface(StackResponse.class);
-```
-
-See the unit tests for many examples of using the library.
-
-## Goals
-
-The goals of this codebase is to:
-
-1. Write one piece of stable code that is a single Java source file
-2. Be secure by default
-3. Support immutable records by using List.of() and Map.of() to create immutable collections
-4. Support `byte[]` as a necessary way to transfer binary data. Therefore we support arrays of other types for convenience.
-5. Never add features only fix any bugs
-6. Never have any third party dependencies
-7. Support basic additive change to the message protocol for backwards and forwards compatibility of adjacent versions of microservices.
-8. Be simple enough to get an LLM to write the corresponding Rust code that can deserialize Java records into Rust structs. Rather than explicitly supporting cross-language serialization the library implicitly supports it through simplicity. 
-
-This mean you might find that this single Java file solution is an excellent alternative to using gRPC in your application. YMMV and T&Cs apply.
-
-## Security
-
-This library is secure by default by:
-
-1. Resolving and caching `MethodHandle`s to the default constructor of records when you create a record; not when you are deserializing. 
-2. Using the JDK's `ByteBuffer` class to read and write data that is correctly validate by the JDK ByteBuffer methods. 
-3. Creating strings using the UTF8 encoding using a UTF8 byte array that has been validated by the ByteArray `readUtf8` method.
-4. Resolving what are the legal permitted class names of all records within a sealed interface hierarchy at when you create a record; not when you are deserializing.
-5. Using the technology that Java has specifically created to model data transfer objects safely which is the `record` types. 
-
-The JDK ensures that `record` types can only be constructed bottom-up. This means that the first record to be deserialized is may only be a fully constructed record made from validated primitive types.
-
-When `MethodHandle`s are invoked they validate the types and numbers of parameters then call constructors that must use the canonical constructor else the canonical constructor itself. 
-
-If you instantiate a pickler for a `sealed interface` it ensures that the permitted types of the sealed interface are all `record` types else nested `sealed interface`s of records. It then builds a map of the validated classNames to the correct classes. When it reads back the class names this is via the `ByteBuffer` method `readUtf8` which ensures they are valid bytes then it creates the string explicitly using the UTF8 constructor. It then checks that string against the map of permitted class names to classes. Then it delegates to the pickler for the class.
-
-This means that you cannot attack this library to try to get it to deserialize a classes that are not validated record types in the correct type hierarchy with all code be validated and invoked in the correct order as though it was regular Java code not reflective Java code. 
-
-## Usage Examples
-
-Below are some examples of how to use the library. You will notice that `serialize(T[], buffer)` takes an array as input yet when we read back we get a `List<T>`. Regrettably this is due to the limitations of generics in Java. See the section below "Type Safety Of Many Sealed Interfaces Things" for more details.
+## Usage
 
 ### Basic Record Serialization
-
-The library supports serialization of records containing simple types such as Strings or primitives enums::
 
 ```java
 /// Define a record using the enum. It **must** be public
@@ -202,7 +129,7 @@ validateTreeStructure(deserializedRoot);
 
 ### Returned Lists Are Immutable
 
-Even if you do not use a canonical constructor to make inner lists immutable the deserialized list will be immutable. This includes any out list of item:
+All deserialized list will be immutable: 
 
 ```java
 /// record must be public
@@ -244,6 +171,8 @@ try {
 
 ### Array of Records Serialization
 
+Arrays are supported. 
+
 ```java
 // Define a simple record
 public record Person(String name, int age) {}
@@ -269,6 +198,8 @@ IntStream.range(0, people.length)
 ```
 
 ### Complex Nested Sealed Interfaces
+
+This example shows how to serialize and deserialize a heterogeneous array of records that implement a sealed interface. The records are nested within the sealed interface hierarchy, and the serialization process handles the complexity of the nested structure:
 
 ```java
 // Protocol
@@ -312,7 +243,7 @@ Person[] deserialized = Pickler.deserializeArray(Person.class, buffer);
 
 ### Maps
 
-Inner maps are supported.
+Maps are supported.
 
 ```java
 Person john = new Person("John", 40);
@@ -341,23 +272,25 @@ NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
 // see the unit test that validates the deserialized map matches the original map. 
 ```
 
-### Type Safety Of Many Sealed Interfaces Things
+## Security
 
-You will notice that to serialize many things we have the parameters `static void serialize(T[], buffer)` which takes an array as input. Yet when we read back we get a list and have to pass in the class to type the list `final List<Animal> returned = deserialize(Animal.class, buffer)`. Regrettably this is due to the limitations of generics in Java. 
+This library is secure by default by:
 
-Arrays are mutable which means that if we read back an array it would not be immutable. So we prefer to read back a list.
-Yet Java Generics cannot enforce that a list of things that are in a sealed trait are all Records. AFAIK this due to the 
-famous erasure. So we are forces to pass in the class of the sealed interface as an additional parameter. That forces 
-the knowledge of actual specialist Pickler of sealed traits to resolve. We do not need to do that with arrays as they 
-have a runtime type. If I say deserialize to an array then the type of the array is known to be the sealed interface. 
-Yet I cannot allocate the array until I read the stream. In my eyes this is the lesser of all evils is to pass in the class 
-that you are intended to read back when you serialize the stream. YMMV. 
+1. Resolving and caching `MethodHandle`s to the default constructor of records when you create a record; not when you are deserializing.
+2. Using the JDK's `ByteBuffer` class to read and write data that is correctly validate by the JDK ByteBuffer methods.
+3. Creating strings using the UTF8 encoding using a UTF8 byte array that has been validated by the ByteArray `readUtf8` method.
+4. Resolving what are the legal permitted class names of all records within a sealed interface hierarchy at when you create a record; not when you are deserializing.
+5. Using the technology that Java has specifically created to model data transfer objects safely which is the `record` types.
 
-We cannot serialize a Stream<T> which would unify `List<T>` and `Array[T]` as we need to write the size before we write 
-other things. That would terminate the stream and blow someone else using after we drained it. The API makes you shallow copy of any collection into an array. In my eyes this is the lesser of all evils. YMMV. 
+The JDK ensures that `record` types can only be constructed bottom-up. This means that the first record to be deserialized is may only be a fully constructed record made from validated primitive types.
 
-If people know a better way to deal with this then please raise an issue with a pull request.
- 
+When `MethodHandle`s are invoked they validate the types and numbers of parameters then call constructors that must use the canonical constructor else the canonical constructor itself.
+
+If you instantiate a pickler for a `sealed interface` it ensures that the permitted types of the sealed interface are all `record` types else nested `sealed interface`s of records. It then builds a map of the validated classNames to the correct classes. When it reads back the class names this is via the `ByteBuffer` method `readUtf8` which ensures they are valid bytes then it creates the string explicitly using the UTF8 constructor. It then checks that string against the map of permitted class names to classes. Then it delegates to the pickler for the class.
+
+This means that you cannot attack this library to try to get it to deserialize a classes that are not validated record types in the correct type hierarchy with all code be validated and invoked in the correct order as though it was regular Java code not reflective Java code.
+
+
 ## Schema Evolution
 
 While Java Record Pickler is primarily designed for type-safe serialization of message protocols with simple data transfer records rather than long-term storage, it does support limited schema evolution to facilitate communication between microservices running different versions of a protocol.
