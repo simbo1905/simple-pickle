@@ -25,7 +25,20 @@ public class MyBenchmark {
 
   @Benchmark
   public void helloWorld(Blackhole bh) {
-    final Push[] original = {new Push("hello"), new Push("world"), new Push("yes"), new Push("no")};
+    final Push[] original = {
+        new Push("hello"),
+        new Push("world"),
+        new Push("yes"),
+        new Push("no"),
+        new Push("hello"),
+        new Push("world"),
+        new Push("yes"),
+        new Push("no"),
+        new Push("hello"),
+        new Push("world"),
+        new Push("yes"),
+        new Push("no"),
+    };
     int size = Pickler.sizeOfMany(original);
     ByteBuffer buffer = ByteBuffer.allocate(size);
     Pickler.serializeMany(original, buffer);
