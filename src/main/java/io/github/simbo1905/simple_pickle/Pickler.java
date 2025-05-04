@@ -91,7 +91,20 @@ public interface Pickler<T> {
   enum Compatibility {
     STRICT,
     BACKWARDS,
-    FORWARDS
+    FORWARDS;
+
+    static void validate(final Compatibility compatibility, final String recordClassName, final int componentCount, final int bufferLength) {
+      if (compatibility == Compatibility.STRICT && bufferLength != componentCount) {
+        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.STRICT yet buffer length %s != compponent count %s"
+            .formatted(recordClassName, bufferLength, componentCount));
+      } else if (compatibility == Compatibility.BACKWARDS && bufferLength > componentCount) {
+        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.BACKWARDS and count of components %s > buffer size %s"
+            .formatted(recordClassName, bufferLength, componentCount));
+      } else if (compatibility == Compatibility.FORWARDS && bufferLength < componentCount) {
+        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.FORWARDS and count of components %s < buffer size %s"
+            .formatted(recordClassName, bufferLength, componentCount));
+      }
+    }
   }
 
   Compatibility compatibility();
@@ -187,18 +200,12 @@ abstract class SealedPickler<S> implements Pickler<S> {
             c -> (Class<? extends S>) c
         ));
 
-    final Compatibility compatibility = Compatibility.valueOf(System.getProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY, "STRICT"));
-
-    if (compatibility != Compatibility.STRICT) {
-      // We are secure by default this is opt-in and should not be left on forever so best to nag
-      LOGGER.warning(() -> "Pickler for " + sealedClass.getName() + " has Compatibility set to " + compatibility.name());
-    }
-
     return new SealedPickler<>() {
 
+      /// There is nothing effective we can do here.
       @Override
       public Compatibility compatibility() {
-        return compatibility;
+        return Compatibility.STRICT;
       }
 
       @Override
@@ -282,7 +289,6 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     final int canonicalParamCount;
     final MethodHandles.Lookup lookup = MethodHandles.lookup();
     MethodHandle canonicalConstructorHandle;
-
     try {
       RecordComponent[] components = recordClass.getRecordComponents();
       Optional
@@ -311,10 +317,12 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
       throw new IllegalArgumentException(msg, inner);
     }
 
+    final int componentCount;
+
     // Get the canonical constructor and any fallback constructors for schema evolution
     try {
-      // Get the record components
       final RecordComponent[] components = recordClass.getRecordComponents();
+      componentCount = components.length;
       // Extract component types for the canonical constructor
       final Class<?>[] canonicalParamTypes = Arrays.stream(components)
           .map(RecordComponent::getType)
@@ -380,10 +388,11 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
 
     // Capture these values for use in the anonymous class
     final MethodHandle finalCanonicalConstructorHandle = canonicalConstructorHandle;
+
+    final Compatibility compatibility = Compatibility.valueOf(
+        System.getProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY, "STRICT"));
+
     final String recordClassName = recordClass.getName();
-
-    final Compatibility compatibility = Compatibility.valueOf(System.getProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY, "STRICT"));
-
     if (compatibility != Compatibility.STRICT) {
       // We are secure by default this is opt-in and should not be left on forever so best to nag
       LOGGER.warning(() -> "Pickler for " + recordClassName + " has Compatibility set to " + compatibility.name());
@@ -413,8 +422,13 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
       R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
         // Read the number of components as an unsigned byte
         final short length = readUnsignedByte(buffer);
-        final var components = new Object[length];
+        Compatibility.validate(compatibility, recordClassName, componentCount, length);
+        // This may unload from the stream things that we will ignore
+        final Object[] components = new Object[length];
         Arrays.setAll(components, ignored -> deserializeValue(bufferOffset2Class, buffer));
+        if (Compatibility.BACKWARDS == compatibility && componentCount < length) {
+          return this.staticCreateFromComponents(Arrays.copyOfRange(components, 0, componentCount));
+        }
         return this.staticCreateFromComponents(components);
       }
 
