@@ -7,7 +7,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Modifier;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.util.*;
@@ -51,33 +50,6 @@ public interface Pickler<T> {
             throw new IllegalArgumentException(msg);
           }
         });
-  }
-
-  static List<Class<?>> allConcreteTypesFromSealedHierarchy(Class<?> rootClass) {
-    if (!rootClass.isSealed()) {
-      throw new IllegalArgumentException(rootClass + " is not sealed");
-    }
-
-    List<Class<?>> concreteTypes = new ArrayList<>();
-    Deque<Class<?>> queue = new ArrayDeque<>();
-    queue.add(rootClass);
-
-    while (!queue.isEmpty()) {
-      Class<?> current = queue.poll();
-
-      if (current.isSealed()) {
-        for (Class<?> permitted : current.getPermittedSubclasses()) {
-          if (!permitted.isInterface() && !Modifier.isAbstract(permitted.getModifiers())) {
-            concreteTypes.add(permitted);
-          }
-          if (permitted.isSealed()) {
-            queue.add(permitted);
-          }
-        }
-      }
-    }
-
-    return concreteTypes;
   }
 
 
@@ -130,7 +102,8 @@ public interface Pickler<T> {
     return (Pickler<T>) PICKLER_REGISTRY.computeIfAbsent(sealedClass, clazz -> PicklerBase.createPicklerForSealedInterface((Class<T>) clazz));
   }
 
-  /// Serialize an array of records
+  /// Serialize an array of records.
+  /// Due to erasure it seems that sealed interfaces cannot confine the type of the array
   ///
   /// @param array The array of records to serializeMany
   /// @param buffer The buffer to write to
@@ -156,7 +129,7 @@ public interface Pickler<T> {
     }
   }
 
-  /// Deserialize an array of records
+  /// Deserialize what was a record array into a list of records.
   ///
   /// @param <R>           The record type
   /// @param componentType The component type of the array
@@ -193,14 +166,6 @@ public interface Pickler<T> {
     return IntStream.range(0, buffer.getInt())
         .mapToObj(i -> pickler.deserialize(buffer))
         .toList();
-  }
-
-  /// In order to have a static method that enforces a stream to be records we must do a runtime check.
-  /// If there are permitted subclasses of the sealed interface that are not records then they are ignored.
-  /// If we try to create a pickler for such as sealed interface we will get runtime exception when instantiate a pickler.
-  static <S> Stream<Record> recordsOf(Stream<S> stream) {
-    return stream.filter(Record.class::isInstance)
-        .map(Record.class::cast);
   }
 
   /// This method is to work around restrictions in Java generics. It is not possible to say that something is a type
