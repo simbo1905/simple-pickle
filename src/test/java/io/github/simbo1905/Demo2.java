@@ -1,14 +1,14 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.simple_pickle.Pickler;
-import io.github.simbo1905.simple_pickle.tree.InternalNode;
-import io.github.simbo1905.simple_pickle.tree.LeafNode;
-import io.github.simbo1905.simple_pickle.tree.RootNode;
-import io.github.simbo1905.simple_pickle.tree.TreeNode;
+import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.tree.InternalNode;
+import io.github.simbo1905.no.framework.tree.LeafNode;
+import io.github.simbo1905.no.framework.tree.RootNode;
+import io.github.simbo1905.no.framework.tree.TreeNode;
 
 import java.nio.ByteBuffer;
 
-import static io.github.simbo1905.simple_pickle.MorePicklerTests.validateTreeStructure;
+import static io.github.simbo1905.no.framework.MorePicklerTests.validateTreeStructure;
 
 public class Demo2 {
   public static void main(String[] args) {
