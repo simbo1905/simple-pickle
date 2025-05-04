@@ -332,16 +332,9 @@ public class SchemaEvolutionTest {
   /// @param recordClass The record class
   /// @param bytes The serialized bytes
   /// @return The deserialized record instance
-  @SuppressWarnings({"unchecked", "rawtypes"})
+  @SuppressWarnings({"unchecked"})
   public static Object deserializeRecord(Class<?> recordClass, byte[] bytes) {
-    // Get the pickler for the record class
-    Pickler pickler = Pickler.forRecord((Class<? extends Record>) recordClass);
-
-    // Wrap the bytes in a buffer
-    ByteBuffer buffer = ByteBuffer.wrap(bytes);
-
-    // Deserialize the record
-    return pickler.deserialize(buffer);
+    return Pickler.forRecord((Class<? extends Record>) recordClass).deserialize(ByteBuffer.wrap(bytes));
   }
 
   /// Verifies that a record instance has the expected component values.

@@ -91,9 +91,13 @@ public interface Pickler<T> {
   enum Compatibility {
     NONE,
     BACKWARDS,
-    FORWARDS;
+    FORWARDS,
+    ALL;
 
     static void validate(final Compatibility compatibility, final String recordClassName, final int componentCount, final int bufferLength) {
+      if (compatibility == Compatibility.ALL) {
+        return; // No validation it is down to the developer to provide alternative constructors and we will drop additional components
+      }
       if (compatibility == Compatibility.NONE && bufferLength != componentCount) {
         throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.NONE yet buffer length %s != component count %s"
             .formatted(recordClassName, bufferLength, componentCount));
@@ -426,7 +430,7 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
         // This may unload from the stream things that we will ignore
         final Object[] components = new Object[length];
         Arrays.setAll(components, ignored -> deserializeValue(bufferOffset2Class, buffer));
-        if (Compatibility.BACKWARDS == compatibility && componentCount < length) {
+        if (componentCount < length && (Compatibility.FORWARDS == compatibility || Compatibility.ALL == compatibility)) {
           return this.staticCreateFromComponents(Arrays.copyOfRange(components, 0, componentCount));
         }
         return this.staticCreateFromComponents(components);

@@ -29,7 +29,7 @@ public class BackwardsCompatibilityTest {
   static final Logger LOGGER = Logger.getLogger(BackwardsCompatibilityTest.class.getName());
 
   // Original schema with just one field
-  static final String ORIGINAL_SCHEMA = """
+  static final String GENERATION_1 = """
       package io.github.simbo1905.simple_pickle.evolution;
       
       /**
@@ -40,7 +40,7 @@ public class BackwardsCompatibilityTest {
       """;
 
   // Evolved schema with two additional fields and backward compatibility constructor
-  static final String EVOLVED_SCHEMA = """
+  static final String GENERATION_2 = """
       package io.github.simbo1905.simple_pickle.evolution;
       
       /**
@@ -57,7 +57,7 @@ public class BackwardsCompatibilityTest {
       """;
 
   // Further evolved schema with even more fields
-  static final String FURTHER_EVOLVED_SCHEMA = """
+  static final String GENERATION_3 = """
       package io.github.simbo1905.simple_pickle.evolution;
       
       import java.time.Instant;
@@ -86,7 +86,7 @@ public class BackwardsCompatibilityTest {
 
   @BeforeEach
   void setUp() {
-    System.setProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
+    System.clearProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY);
   }
 
   @AfterEach
@@ -99,7 +99,7 @@ public class BackwardsCompatibilityTest {
     // clear should force strict mode
     System.clearProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY);
     // Compile and class load
-    Class<?> originalClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, ORIGINAL_SCHEMA);
+    Class<?> originalClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_1);
     assertTrue(originalClass.isRecord(), "Compiled class should be a record");
 
     // Create an instance of the original record
@@ -117,7 +117,7 @@ public class BackwardsCompatibilityTest {
     }
 
     // Set up the compilation
-    Class<?> evolvedClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, EVOLVED_SCHEMA);
+    Class<?> evolvedClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_2);
     assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
 
     // expected exception
@@ -129,107 +129,116 @@ public class BackwardsCompatibilityTest {
   }
 
   @Test
-  void testOriginalToEvolvedDeserialization() throws Exception {
-    // Set up the compilation
-    Class<?> originalClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, ORIGINAL_SCHEMA);
-    assertTrue(originalClass.isRecord(), "Compiled class should be a record");
+  void testMultiGenerationEvolutionBackwards() throws Exception {
+    System.setProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
 
-    // Create an instance of the original record
-    Object originalInstance = createRecordInstance(originalClass, new Object[]{42});
-    LOGGER.info("Original instance: " + originalInstance);
-
-    // Serialize the original instance
-    byte[] serializedData = serializeRecord(originalInstance);
-
-    // Set up the compilation
-    Class<?> evolvedClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, EVOLVED_SCHEMA);
-    assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
-
-    // Deserialize using the evolved schema
-    Object evolvedInstance = deserializeRecord(evolvedClass, serializedData);
-    LOGGER.info("Evolved instance: " + evolvedInstance);
-
-    // Verify the fields
-    verifyRecordComponents(evolvedInstance, Map.of(
-        "value", 42,
-        "name", "default",
-        "score", 0.0
-    ));
+    multiGenerationalBackwardsTwice();
   }
 
   @Test
-  void testMultiGenerationEvolutionBackwards() throws Exception {
+  void testMultiGenerationEvolutionBackwardsALL() throws Exception {
+    System.setProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.ALL.name());
+
+    multiGenerationalBackwardsTwice();
+  }
+
+  private void multiGenerationalBackwardsTwice() throws Exception {
     // We are testing the latest code can load two prior versions of the code
-    Class<?> latestClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, FURTHER_EVOLVED_SCHEMA);
-    assertTrue(latestClass.isRecord(), "Latest version class should be a record");
+    Class<?> generation3class = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_3);
+
+    {
+      // Compile and load the prior version of the record
+      Class<?> generation2class = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_2);
+
+      // Create and serialize an instance of the prior version with number 200
+      Object generation2instance = createRecordInstance(generation2class, new Object[]{200, "test", 99.5});
+      byte[] generation2bytes = serializeRecord(generation2instance);
+
+      Object gen3fromGen2 = deserializeRecord(generation3class, generation2bytes);
+
+      verifyRecordComponents(gen3fromGen2, Map.of(
+          "value", 200,
+          "name", "test",
+          "score", 99.5,
+          "active", true
+          // timestamp is dynamically generated, so we don't verify it
+      ));
+    }
 
     // Compile and load the original (oldest) version of the record
-    Class<?> priorPriorClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, ORIGINAL_SCHEMA);
+    Class<?> generation1class = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_1);
 
     // Create and serialize an instance of the original version with number 100
-    Object priorPriorInstance = createRecordInstance(priorPriorClass, new Object[]{100});
-    byte[] priorPriorData = serializeRecord(priorPriorInstance);
+    Object generation1instance = createRecordInstance(generation1class, new Object[]{100});
+    byte[] generation1bytes = serializeRecord(generation1instance);
 
     // Deserialize the prior prior data into the latest version
-    Object deserializedPriorPrior = deserializeRecord(latestClass, priorPriorData);
-    LOGGER.info("Deserialized prior-prior instance into latest version: " + deserializedPriorPrior);
+    Object gene3fromGen1 = deserializeRecord(generation3class, generation1bytes);
+    LOGGER.info("Deserialized prior-prior instance into latest version: " + gene3fromGen1);
 
     // Verify that the deserialized instance of the old record has 100 as value and default values for other fields
-    verifyRecordComponents(deserializedPriorPrior, Map.of(
+    verifyRecordComponents(gene3fromGen1, Map.of(
         "value", 100,
         "name", "default",
         "score", 0.0,
         "active", true
         // timestamp is dynamically generated, so we don't verify it
     ));
-
-    // Compile and load the prior version of the record
-    Class<?> priorClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, EVOLVED_SCHEMA);
-    assertTrue(priorClass.isRecord(), "Prior version class should be a record");
-
-    // Create and serialize an instance of the prior version with number 200
-    Object priorInstance = createRecordInstance(priorClass, new Object[]{200, "test", 99.5});
-    byte[] priorData = serializeRecord(priorInstance);
-
-    Object deserializedPrior = deserializeRecord(latestClass, priorData);
-
-    verifyRecordComponents(deserializedPrior, Map.of(
-        "value", 200,
-        "name", "test",
-        "score", 99.5,
-        "active", true
-        // timestamp is dynamically generated, so we don't verify it
-    ));
   }
 
   @Test
-  void testRoundTripWithEvolvedSchema() throws Exception {
-    // Compile the source code
-    // Get the Java compiler
-    JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    if (compiler == null) {
-      throw new IllegalStateException("Java compiler not available. Make sure you're running with JDK.");
+  void testMultiGenerationEvolutionForwards() throws Exception {
+    System.setProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.FORWARDS.name());
+    runTwoGenerationsForward();
+  }
+
+  @Test
+  void testMultiGenerationEvolutionForwardsALL() throws Exception {
+    System.setProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.ALL.name());
+    runTwoGenerationsForward();
+  }
+
+  private void runTwoGenerationsForward() throws Exception {
+    // Compile and load the original (oldest) version of the record
+    Class<?> generation1 = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_1);
+
+    {
+      // Compile and load the prior version of the record
+      Class<?> generation2 = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_2);
+
+      Object generation2instance = createRecordInstance(generation2, new Object[]{200, "test", 99.5});
+      byte[] generation2wire = serializeRecord(generation2instance);
+      // Deserialize the prior prior data into the latest version
+      Object deserializedOriginal = deserializeRecord(generation1, generation2wire);
+      // Verify that the deserialized instance of the old record has 100 as value and default values for other fields
+      verifyRecordComponents(deserializedOriginal, Map.of(
+          "value", 200,
+          "name", "test",
+          "score", 99.5,
+          "active", true
+          // timestamp is dynamically generated, so we don't verify it
+      ));
     }
 
-    // Set up the compilation
-    Class<?> evolvedClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, EVOLVED_SCHEMA);
+    {
+      // Compile and load the prior version of the record
+      Class<?> generation3 = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_2);
 
-    // Create an instance with all fields specified
-    Object originalInstance = createRecordInstance(evolvedClass, new Object[]{123, "test name", 45.67});
-    LOGGER.info("Original evolved instance: " + originalInstance);
-
-    // Serialize and then deserialize
-    byte[] serializedData = serializeRecord(originalInstance);
-    Object deserializedInstance = deserializeRecord(evolvedClass, serializedData);
-    LOGGER.info("Deserialized evolved instance: " + deserializedInstance);
-
-    // Verify all fields are preserved
-    verifyRecordComponents(deserializedInstance, Map.of(
-        "value", 123,
-        "name", "test name",
-        "score", 45.67
-    ));
+      Object generation3instance = createRecordInstance(generation3, new Object[]{200, "test", 99.5});
+      byte[] generation3wire = serializeRecord(generation3instance);
+      // Deserialize the prior prior data into the latest version
+      Object deserializedOriginal = deserializeRecord(generation1, generation3wire);
+      // Verify that the deserialized instance of the old record has 100 as value and default values for other fields
+      verifyRecordComponents(deserializedOriginal, Map.of(
+          "value", 200,
+          "name", "test",
+          "score", 99.5,
+          "active", true
+          // timestamp is dynamically generated, so we don't verify it
+      ));
+    }
   }
+
 
   @Test
   void testBackwardsCompatibilityDisabledFails() throws Exception {
@@ -244,7 +253,7 @@ public class BackwardsCompatibilityTest {
     }
 
     // Set up the compilation
-    Class<?> originalClass = compileAndClassLoad(compiler1, FULL_CLASS_NAME, ORIGINAL_SCHEMA);
+    Class<?> originalClass = compileAndClassLoad(compiler1, FULL_CLASS_NAME, GENERATION_1);
 
     // Compile the source code
     // Get the Java compiler
@@ -254,7 +263,7 @@ public class BackwardsCompatibilityTest {
     }
 
     // Set up the compilation
-    Class<?> evolvedClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, EVOLVED_SCHEMA);
+    Class<?> evolvedClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_2);
 
     // Create and serialize an original instance
     Object originalInstance = createRecordInstance(originalClass, new Object[]{42});
@@ -274,6 +283,8 @@ public class BackwardsCompatibilityTest {
 
   @Test
   void testFieldRenamingWithBackwardsCompatibility() throws Exception {
+    System.setProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
+
     // Define schema with renamed field but same structure
     final var renamedFieldSchema = """
         package io.github.simbo1905.simple_pickle.evolution;
@@ -291,7 +302,7 @@ public class BackwardsCompatibilityTest {
         }
         """;
 
-    Class<?> originalClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, ORIGINAL_SCHEMA);
+    Class<?> originalClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_1);
     DiagnosticCollector<JavaFileObject> diagnostics;
     JavaFileObject sourceFile;
     JavaCompiler.CompilationTask task;
