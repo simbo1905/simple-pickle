@@ -95,7 +95,7 @@ public interface Pickler<T> {
 
     static void validate(final Compatibility compatibility, final String recordClassName, final int componentCount, final int bufferLength) {
       if (compatibility == Compatibility.STRICT && bufferLength != componentCount) {
-        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.STRICT yet buffer length %s != compponent count %s"
+        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.STRICT yet buffer length %s != component count %s"
             .formatted(recordClassName, bufferLength, componentCount));
       } else if (compatibility == Compatibility.BACKWARDS && bufferLength > componentCount) {
         throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.BACKWARDS and count of components %s > buffer size %s"
@@ -109,7 +109,7 @@ public interface Pickler<T> {
 
   Compatibility compatibility();
 
-  final String COMPATIBLITY_SYSTEM_PROPERTY = "no-framework-pickler.Compatibility";
+  String COMPATIBILITY_SYSTEM_PROPERTY = "no-framework-pickler.Compatibility";
 }
 
 abstract class SealedPickler<S> implements Pickler<S> {
@@ -390,7 +390,7 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     final MethodHandle finalCanonicalConstructorHandle = canonicalConstructorHandle;
 
     final Compatibility compatibility = Compatibility.valueOf(
-        System.getProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY, "STRICT"));
+        System.getProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, "STRICT"));
 
     final String recordClassName = recordClass.getName();
     if (compatibility != Compatibility.STRICT) {

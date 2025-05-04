@@ -60,7 +60,7 @@ public class SchemaEvolutionTest {
     @Test
     void testBasicSchemaEvolution() throws Exception {
       try {
-        System.setProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
+        System.setProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
         // Step 1: Compile and load the original schema
         Class<?> originalClass = compileAndLoadClass(ORIGINAL_SCHEMA);
         assertTrue(originalClass.isRecord(), "Compiled class should be a record");
@@ -86,7 +86,7 @@ public class SchemaEvolutionTest {
             "myNewInt", 42  // Should be the default value from the compatibility constructor
         ));
       } finally {
-        System.clearProperty(Pickler.COMPATIBLITY_SYSTEM_PROPERTY);
+        System.clearProperty(Pickler.COMPATIBILITY_SYSTEM_PROPERTY);
       }
     }
 
