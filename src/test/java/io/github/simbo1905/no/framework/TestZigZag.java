@@ -1,9 +1,10 @@
 package io.github.simbo1905.no.framework;
 
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.ByteBuffer;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestZigZag {
 
@@ -91,17 +92,4 @@ public class TestZigZag {
         assertEquals(value, result);
     }
 
-    private ByteBuffer writeAndReset(long value) {
-        ByteBuffer buffer = ByteBuffer.allocate(9);
-        ZigZagEncoding.putLong(buffer, value);
-        buffer.flip();
-        return buffer;
-    }
-
-    private ByteBuffer writeAndReset(int value) {
-        ByteBuffer buffer = ByteBuffer.allocate(5);
-        ZigZagEncoding.putInt(buffer, value);
-        buffer.flip();
-        return buffer;
-    }
 }
