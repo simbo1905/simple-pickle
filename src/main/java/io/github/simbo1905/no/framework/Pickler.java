@@ -1,14 +1,15 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Companion.*;
 import static io.github.simbo1905.no.framework.Constants.ARRAY;
-import static io.github.simbo1905.no.framework.Constants.NULL;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 /// No Framework Pickler: A tiny, fast, type-safe, zero-dependency Java serialization library.
@@ -105,7 +106,7 @@ public interface Pickler<T> {
   /// - Any components of the record are not types that are supported by this library.
   /// See [Constants] for details of supported value types.
   static <R extends Record> Pickler<R> forRecord(Class<R> recordClass) {
-    return RecordPickler.create(recordClass);
+    return getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass));
   }
 
   /// Obtains the cached a pickler for a sealed interface that creates picklers for all permitted record types.
@@ -117,7 +118,7 @@ public interface Pickler<T> {
   /// - Any permitted subclasses of any nested sealed interfaces are not record types that are supported by this library.
   /// See [Constants] for details of supported value types.
   static <S> Pickler<S> forSealedInterface(Class<S> sealedClass) {
-    return SealedPickler.create(sealedClass);
+    return getOrCreate(sealedClass, () -> manufactureSealedPickler(sealedClass));
   }
 
   /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.
@@ -239,139 +240,11 @@ abstract class SealedPickler<S> implements Pickler<S> {
   public int sizeOf(S value) {
     return 0; // Stub
   }
-
-  static <S> Pickler<S> create(Class<S> sealedClass) {
-    return getOrCreate(sealedClass, () -> manufactureSealedPickler(sealedClass));
-  }
-
-  private static <S> Pickler<S> manufactureSealedPickler(Class<S> sealedClass) {
-    // Get all permitted record subclasses
-    final Class<?>[] subclasses = allPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
-
-    // note that we cannot add these pickers to the cache map as we are inside a computeIfAbsent yet
-    // practically speaking mix picklers into the same logical stream  is hard so preemptive caching wasteful
-    @SuppressWarnings("unchecked") Map<Class<? extends S>, Pickler<? extends S>> subPicklers = Arrays.stream(subclasses)
-        .filter(cls -> cls.isRecord() || cls.isSealed())
-        .map(cls -> (Class<? extends S>) cls) // Safe due to sealed hierarchy
-        .collect(Collectors.toMap(
-            cls -> cls,
-            cls -> {
-              if (cls.isRecord()) {
-                // Double cast required to satisfy compiler
-                @SuppressWarnings("unchecked")
-                Class<? extends Record> recordCls = (Class<? extends Record>) cls;
-                return (Pickler<S>) manufactureRecordPickler(recordCls);
-              } else {
-                return SealedPickler.manufactureSealedPickler(cls);
-              }
-            }
-        ));
-
-    final Map<Class<? extends S>, String> shortNames = subPicklers.keySet().stream().
-        collect(Collectors.toMap(
-            cls -> cls,
-            cls -> cls.getName().substring(
-                subPicklers.keySet().stream()
-                    .map(Class::getName)
-                    .reduce((a, b) ->
-                        !a.isEmpty() && !b.isEmpty() ?
-                            a.substring(0,
-                                IntStream.range(0, Math.min(a.length(), b.length()))
-                                    .filter(i -> a.charAt(i) != b.charAt(i))
-                                    .findFirst()
-                                    .orElse(Math.min(a.length(), b.length()))) : "")
-                    .orElse("").length())));
-
-    @SuppressWarnings({"unchecked", "Convert2MethodRef"}) final Map<String, Class<? extends S>> permittedRecordClasses = Arrays.stream(subclasses)
-        .collect(Collectors.toMap(
-            c -> shortNames.get(c),
-            c -> (Class<? extends S>) c
-        ));
-
-    return new SealedPickler<>() {
-
-      /// There is nothing effective we can do here.
-      @Override
-      public Compatibility compatibility() {
-        return Compatibility.NONE;
-      }
-
-      @Override
-      public void serialize(S object, ByteBuffer buffer) {
-        buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        if (object == null) {
-          buffer.put(NULL.marker());
-          return;
-        }
-        @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
-        Pickler<? extends S> pickler = subPicklers.get(concreteType);
-
-        writeDeduplicatedClassName(buffer, concreteType, new HashMap<>(), shortNames.get(concreteType));
-
-        // Delegate to subtype pickler
-        //noinspection unchecked
-        ((Pickler<Object>) pickler).serialize(object, buffer);
-      }
-
-      @Override
-      public S deserialize(ByteBuffer buffer) {
-        buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        // if the type is NULL, return null, else read the type identifier
-        buffer.mark();
-        if (buffer.get() == NULL.marker()) {
-          return null;
-        }
-        buffer.reset();
-        // Read type identifier
-        Class<? extends S> concreteType = readClass(buffer);
-
-        // Get subtype pickler
-        Pickler<? extends S> pickler = subPicklers.get(concreteType);
-
-        return pickler.deserialize(buffer);
-      }
-
-      @Override
-      public int sizeOf(S object) {
-        if (object == null) {
-          return 1; // Size of NULL marker
-        }
-
-        Class<?> clazz = object.getClass();
-        int classNameLength = shortNames.get(clazz).getBytes(UTF_8).length;
-
-        // Size of length prefix (4 bytes) plus class name bytes
-        int classNameSize = 4 + classNameLength;
-
-        // Get the concrete pickler for this object type
-        @SuppressWarnings("unchecked")
-        Pickler<S> pickler = (Pickler<S>) subPicklers.get(object.getClass());
-
-        // Total size is class name size + object size
-        return classNameSize + pickler.sizeOf(object);
-      }
-
-      private Class<? extends S> readClass(ByteBuffer buffer) {
-        final int classNameLength = buffer.getInt();
-        final byte[] classNameBytes = new byte[classNameLength];
-        buffer.get(classNameBytes);
-        final String classNameShortened = new String(classNameBytes, UTF_8);
-        if (!permittedRecordClasses.containsKey(classNameShortened)) {
-          throw new IllegalArgumentException("Unknown subtype: " + classNameShortened);
-        }
-        return permittedRecordClasses.get(classNameShortened);
-      }
-    };
-  }
 }
 
 abstract class RecordPickler<R extends Record> implements Pickler<R> {
 
   abstract void serializeWithMap(R object, ByteBuffer buffer, Map<Class<?>, Integer> classToOffset);
-
-  static <R extends Record> Pickler<R> create(Class<R> recordClass) {
-    return getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass));
-  }
 
   abstract R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class);
 }
