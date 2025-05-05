@@ -173,34 +173,18 @@ public interface Pickler<T> {
   /// @param buffer The buffer to write into
   static <R extends Record> void serializeMany(R[] array, ByteBuffer buffer) {
     buffer.put(typeMarker(ARRAY));
-    byte[] classNameBytes = array.getClass().getComponentType().getName().getBytes(UTF_8);
-    buffer.putInt(classNameBytes.length);
-    buffer.put(classNameBytes);
     buffer.putInt(array.length);
 
     @SuppressWarnings("unchecked") Pickler<R> pickler = Pickler.forRecord((Class<R>) array.getClass().getComponentType());
     Arrays.stream(array).forEach(element -> pickler.serialize(element, buffer));
   }
 
-  /// Unloads from the buffer a list of messages that were written using [Pickler#serializeMany(java.lang.Class, java.nio.ByteBuffer)].
+  /// Unloads from the buffer a list of messages that were written using [#serializeMany].
   /// By default, there must be an exact match between the class name of the record and the class name in the buffer.
   /// See [Compatibility] for details of how to change this behaviour to allow for both backwards and forward compatibility.
   static <R extends Record> List<R> deserializeMany(Class<R> componentType, ByteBuffer buffer) {
     byte marker = buffer.get();
     if (marker != typeMarker(ARRAY)) throw new IllegalArgumentException("Invalid array marker");
-
-    Class<?> readType;
-    int classNameLength = buffer.getInt();
-    byte[] classNameBytes = new byte[classNameLength];
-    buffer.get(classNameBytes);
-    String className = new String(classNameBytes, UTF_8);
-
-    try {
-      readType = Class.forName(className);
-    } catch (ClassNotFoundException e) {
-      throw new IllegalArgumentException("Unknown subtype: " + className);
-    }
-    if (!componentType.equals(readType)) throw new IllegalArgumentException("Type mismatch");
 
     return IntStream.range(0, buffer.getInt())
         .mapToObj(i -> Pickler.forRecord(componentType).deserialize(buffer))
@@ -458,6 +442,7 @@ class Companion {
   static <T> Pickler<T> getOrCreate(Class<T> type, Supplier<Pickler<T>> supplier) {
     return (Pickler<T>) REGISTRY.computeIfAbsent(type, k -> supplier.get());
   }
+
   /// Writes a short value (0-255) as a single unsigned byte to the buffer.
   ///
   /// @param buffer The buffer to write to.
