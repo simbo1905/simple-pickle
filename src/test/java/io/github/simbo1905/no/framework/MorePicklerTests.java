@@ -5,7 +5,6 @@ package io.github.simbo1905.no.framework;
 import io.github.simbo1905.no.framework.animal.*;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
-import io.github.simbo1905.no.framework.tree.RootNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -53,8 +52,8 @@ public class MorePicklerTests {
    */
   public static void validateTreeStructure(TreeNode deserializedRoot) {
     // Verify root node structure
-    assertInstanceOf(RootNode.class, deserializedRoot);
-    final var root = (RootNode) deserializedRoot;
+    assertInstanceOf(InternalNode.class, deserializedRoot);
+    final var root = (InternalNode) deserializedRoot;
     
     // Verify left branch (internal1)
     assertInstanceOf(InternalNode.class, root.left());
@@ -212,43 +211,6 @@ public class MorePicklerTests {
 
       // Type-specific checks using pattern matching
       switch (original) {
-        case RootNode origRoot -> {
-          final var deserRoot = (RootNode) deserialized;
-
-          // Check structure of left child
-          if (origRoot.left() instanceof InternalNode(String name, TreeNode left, TreeNode right)) {
-            assertInstanceOf(InternalNode.class, deserRoot.left());
-            final var deserLeft = (InternalNode) deserRoot.left();
-            assertEquals(name, deserLeft.name());
-
-            // Check leaf nodes under left branch
-            if (left instanceof LeafNode(int value)) {
-              assertInstanceOf(LeafNode.class, deserLeft.left());
-              assertEquals(value, ((LeafNode) deserLeft.left()).value());
-            }
-
-            if (right instanceof LeafNode(int value)) {
-              assertInstanceOf(LeafNode.class, deserLeft.right());
-              assertEquals(value, ((LeafNode) deserLeft.right()).value());
-            }
-          }
-
-          // Check structure of right child
-          if (origRoot.right() instanceof InternalNode origRight) {
-            assertInstanceOf(InternalNode.class, deserRoot.right());
-            final var deserRight = (InternalNode) deserRoot.right();
-            assertEquals(origRight.name(), deserRight.name());
-
-            // Check leaf node under right branch
-            if (origRight.left() instanceof LeafNode(int value)) {
-              assertInstanceOf(LeafNode.class, deserRight.left());
-              assertEquals(value, ((LeafNode) deserRight.left()).value());
-            }
-
-            // Check null right child
-            assertNull(deserRight.right());
-          }
-        }
         case InternalNode origInternal -> {
           final var deserInternal = (InternalNode) deserialized;
           assertEquals(origInternal.name(), deserInternal.name());
@@ -437,7 +399,7 @@ public class MorePicklerTests {
     final var internal2 = new InternalNode("Branch2", leaf3, null);
 
     // Root node
-    final var root = new RootNode(internal1, internal2);
+    final var root = new InternalNode("root", internal1, internal2);
 
     // Create an array of all tree nodes (excluding null values)
     return new TreeNode[]{root, internal1, internal2, leaf1, leaf2, leaf3};

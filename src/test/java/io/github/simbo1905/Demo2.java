@@ -3,7 +3,6 @@ package io.github.simbo1905;
 import io.github.simbo1905.no.framework.Pickler;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
-import io.github.simbo1905.no.framework.tree.RootNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
 
 import java.nio.ByteBuffer;
@@ -19,7 +18,7 @@ public class Demo2 {
 // A lob sided tree
     final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
     final var internal2 = new InternalNode("Branch2", leaf3, null);
-    final var originalRoot = new RootNode(internal1, internal2);
+    final var originalRoot = new InternalNode("root", internal1, internal2);
 
 // Get a pickler for the TreeNode sealed interface
     final var pickler = Pickler.forSealedInterface(TreeNode.class);

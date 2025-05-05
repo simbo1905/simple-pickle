@@ -1,7 +1,29 @@
 # No Framework Pickler
 
-No Framework Pickler: A tiny, fast, type safe, zero-dependency Java serialization library in a single java source file.  
-It creates type-safe, reflection-free serializers for records and sealed interfaces—perfect. It is perfect for building secure, modern message protocols of sealed interfaces. It supports nested records, arrays, maps and simple enum constants. Binary backwards compatibility is enabled through alternative constructors and adding components to the end of the record declaration (see Schema Evolution section below).
+A tiny serialization library that generates elegant, fast, type-safe serializers for Java records and sealed interfaces in a single Java source file — perfect for building elegant message protocols using modern idiomatic Java.
+It supports nested records, arrays, maps and simple enum constants. Binary backwards compatibility is enabled through alternative constructors and adding components to the end of the record declaration (see Schema Evolution section below).
+
+```java
+// Given a sealed interface and its permitted record types:
+public sealed interface TreeNode permits TreeNode.InternalNode, TreeNode.LeafNode {
+  record LeafNode(int value) implements TreeNode { }
+  record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode { }
+}
+
+// And a pickler for the sealed interface:
+Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
+
+// When we serialize a tree of nodes to a ByteBuffer:
+ByteBuffer buffer = ByteBuffer.allocate(1024);
+treeNodePickler.serialize(rootNode, buffer);
+
+// And deserialize it back:
+buffer.flip();
+TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
+
+// Then the deserialized tree structure is identical to the original
+
+```
 
 It works with nested sealed interfaces of permitted record types or an outer array of such where the records may contain arbitrarily nested:
 
@@ -62,12 +84,21 @@ if (!deserializedMonth.equals(december)) {
 ### Nested Record Tree
 
 ```java
+import io.github.simbo1905.no.framework.Pickler;
+
 /// The sealed interface and all permitted record subclasses must be public
 /// Nested sealed interfaces are supported. Yet all concrete types must be records with support components
-public sealed interface TreeNode permits RootNode, InternalNode, LeafNode {}
-public record RootNode(TreeNode left, TreeNode right) implements TreeNode {}
-public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {}
-public record LeafNode(int value) implements TreeNode {}
+public sealed interface TreeNode permits RootNode, InternalNode, LeafNode {
+}
+
+public record RootNode(TreeNode left, TreeNode right) implements TreeNode {
+}
+
+public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {
+}
+
+public record LeafNode(int value) implements TreeNode {
+}
 
 final var leaf1 = new LeafNode(42);
 final var leaf2 = new LeafNode(99);
@@ -78,7 +109,7 @@ final var internal2 = new InternalNode("Branch2", leaf3, null);
 final var originalRoot = new RootNode(internal1, internal2);
 
 // Get a pickler for the TreeNode sealed interface
-final var pickler = Pickler.picklerForSealedInterface(TreeNode.class);
+final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
 // Calculate buffer size needed for the whole graph reachable from the root node
 final var bufferSize = pickler.sizeOf(originalRoot);
@@ -87,10 +118,14 @@ final var bufferSize = pickler.sizeOf(originalRoot);
 final var buffer = ByteBuffer.allocate(bufferSize);
 
 // Serialize only the root node (which should include the entire graph)
-pickler.serialize(originalRoot, buffer);
+pickler.
+
+serialize(originalRoot, buffer);
 
 // Prepare buffer for reading
-buffer.flip();
+buffer.
+
+flip();
 
 // Deserialize the root node (which will reconstruct the entire graph)
 final var deserializedRoot = pickler.deserialize(buffer);
@@ -113,10 +148,14 @@ final var bufferSize = pickler.sizeOf(originalRoot);
 final var buffer = ByteBuffer.allocate(bufferSize);
 
 // Serialize only the root node (which should include the entire graph)
-pickler.serialize(originalRoot, buffer);
+pickler.
+
+serialize(originalRoot, buffer);
 
 // Prepare buffer for reading
-buffer.flip();
+buffer.
+
+flip();
 
 // Deserialize the root node (which will reconstruct the entire graph)
 final var deserializedRoot = pickler.deserialize(buffer);
