@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -123,6 +124,11 @@ public class ZigZagTests {
       testValue(buffer, value, true, results);
       value *= 2;
     }
+
+    IntStream.range(32, 64).forEach(i -> {
+      testValue(buffer, i, true, results);
+      testValue(buffer, -i, true, results);
+    });
 
     // Print results in mod value order (0,1,-1,2,-2,4,-4...)
     results.sort(Comparator.comparingLong(v -> Math.abs(v.value)));
