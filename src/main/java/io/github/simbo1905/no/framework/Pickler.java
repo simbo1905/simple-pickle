@@ -1316,4 +1316,77 @@ class ZigZagEncoding {
     value = (value >>> 1) ^ (-(value & 1));
     return value;
   }
+
+  static int sizeOf(int value) {
+    int length = 0;
+    value = (value << 1) ^ (value >> 31);
+    if (value >>> 7 == 0) {
+      length++;
+    } else {
+      length++;
+      if (value >>> 14 == 0) {
+        length++;
+      } else {
+        length++;
+        if (value >>> 21 == 0) {
+          length++;
+        } else {
+          length++;
+          if (value >>> 28 == 0) {
+            length++;
+          } else {
+            length++;
+            length++;
+          }
+        }
+      }
+    }
+    return length;
+  }
+
+  static int sizeOf(long value) {
+    int length = 0;
+    value = (value << 1) ^ (value >> 63);
+    if (value >>> 7 == 0) {
+      length++;
+    } else {
+      length++;
+      if (value >>> 14 == 0) {
+        length++;
+      } else {
+        length++;
+        if (value >>> 21 == 0) {
+          length++;
+        } else {
+          length++;
+          if (value >>> 28 == 0) {
+            length++;
+          } else {
+            length++;
+            if (value >>> 35 == 0) {
+              length++;
+            } else {
+              length++;
+              if (value >>> 42 == 0) {
+                length++;
+              } else {
+                length++;
+                if (value >>> 49 == 0) {
+                  length++;
+                } else {
+                  length++;
+                  if (value >>> 56 == 0) {
+                    length++;
+                  } else {
+                    length = length + 2;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return length;
+  }
 }

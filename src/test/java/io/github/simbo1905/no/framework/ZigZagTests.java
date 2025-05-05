@@ -3,10 +3,7 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -96,46 +93,56 @@ public class ZigZagTests {
         assertEquals(value, result);
     }
 
-  public static void main(String[] args) {
-    ByteBuffer buffer = ByteBuffer.allocate(9);
-    var results = new ArrayList<Record>();
+  @Test
+  void testSizeOfInt() {
+    assertEquals(1, ZigZagEncoding.sizeOf(0));
+    assertEquals(1, ZigZagEncoding.sizeOf(1));
+    assertEquals(1, ZigZagEncoding.sizeOf(-1));
+    assertEquals(1, ZigZagEncoding.sizeOf(63));
+    assertEquals(1, ZigZagEncoding.sizeOf(-64));
+    assertEquals(2, ZigZagEncoding.sizeOf(64));
+    assertEquals(2, ZigZagEncoding.sizeOf(-65));
+    assertEquals(5, ZigZagEncoding.sizeOf(Integer.MAX_VALUE));
+    assertEquals(5, ZigZagEncoding.sizeOf(Integer.MIN_VALUE));
+  }
 
-    // Helper method to test a value
-    testValue(buffer, 0L, true, results);
-    testValue(buffer, 1L, true, results);
+  @Test
+  void testSizeOfLong() {
+    assertEquals(1, ZigZagEncoding.sizeOf(0L));
+    assertEquals(1, ZigZagEncoding.sizeOf(1L));
+    assertEquals(1, ZigZagEncoding.sizeOf(-1L));
+    assertEquals(1, ZigZagEncoding.sizeOf(63L));
+    assertEquals(1, ZigZagEncoding.sizeOf(-64L));
+    assertEquals(2, ZigZagEncoding.sizeOf(64L));
+    assertEquals(2, ZigZagEncoding.sizeOf(-65L));
+    assertEquals(9, ZigZagEncoding.sizeOf(Long.MAX_VALUE));
+    assertEquals(9, ZigZagEncoding.sizeOf(Long.MIN_VALUE));
+  }
 
-    // Test positive integers doubling up to Integer.MAX_VALUE
-    long value = 1;
-    while (value <= Integer.MAX_VALUE) {
-      testValue(buffer, value, false, results);
-      value *= 2;
-    }
+  @Test
+  void testSizeOfMatchesPut() {
+    ByteBuffer buffer = ByteBuffer.allocate(10); // Max 9 for long + 1 extra
+    long[] testValues = {
+        0L, 1L, -1L, 63L, -64L, 64L, -65L,
+        12345L, -12345L,
+        Integer.MAX_VALUE, Integer.MIN_VALUE,
+        (long) Integer.MAX_VALUE + 1, (long) Integer.MIN_VALUE - 1,
+        Long.MAX_VALUE, Long.MIN_VALUE
+    };
 
-    // Test negative integers doubling down to Integer.MIN_VALUE
-    value = -2;
-    while (value >= Integer.MIN_VALUE) {
-      testValue(buffer, value, false, results);
-      value *= 2;
-    }
+    for (long value : testValues) {
+      buffer.clear();
+      ZigZagEncoding.putLong(buffer, value);
+      int bytesWritten = buffer.position();
+      assertEquals(ZigZagEncoding.sizeOf(value), bytesWritten, "Size mismatch for long value: " + value);
 
-    // Test positive longs doubling up to Long.MAX_VALUE
-    value = 1;
-    while (value > 0) {
-      testValue(buffer, value, true, results);
-      value *= 2;
-    }
-
-    IntStream.range(32, 64).forEach(i -> {
-      testValue(buffer, i, true, results);
-      testValue(buffer, -i, true, results);
-    });
-
-    // Print results in mod value order (0,1,-1,2,-2,4,-4...)
-    results.sort(Comparator.comparingLong(v -> Math.abs(v.value)));
-    System.out.println("Value\tBytes");
-    System.out.println("-----\t-----");
-    for (Record r : results) {
-      System.out.println(r.value + "\t" + r.bytes);
+      if (value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE) {
+        int intValue = (int) value;
+        buffer.clear();
+        ZigZagEncoding.putInt(buffer, intValue);
+        bytesWritten = buffer.position();
+        assertEquals(ZigZagEncoding.sizeOf(intValue), bytesWritten, "Size mismatch for int value: " + intValue);
+      }
     }
   }
 
