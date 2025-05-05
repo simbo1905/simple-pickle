@@ -92,4 +92,68 @@ public class TestZigZag {
         assertEquals(value, result);
     }
 
+    public static void main(String[] args) {
+        ByteBuffer buffer = ByteBuffer.allocate(9);
+        var results = new ArrayList<Record>();
+        
+        // Helper method to test a value
+        testValue(buffer, 0L, true, results);
+        testValue(buffer, 1L, true, results);
+        
+        // Test positive integers doubling up to Integer.MAX_VALUE
+        long value = 1;
+        while (value <= Integer.MAX_VALUE) {
+            testValue(buffer, value, false, results);
+            value *= 2;
+        }
+        
+        // Test negative integers doubling down to Integer.MIN_VALUE
+        value = -2;
+        while (value >= Integer.MIN_VALUE) {
+            testValue(buffer, value, false, results);
+            value *= 2;
+        }
+        
+        // Test positive longs doubling up to Long.MAX_VALUE
+        value = 1;
+        while (value <= Long.MAX_VALUE) {
+            testValue(buffer, value, true, results);
+            value *= 2;
+        }
+        
+        // Print results in mod value order (0,1,-1,2,-2,4,-4...)
+        results.sort(Comparator.comparingLong(v -> Math.abs((long) v.value)));
+        System.out.println("Value\tBytes");
+        System.out.println("-----\t-----");
+        for (Record r : results) {
+            System.out.println(r.value + "\t" + r.bytes);
+        }
+    }
+
+    private static void testValue(ByteBuffer buffer, long value, boolean isLong, List<Record> results) {
+        buffer.clear();
+        if (isLong) {
+            ZigZagEncoding.putLong(buffer, value);
+        } else {
+            ZigZagEncoding.putInt(buffer, (int) value);
+        }
+        
+        int bytesWritten = buffer.position();
+        buffer.flip();
+        
+        long result = isLong ? ZigZagEncoding.getLong(buffer) : ZigZagEncoding.getInt(buffer);
+        
+        assert result == value;
+        results.add(new Record(value, bytesWritten));
+    }
+    
+    private static class Record {
+        final long value;
+        final int bytes;
+        
+        Record(long value, int bytes) {
+            this.value = value;
+            this.bytes = bytes;
+        }
+    }
 }
