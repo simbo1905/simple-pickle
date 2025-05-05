@@ -113,7 +113,8 @@ class PicklerTests {
     Pickler<Person> generated = Pickler.forRecord(Person.class);
 
     // Serialize the Person record to a byte buffer
-    final var buffer = ByteBuffer.allocate(generated.sizeOf(original));
+    int size = generated.sizeOf(original);
+    final var buffer = ByteBuffer.allocate(size);
     generated.serialize(original, buffer);
     assertFalse(buffer.hasRemaining());
     buffer.flip(); // Prepare buffer for reading
@@ -135,11 +136,9 @@ class PicklerTests {
     final var original = new Simple(42);
 
     Pickler<Simple> generated = Pickler.forRecord(Simple.class);
-
+    int size = generated.sizeOf(original);
     // Serialize the Simple record to a byte buffer
-    final var buffer = ByteBuffer.allocate(generated.sizeOf(original));
-    assertFalse(buffer.hasRemaining());
-
+    final var buffer = ByteBuffer.allocate(size);
     generated.serialize(original, buffer);
     assertFalse(buffer.hasRemaining());
     buffer.flip(); // Prepare buffer for reading
@@ -693,7 +692,7 @@ class PicklerTests {
 
     // Write component type
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-    writeDeduplicatedClassName(buffer, Shape.class, class2BufferOffset, Shape.class.getName());
+    writeDeduplicatedClassName(Work.of(buffer), Shape.class, class2BufferOffset, Shape.class.getName());
 
     // Write array length
     buffer.putInt(shapes.length);
@@ -1242,7 +1241,7 @@ class PicklerTests {
 
     // Write outer component type (Person[].class)
     Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-    writeDeduplicatedClassName(buffer, Person[].class, class2BufferOffset, Person[].class.getName());
+    writeDeduplicatedClassName(Work.of(buffer), Person[].class, class2BufferOffset, Person[].class.getName());
 
     // Write outer array length
     buffer.putInt(teams.length);
@@ -1253,7 +1252,7 @@ class PicklerTests {
       buffer.put(ARRAY.marker());
 
       // Write inner component type (Person.class)
-      writeDeduplicatedClassName(buffer, Person.class, class2BufferOffset, Person.class.getName());
+      writeDeduplicatedClassName(Work.of(buffer), Person.class, class2BufferOffset, Person.class.getName());
 
       // Write inner array length
       buffer.putInt(team.length);

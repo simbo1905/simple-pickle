@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Companion.*;
 import static io.github.simbo1905.no.framework.Constants.ARRAY;
@@ -93,7 +92,6 @@ public interface Pickler<T> {
             .formatted(recordClassName, bufferLength, componentCount));
       }
     }
-
   }
 
   /// Returns the compatibility mode for this pickler. See [Compatibility] for details of how to set via a system property.
@@ -202,49 +200,13 @@ public interface Pickler<T> {
 }
 
 abstract class SealedPickler<S> implements Pickler<S> {
-  /// Helper method to recursively find all permitted record classes
-  static Stream<Class<?>> allPermittedRecordClasses(Class<?> sealedClass) {
-    if (!sealedClass.isSealed()) {
-      final var msg = "Class is not sealed: " + sealedClass.getName();
-      LOGGER.severe(() -> msg);
-      throw new IllegalArgumentException(msg);
-    }
 
-    return Arrays.stream(sealedClass.getPermittedSubclasses())
-        .flatMap(subclass -> {
-          if (subclass.isRecord()) {
-            return Stream.of(subclass);
-          } else if (subclass.isSealed()) {
-            return allPermittedRecordClasses(subclass);
-          } else {
-            final var msg = "Permitted subclass must be either a record or sealed interface: " +
-                subclass.getName();
-            LOGGER.severe(() -> msg);
-            throw new IllegalArgumentException(msg);
-          }
-        });
-  }
-
-  @Override
-  public S deserialize(ByteBuffer buffer) {
-    // Stub implementation
-    return null;
-  }
-
-  @Override
-  public void serialize(S object, ByteBuffer buffer) {
-    // Stub
-  }
-
-  @Override
-  public int sizeOf(S value) {
-    return 0; // Stub
-  }
+  abstract Class<? extends S> resolveCachedClassByPickedName(ByteBuffer buffer);
 }
 
 abstract class RecordPickler<R extends Record> implements Pickler<R> {
 
-  abstract void serializeWithMap(R object, ByteBuffer buffer, Map<Class<?>, Integer> classToOffset);
+  abstract void serializeWithMap(Map<Class<?>, Integer> classToOffset, Work work, R object);
 
   abstract R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class);
 }

@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Constants.*;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -37,7 +38,7 @@ class Companion {
     return ZigZagEncoding.getInt(buffer);
   }
 
-  static void write(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer, Object c) {
+  static void write(Map<Class<?>, Integer> classToOffset, Work buffer, Object c) {
     if (c == null) {
       buffer.put(NULL.marker());
       return;
@@ -97,7 +98,7 @@ class Companion {
         @SuppressWarnings("unchecked")
         RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
 
-        nestedPickler.serializeWithMap(record, buffer, classToOffset);
+        nestedPickler.serializeWithMap(classToOffset, buffer, record);
       }
       case Map<?, ?> map -> {
         buffer.put(typeMarker(c));
@@ -144,7 +145,7 @@ class Companion {
   /// @param buffer The buffer to write to
   /// @param clazz The class to write
   /// @param classToOffset Map tracking class to buffer position offset
-  static void writeDeduplicatedClassName(ByteBuffer buffer, Class<?> clazz,
+  static void writeDeduplicatedClassName(Work buffer, Class<?> clazz,
                                          Map<Class<?>, Integer> classToOffset, String classNameShorted) {
     // Check if we've seen this class before
     Integer offset = classToOffset.get(clazz);
@@ -627,17 +628,17 @@ class Companion {
       }
 
       @Override
-      void serializeWithMap(R object, ByteBuffer buffer, Map<Class<?>, Integer> classToOffset) {
+      void serializeWithMap(Map<Class<?>, Integer> classToOffset, Work buffer, R object) {
         final var components = components(object);
         // Write the number of components as an unsigned byte (max 255)
-        writeZz(buffer, (short) components.length);
+        buffer.putShort((short) components.length);
         Arrays.stream(components).forEach(c -> Companion.write(classToOffset, buffer, c));
       }
 
       @Override
       R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
         // Read the number of components as an unsigned byte
-        final int length = readZz(buffer);
+        final int length = buffer.getShort();
         Compatibility.validate(compatibility, recordClassName, componentCount, length);
         // This may unload from the stream things that we will ignore
         final Object[] components = new Object[length];
@@ -699,7 +700,7 @@ class Companion {
       @Override
       public void serialize(R object, ByteBuffer buffer) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        serializeWithMap(object, buffer, new HashMap<>());
+        serializeWithMap(new HashMap<>(), Work.of(buffer), object);
       }
 
       @Override
@@ -708,25 +709,20 @@ class Companion {
         return deserializeWithMap(buffer, new HashMap<>());
       }
 
+      /// This recursively descends through the object graph to find the size of the object
+      /// It has its own logic to count jup the sizes that needs seperate handling
       @Override
       public int sizeOf(R object) {
-        final var components = components(object);
-        int size = 1; // Start with 1 byte for the type of the component
-        for (Object c : components) {
-          size += staticSizeOf(c, new HashSet<>());
-          int finalSize = size;
-          LOGGER.finer(() -> "Size of " +
-              Optional.ofNullable(c).map(c2 -> c2.getClass().getSimpleName()).orElse("null")
-              + " '" + c + "' is " + finalSize);
-        }
-        return size;
+        Work work = Work.of(null);
+        serializeWithMap(new HashMap<>(), work, object);
+        return work.size();
       }
     };
   }
 
   static <S> Pickler<S> manufactureSealedPickler(Class<S> sealedClass) {
     // Get all permitted record subclasses
-    final Class<?>[] subclasses = SealedPickler.allPermittedRecordClasses(sealedClass).toArray(Class<?>[]::new);
+    final Class<?>[] subclasses = sealedInterfacePermittedRecords(sealedClass).toArray(Class<?>[]::new);
 
     // note that we cannot add these pickers to the cache map as we are inside a computeIfAbsent yet
     // practically speaking mix picklers into the same logical stream  is hard so preemptive caching wasteful
@@ -779,15 +775,15 @@ class Companion {
       @Override
       public void serialize(S object, ByteBuffer buffer) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+        Work work = Work.of(buffer);
         if (object == null) {
-          buffer.put(NULL.marker());
+          work.put(NULL.marker());
           return;
         }
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
         Pickler<? extends S> pickler = subPicklers.get(concreteType);
 
-        writeDeduplicatedClassName(buffer, concreteType, new HashMap<>(), shortNames.get(concreteType));
-
+        writeDeduplicatedClassName(work, concreteType, new HashMap<>(), shortNames.get(concreteType));
         // Delegate to subtype pickler
         //noinspection unchecked
         ((Pickler<Object>) pickler).serialize(object, buffer);
@@ -803,11 +799,9 @@ class Companion {
         }
         buffer.reset();
         // Read type identifier
-        Class<? extends S> concreteType = readClass(buffer);
-
+        Class<? extends S> concreteType = resolveCachedClassByPickedName(buffer);
         // Get subtype pickler
         Pickler<? extends S> pickler = subPicklers.get(concreteType);
-
         return pickler.deserialize(buffer);
       }
 
@@ -831,7 +825,8 @@ class Companion {
         return classNameSize + pickler.sizeOf(object);
       }
 
-      private Class<? extends S> readClass(ByteBuffer buffer) {
+      @Override
+      Class<? extends S> resolveCachedClassByPickedName(ByteBuffer buffer) {
         final int classNameLength = buffer.getInt();
         final byte[] classNameBytes = new byte[classNameLength];
         buffer.get(classNameBytes);
@@ -844,4 +839,26 @@ class Companion {
     };
   }
 
+  /// Helper method to recursively find all permitted record classes
+  static Stream<Class<?>> sealedInterfacePermittedRecords(Class<?> sealedClass) {
+    if (!sealedClass.isSealed()) {
+      final var msg = "Class is not sealed: " + sealedClass.getName();
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg);
+    }
+
+    return Arrays.stream(sealedClass.getPermittedSubclasses())
+        .flatMap(subclass -> {
+          if (subclass.isRecord()) {
+            return Stream.of(subclass);
+          } else if (subclass.isSealed()) {
+            return sealedInterfacePermittedRecords(subclass);
+          } else {
+            final var msg = "Permitted subclass must be either a record or sealed interface: " +
+                subclass.getName();
+            LOGGER.severe(() -> msg);
+            throw new IllegalArgumentException(msg);
+          }
+        });
+  }
 }
