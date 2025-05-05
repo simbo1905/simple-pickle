@@ -524,7 +524,12 @@ When I looked at just adding a bit more it all seemed easy enough. Until now the
 
 That amount of choice is overwhelming. You are spoilt for choices you become a prisoner of then. The answer to avoid all this complexity is to leverage the modern JDK. We can then potentially free thousands of teams from thousands of hours of build time with a "no framework pickler" solution that replaces entire frameworks in a single Java file. 
 
+## Acknowledgements
+
+This library uses ZigZag-encoded LEB128-64b9B "varint" functionality written by Gil Tene of Azul Systems. The original identical code can be found at [github.com/HdrHistogram/HdrHistogram](https://github.com/HdrHistogram/HdrHistogram/blob/ad76bb512b510a37f6a55fdea32f8f3dd3355771/src/main/java/org/HdrHistogram/ZigZagEncoding.java). The code was released to the public domain under [CC0 1.0 Universal](http://creativecommons.org/publicdomain/zero/1.0/).
+
 ## License
 
-SPDX-FileCopyrightText: 2025 Simon Massey
+SPDX-FileCopyrightText: 2025 Simon Massey  
 SPDX-License-Identifier: Apache-2.0
+
