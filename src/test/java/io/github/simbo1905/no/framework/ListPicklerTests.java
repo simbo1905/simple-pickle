@@ -76,6 +76,7 @@ public class ListPicklerTests {
 
     // Serialize
     pickler.serialize(original, buffer);
+    assertFalse(buffer.hasRemaining());
     buffer.flip();
 
     // Deserialize
@@ -165,6 +166,7 @@ public class ListPicklerTests {
 
     // Serialize and deserialize the Dog instance
     animalPickler.serialize(dog, buffer);
+    assertFalse(buffer.hasRemaining());
     // Flip the buffer to prepare for reading
     int bytesWritten = buffer.position();
     buffer.flip();

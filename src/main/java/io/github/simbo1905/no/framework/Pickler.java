@@ -452,19 +452,16 @@ class Companion {
   /// @param buffer The buffer to write to.
   /// @param value The short value (must be between 0 and 255).
   /// @throws IllegalArgumentException if the value is outside the 0-255 range.
-  static void writeUnsignedByte(ByteBuffer buffer, short value) {
-    if (value < 0 || value > 255) {
-      throw new IllegalArgumentException("Value must be between 0 and 255, but got: " + value);
-    }
-    buffer.put((byte) value);
+  static void writeZz(ByteBuffer buffer, short value) {
+    ZigZagEncoding.putInt(buffer, value);
   }
 
   /// Reads a single byte from the buffer and returns it as a short, treating the byte as unsigned (0-255).
   ///
   /// @param buffer The buffer to read from.
   /// @return The short value (0-255).
-  static short readUnsignedByte(ByteBuffer buffer) {
-    return (short) (buffer.get() & 0xFF);
+  static int readZz(ByteBuffer buffer) {
+    return ZigZagEncoding.getInt(buffer);
   }
 
   static void write(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer, Object c) {
@@ -1058,14 +1055,14 @@ class Companion {
       void serializeWithMap(R object, ByteBuffer buffer, Map<Class<?>, Integer> classToOffset) {
         final var components = components(object);
         // Write the number of components as an unsigned byte (max 255)
-        writeUnsignedByte(buffer, (short) components.length);
+        writeZz(buffer, (short) components.length);
         Arrays.stream(components).forEach(c -> Companion.write(classToOffset, buffer, c));
       }
 
       @Override
       R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
         // Read the number of components as an unsigned byte
-        final short length = readUnsignedByte(buffer);
+        final int length = readZz(buffer);
         Compatibility.validate(compatibility, recordClassName, componentCount, length);
         // This may unload from the stream things that we will ignore
         final Object[] components = new Object[length];

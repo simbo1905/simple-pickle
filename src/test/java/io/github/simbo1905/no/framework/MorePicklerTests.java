@@ -73,6 +73,8 @@ public class MorePicklerTests {
     // Serialize all animals into the buffer using streams
     Arrays.stream(originalAnimals).forEach(animal -> pickler.serialize(animal, buffer));
 
+    assertFalse(buffer.hasRemaining());
+
     // Prepare buffer for reading
     buffer.flip();
 
@@ -156,6 +158,8 @@ public class MorePicklerTests {
     // Serialize all nodes into the buffer
     Arrays.stream(originalNodes).forEach(node -> pickler.serialize(node, buffer));
 
+    assertFalse(buffer.hasRemaining());
+
     // Prepare buffer for reading
     buffer.flip();
 
@@ -229,6 +233,7 @@ public class MorePicklerTests {
     var buffer = ByteBuffer.allocate(bufferSize);
     // Serialize the entire chain
     pickler.serialize(link2, buffer);
+    assertFalse(buffer.hasRemaining());
     // Prepare buffer for reading
     buffer.flip();
 
@@ -276,6 +281,7 @@ public class MorePicklerTests {
     var buffer = ByteBuffer.allocate(bufferSize);
     // Serialize the entire chain
     pickler.serialize(chained, buffer);
+    assertFalse(buffer.hasRemaining());
     // Prepare buffer for reading
     buffer.flip();
 
@@ -329,7 +335,9 @@ public class MorePicklerTests {
     
     // Serialize only the root node (which should include the entire graph)
     pickler.serialize(originalRoot, buffer);
-    
+
+    assertFalse(buffer.hasRemaining());
+
     // Prepare buffer for reading
     buffer.flip();
 
@@ -400,6 +408,7 @@ public class MorePicklerTests {
 
     var buffer = ByteBuffer.allocate(pickler.sizeOf(original));
     pickler.serialize(original, buffer);
+    assertFalse(buffer.hasRemaining());
     buffer.flip();
 
     var deserialized = pickler.deserialize(buffer);

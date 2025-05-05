@@ -68,6 +68,7 @@ class MapPicklerTests {
 
     // Serialize
     pickler.serialize(original, buffer);
+    assertFalse(buffer.hasRemaining());
     buffer.flip();
 
     // Deserialize

@@ -310,6 +310,7 @@ public class SchemaEvolutionTest {
 
     // Serialize the record
     pickler.serialize(record, buffer);
+    assertFalse(buffer.hasRemaining());
     buffer.flip();
 
     // Return the serialized bytes
