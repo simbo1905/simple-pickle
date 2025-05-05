@@ -47,6 +47,13 @@ public class TreeBenchmark {
     byteArrayOutputStream.reset();
   }
 
+  @TearDown(Level.Trial)
+  public void tearDown() {
+    // Teardown code that runs once after the entire benchmark
+    System.out.println("Benchmark completed!");
+    // Print your results or summary here
+  }
+
   /**
    * Creates a balanced binary tree with the specified number of leaf nodes.
    *
@@ -55,16 +62,16 @@ public class TreeBenchmark {
    */
   public static TreeNode createBalancedTree(int leafCount) {
     // Create an array of leaf nodes with values 0 to leafCount-1
-    LeafNode[] leaves = new LeafNode[leafCount];
+    TreeNode.LeafNode[] leaves = new TreeNode.LeafNode[leafCount];
     for (int i = 0; i < leafCount; i++) {
-      leaves[i] = new LeafNode(i);
+      leaves[i] = new TreeNode.LeafNode(i);
     }
 
     // Build the tree bottom-up
     return buildBalancedTree(leaves, 0, leafCount - 1, 1);
   }
 
-  static TreeNode buildBalancedTree(LeafNode[] leaves, int start, int end, int level) {
+  static TreeNode buildBalancedTree(TreeNode.LeafNode[] leaves, int start, int end, int level) {
     if (start > end) {
       return null;
     }
@@ -78,7 +85,7 @@ public class TreeBenchmark {
     TreeNode left = buildBalancedTree(leaves, start, mid - 1, level + 1);
     TreeNode right = buildBalancedTree(leaves, mid + 1, end, level + 1);
 
-    return new InternalNode("Node-" + level + "-" + mid, left, right);
+    return new TreeNode.InternalNode("Node-" + level + "-" + mid, left, right);
   }
 
   public static void main(String[] args) {
@@ -173,12 +180,12 @@ public class TreeBenchmark {
 
     TreeNodeProto.Builder builder = TreeNodeProto.newBuilder();
 
-    if (node instanceof LeafNode(int value)) {
+    if (node instanceof TreeNode.LeafNode(int value)) {
       LeafNodeProto leafProto = LeafNodeProto.newBuilder()
           .setValue(value)
           .build();
       builder.setLeafNode(leafProto);
-    } else if (node instanceof InternalNode(String name, TreeNode left, TreeNode right)) {
+    } else if (node instanceof TreeNode.InternalNode(String name, TreeNode left, TreeNode right)) {
       InternalNodeProto.Builder internalBuilder = InternalNodeProto.newBuilder()
           .setName(name);
 
@@ -207,7 +214,7 @@ public class TreeBenchmark {
     switch (proto.getNodeTypeCase()) {
       case LEAF_NODE:
         LeafNodeProto leafProto = proto.getLeafNode();
-        return new LeafNode(leafProto.getValue());
+        return new TreeNode.LeafNode(leafProto.getValue());
 
       case INTERNAL_NODE:
         InternalNodeProto internalProto = proto.getInternalNode();
@@ -222,7 +229,7 @@ public class TreeBenchmark {
           right = convertFromProto(internalProto.getRight());
         }
 
-        return new InternalNode(internalProto.getName(), left, right);
+        return new TreeNode.InternalNode(internalProto.getName(), left, right);
 
       default:
         throw new IllegalArgumentException("Unknown node type: " + proto.getNodeTypeCase());

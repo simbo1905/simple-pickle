@@ -7,15 +7,9 @@ option java_multiple_files = true;
 // TreeNode message with oneOf to represent the sealed interface
 message TreeNodeProto {
   oneof node_type {
-    RootNodeProto root_node = 1;
-    InternalNodeProto internal_node = 2;
-    LeafNodeProto leaf_node = 3;
+    InternalNodeProto internal_node = 1;
+    LeafNodeProto leaf_node = 2;
   }
-}
-
-// Root node representation
-message RootNodeProto {
-  TreeNodeProto child = 1;
 }
 
 // Internal node representation
