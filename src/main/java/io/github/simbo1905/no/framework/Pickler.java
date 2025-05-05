@@ -304,6 +304,7 @@ abstract class SealedPickler<S> implements Pickler<S> {
 
       @Override
       public void serialize(S object, ByteBuffer buffer) {
+        buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
         if (object == null) {
           buffer.put(NULL.marker());
           return;
@@ -320,6 +321,7 @@ abstract class SealedPickler<S> implements Pickler<S> {
 
       @Override
       public S deserialize(ByteBuffer buffer) {
+        buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
         // if the type is NULL, return null, else read the type identifier
         buffer.mark();
         if (buffer.get() == NULL.marker()) {
@@ -1122,11 +1124,13 @@ class Companion {
 
       @Override
       public void serialize(R object, ByteBuffer buffer) {
+        buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
         serializeWithMap(object, buffer, new HashMap<>());
       }
 
       @Override
       public R deserialize(ByteBuffer buffer) {
+        buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
         return deserializeWithMap(buffer, new HashMap<>());
       }
 
