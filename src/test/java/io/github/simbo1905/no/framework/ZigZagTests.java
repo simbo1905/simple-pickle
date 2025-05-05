@@ -9,7 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class TestZigZag {
+public class ZigZagTests {
 
     @Test
     void testMaxLongValue() {
@@ -125,7 +125,7 @@ public class TestZigZag {
     }
 
     // Print results in mod value order (0,1,-1,2,-2,4,-4...)
-    results.sort(Comparator.comparingLong(v -> Math.abs((long) v.value)));
+    results.sort(Comparator.comparingLong(v -> Math.abs(v.value)));
     System.out.println("Value\tBytes");
     System.out.println("-----\t-----");
     for (Record r : results) {

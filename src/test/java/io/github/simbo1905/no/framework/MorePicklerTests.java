@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
-import static io.github.simbo1905.no.framework.PicklerTest.stripOutAsciiStrings;
+import static io.github.simbo1905.no.framework.PicklerTests.stripOutAsciiStrings;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("ALL")

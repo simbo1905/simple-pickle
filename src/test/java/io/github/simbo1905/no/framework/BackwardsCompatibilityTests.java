@@ -24,9 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * This test suite verifies that records can evolve by adding new fields
  * while maintaining the ability to deserialize data serialized with older schemas.
  */
-public class BackwardsCompatibilityTest {
+public class BackwardsCompatibilityTests {
 
-  static final Logger LOGGER = Logger.getLogger(BackwardsCompatibilityTest.class.getName());
+  static final Logger LOGGER = Logger.getLogger(BackwardsCompatibilityTests.class.getName());
 
   // Original schema with just one field
   static final String GENERATION_1 = """

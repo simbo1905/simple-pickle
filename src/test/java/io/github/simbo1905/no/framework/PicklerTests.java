@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /// Test class for the Pickler functionality.
 /// Demonstrates basic serialization and deserialization of records.
-class PicklerTest {
+class PicklerTests {
 
   @BeforeAll
   static void setupLogging() {

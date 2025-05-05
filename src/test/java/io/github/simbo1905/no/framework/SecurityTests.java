@@ -13,9 +13,9 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /// Tests related to security aspects of serialization/deserialization.
-class SecurityTest {
+class SecurityTests {
 
-  private static final Logger LOGGER = Logger.getLogger(SecurityTest.class.getName());
+  private static final Logger LOGGER = Logger.getLogger(SecurityTests.class.getName());
 
   static {
     // Set up logging

@@ -63,7 +63,7 @@ public class SchemaEvolutionTest {
     try {
       System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
       // Step 1: Compile and load the original schema
-      Class<?> originalClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
+      Class<?> originalClass = BackwardsCompatibilityTests.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
       assertTrue(originalClass.isRecord(), "Compiled class should be a record");
 
       // Step 2: Create an instance of the original record
@@ -72,7 +72,7 @@ public class SchemaEvolutionTest {
       // Step 3: Serialize the original instance
       byte[] serializedData = serializeRecord(originalInstance);
 
-      Class<?> evolvedClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
+      Class<?> evolvedClass = BackwardsCompatibilityTests.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
       assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
 
       // Step 5: Deserialize using the evolved schema
@@ -92,7 +92,7 @@ public class SchemaEvolutionTest {
   void testBasicSchemaEvolutionDisabledByDefault() throws Exception {
     // Step 1: Compile and load the original schema
     // Step 1: Compile and load the original schema
-    Class<?> originalClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
+    Class<?> originalClass = BackwardsCompatibilityTests.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
     assertTrue(originalClass.isRecord(), "Compiled class should be a record");
 
     // Step 2: Create an instance of the original record
@@ -102,7 +102,7 @@ public class SchemaEvolutionTest {
     byte[] serializedData = serializeRecord(originalInstance);
 
     // Step 4: Compile and load the evolved schema
-    Class<?> evolvedClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
+    Class<?> evolvedClass = BackwardsCompatibilityTests.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
     assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
 
     // Step 5: Deserialize using the evolved schema

@@ -14,9 +14,9 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Tests for Map serialization and deserialization.
-class MapPicklerTest {
+class MapPicklerTests {
 
-  private static final Logger LOGGER = Logger.getLogger(MapPicklerTest.class.getName());
+  private static final Logger LOGGER = Logger.getLogger(MapPicklerTests.class.getName());
 
   static {
     // Set up logging

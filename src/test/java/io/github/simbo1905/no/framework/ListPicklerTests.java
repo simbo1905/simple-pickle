@@ -13,7 +13,7 @@ import java.util.stream.Stream;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ListPicklerTest {
+public class ListPicklerTests {
 
   record ListRecord(List<String> list) {
     // Use the canonical constructor to make an immutable copy
