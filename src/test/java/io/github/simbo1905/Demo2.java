@@ -7,8 +7,6 @@ import io.github.simbo1905.no.framework.tree.TreeNode;
 
 import java.nio.ByteBuffer;
 
-import static io.github.simbo1905.no.framework.MorePicklerTests.validateTreeStructure;
-
 public class Demo2 {
   public static void main(String[] args) {
 
@@ -39,6 +37,6 @@ public class Demo2 {
     final var deserializedRoot = pickler.deserialize(buffer);
 
 // See junit tests that Validates the entire tree structure was properly deserialized
-    validateTreeStructure(deserializedRoot);
+    TreeNode.areTreesEqual(originalRoot, deserializedRoot);
   }
 }

@@ -47,41 +47,6 @@ public class MorePicklerTests {
 
     LOGGER.info("Logging initialized at level: " + level);
   }
-  /**
-   * Validates that the tree structure matches the expected structure
-   */
-  public static void validateTreeStructure(TreeNode deserializedRoot) {
-    // Verify root node structure
-    assertInstanceOf(InternalNode.class, deserializedRoot);
-    final var root = (InternalNode) deserializedRoot;
-    
-    // Verify left branch (internal1)
-    assertInstanceOf(InternalNode.class, root.left());
-    final var internal1 = (InternalNode) root.left();
-    assertEquals("Branch1", internal1.name());
-    
-    // Verify right branch (internal2)
-    assertInstanceOf(InternalNode.class, root.right());
-    final var internal2 = (InternalNode) root.right();
-    assertEquals("Branch2", internal2.name());
-    
-    // Verify leaf nodes under internal1
-    assertInstanceOf(LeafNode.class, internal1.left());
-    final var leaf1 = (LeafNode) internal1.left();
-    assertEquals(42, leaf1.value());
-    
-    assertInstanceOf(LeafNode.class, internal1.right());
-    final var leaf2 = (LeafNode) internal1.right();
-    assertEquals(99, leaf2.value());
-    
-    // Verify leaf node under internal2
-    assertInstanceOf(LeafNode.class, internal2.left());
-    final var leaf3 = (LeafNode) internal2.left();
-    assertEquals(123, leaf3.value());
-    
-    // Verify null right child of internal2
-    assertNull(internal2.right());
-  }
 
   /// Tests serialization and deserialization of all animal types in a single buffer
   @Test
@@ -386,7 +351,7 @@ public class MorePicklerTests {
     final var deserializedRoot = pickler.deserialize(buffer);
     
     // Validate the entire tree structure was properly deserialized
-    validateTreeStructure(deserializedRoot);
+    assertTrue(TreeNode.areTreesEqual(originalRoot, deserializedRoot), "Tree structure validation failed");
   }
 
   static TreeNode[] getTreeNodes() {

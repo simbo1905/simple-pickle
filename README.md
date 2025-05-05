@@ -1,16 +1,33 @@
 # No Framework Pickler
 
-A tiny serialization library that generates elegant, fast, type-safe serializers for Java records and sealed interfaces in a single Java source file — perfect for building elegant message protocols using modern idiomatic Java.
+No Framework Pickler is a tiny serialization library that generates elegant, fast, type-safe serializers for Java records and sealed interfaces in a single Java source file — perfect for building elegant message protocols using modern idiomatic Java. 
+
 It supports nested records, arrays, maps and simple enum constants. Binary backwards compatibility is enabled through alternative constructors and adding components to the end of the record declaration (see Schema Evolution section below).
 
+No Framework Pickler is fast as it avoids reflection on the hot path by using the JDK's `unreflect` on the resolved constructors and component accessors of the Java records. This work is one once when the type-safe pickler is constructed. The cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh) then do the actual work. On some workloads it can be 2x faster than standard Java serialization while creating a binary payload that is 0.5x the size.
+
+The benefits of using this library are that we can write modern Java code for Data Oriented Programming code without the boilerplate or build time overhead of using more complex serialization frameworks. We can create a typesafe pickler for right sealed interfaces of records in a single line of code then use it with a single method call to serialize and deserialize complex data structures:
+
 ```java
-// Given a sealed interface and its permitted record types:
+/// Given a sealed interface and its permitted record types using Java's new Data Oriented Programming paradigm:
 public sealed interface TreeNode permits TreeNode.InternalNode, TreeNode.LeafNode {
   record LeafNode(int value) implements TreeNode { }
   record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode { }
+  /// Sealed interfaces are exhaustively matched within matched pattern matching switch expressions
+  static boolean areTreesEqual(TreeNode l, TreeNode r) {
+    return switch (l) {
+      case null -> r == null;
+      case LeafNode(var v1) -> r instanceof LeafNode(var v2) && v1 == v2;
+      case InternalNode(String n1, TreeNode i1, TreeNode i2) ->
+          r instanceof InternalNode(String n2, TreeNode j1, TreeNode j2) &&
+              n1.equals(n2) &&
+              areTreesEqual(i1, j1) &&
+              areTreesEqual(i2, j2);
+    };
+  }
 }
 
-// And a pickler for the sealed interface:
+// And a type safe pickler for the sealed interface:
 Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer:
@@ -21,35 +38,43 @@ treeNodePickler.serialize(rootNode, buffer);
 buffer.flip();
 TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
 
-// Then the deserialized tree structure is identical to the original
-
+// Then it has elegantly and safely reconstructed the entire tree structure
+if( TreeNode.areTreesEqual(originalRoot, deserializedRoot) ){
+  // This it true
+}
 ```
 
-It works with nested sealed interfaces of permitted record types or an outer array of such where the records may contain arbitrarily nested:
+Notice that there is more logic in the `TreeNode` code to define a very elegant data structure than there was logic to create and ue the picklers. There are no annotations. There are no build-time steps. The entire codebase is in one Java source file with less than 1,200 lines of code. It creates a single Jar file with no dependencies that is less than 34k in size.
 
- - boolean.class
- - byte.class
- - short.class
- - char.class
- - int.class
- - long.class
- - float.class
- - double.class
- - String.class
- - Optional.class
- - Record.class
- - Map.class
- - List.class
- - Enum.class
- - Arrays of the above
+This approach is also safer than many other approaches. It uses the JDK's `ByteBuffer` class to read and write binary data, which correctly validates the data on the wire. The pickler resolves the legal code paths that regular Java code would take when creating the pickler, not when deserializing. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour. 
 
-When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. This allows you to use record patterns with type safe exhaustive switch statements. 
+No Framework Pickler works out of the box with nested sealed interfaces of permitted record types or an outer array of such where the records may contain arbitrarily nested:
 
-This library if very fast as it avoids reflection on the hot patch by caching MethodHandle which are resolved through reflection when you construct the pickler.  This project is fully functional with 1 Java source file with less than 1,500 lines of code. It creates a single Jar file with no dependencies that is less than 35k in size. 
+- boolean.class
+- byte.class
+- short.class
+- char.class
+- int.class
+- long.class
+- float.class
+- double.class
+- String.class
+- Optional.class
+- Record.class
+- Map.class
+- List.class
+- Enum.class
+- Arrays of the above
+
+When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. This allows you to use record patterns with type safe exhaustive switch statements.
+
+This tiny library has built in support for dealing with binary compatibility when you are running different version of the code in different versions of your microservices. A system properties setting allows the picklers to match record constructors to what is unloaded from the ByteBuffer. You simply have to add record constructors to your new code that match your old code. You also have to chanage a system setting on the jvm of the old code to tell it to ignore the extra components that it unloads from the ByteBuffer that it does not understand. This is a very simple way to do schema evolution. By default, the code does a strict match. 
 
 ## Usage
 
 ### Basic Record Serialization
+
+Here the optional `sizeOf` will recursively walk any large nested structures or arrays to calculate the exact size of the buffer needed to hold the serialized data:
 
 ```java
 /// Define a record using the enum. It **must** be public
@@ -86,27 +111,19 @@ if (!deserializedMonth.equals(december)) {
 ```java
 import io.github.simbo1905.no.framework.Pickler;
 
-/// The sealed interface and all permitted record subclasses must be public
-/// Nested sealed interfaces are supported. Yet all concrete types must be records with support components
-public sealed interface TreeNode permits RootNode, InternalNode, LeafNode {
-}
-
-public record RootNode(TreeNode left, TreeNode right) implements TreeNode {
-}
-
-public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {
-}
-
-public record LeafNode(int value) implements TreeNode {
-}
+/// The sealed interface and all permitted record subclasses must be public.
+/// The records can be static inner classes or top level classes.
+/// Nested sealed interfaces are supported see the Animal example below.
+public sealed interface TreeNode permits InternalNode, LeafNode {}
+public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {}
+public record LeafNode(int value) implements TreeNode {}
 
 final var leaf1 = new LeafNode(42);
 final var leaf2 = new LeafNode(99);
 final var leaf3 = new LeafNode(123);
-// A lob sided tree
 final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
 final var internal2 = new InternalNode("Branch2", leaf3, null);
-final var originalRoot = new RootNode(internal1, internal2);
+final var originalRoot = new InternalNode("Root", internal1, internal2);
 
 // Get a pickler for the TreeNode sealed interface
 final var pickler = Pickler.forSealedInterface(TreeNode.class);
@@ -118,55 +135,21 @@ final var bufferSize = pickler.sizeOf(originalRoot);
 final var buffer = ByteBuffer.allocate(bufferSize);
 
 // Serialize only the root node (which should include the entire graph)
-pickler.
-
-serialize(originalRoot, buffer);
+pickler.serialize(originalRoot, buffer);
 
 // Prepare buffer for reading
-buffer.
+buffer.flip();
 
-flip();
-
-// Deserialize the root node (which will reconstruct the entire graph)
+// Deserialize the root node (which will reconstruct the entire graph depth first)
 final var deserializedRoot = pickler.deserialize(buffer);
 
 // See junit tests that Validates the entire tree structure was properly deserialized
-validateTreeStructure(deserializedRoot);
-
-// A lob sided tree
-final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
-final var internal2 = new InternalNode("Branch2", leaf3, null);
-final var root = new RootNode(internal1, internal2);
-
-// Get a pickler for the TreeNode sealed interface
-final var pickler = picklerForSealedTrait(TreeNode.class);
-
-// Calculate buffer size needed for the whole graph reachable from the root node
-final var bufferSize = pickler.sizeOf(originalRoot);
-
-// Allocate a buffer to hold just the root node
-final var buffer = ByteBuffer.allocate(bufferSize);
-
-// Serialize only the root node (which should include the entire graph)
-pickler.
-
-serialize(originalRoot, buffer);
-
-// Prepare buffer for reading
-buffer.
-
-flip();
-
-// Deserialize the root node (which will reconstruct the entire graph)
-final var deserializedRoot = pickler.deserialize(buffer);
-
-// See junit tests that Validates the entire tree structure was properly deserialized
-validateTreeStructure(deserializedRoot);
+assertTrue(TreeNode.areTreesEqual(originalRoot, deserializedRoot), "Tree structure validation failed");
 ```
 
 ### Returned List Components And Map Components Are Immutable
 
-All deserialized list inside of Records are immutable.  
+All deserialized list inside of Records are immutable: 
 
 ```java
 // Create a record with nested lists
@@ -232,7 +215,7 @@ assertThrows(UnsupportedOperationException.class, () -> deserialized.relationshi
 
 ### Complex Nested Sealed Interfaces
 
-This example shows how to serialize and deserialize a heterogeneous array of records that implement a sealed interface. The records are nested within the sealed interface hierarchy, and the serialization process handles the complexity of the nested structure:
+This example shows how to serialize and deserialize a heterogeneous array of records that implement a sealed interface. The records are nested within the sealed interface hierarchy, and the serialization process handles the complexity of the nested data structures:
 
 ```java
 // Protocol
