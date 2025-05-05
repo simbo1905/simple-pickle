@@ -172,6 +172,7 @@ public interface Pickler<T> {
   /// @param array The array to serialize
   /// @param buffer The buffer to write into
   static <R extends Record> void serializeMany(R[] array, ByteBuffer buffer) {
+    buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     buffer.put(typeMarker(ARRAY));
     buffer.putInt(array.length);
 
@@ -183,6 +184,7 @@ public interface Pickler<T> {
   /// By default, there must be an exact match between the class name of the record and the class name in the buffer.
   /// See [Compatibility] for details of how to change this behaviour to allow for both backwards and forward compatibility.
   static <R extends Record> List<R> deserializeMany(Class<R> componentType, ByteBuffer buffer) {
+    buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     byte marker = buffer.get();
     if (marker != typeMarker(ARRAY)) throw new IllegalArgumentException("Invalid array marker");
 
