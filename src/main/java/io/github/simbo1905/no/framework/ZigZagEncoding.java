@@ -25,41 +25,58 @@ class ZigZagEncoding {
   /// Writes a long value to the given buffer in LEB128 ZigZag encoded format
   /// @param buffer the buffer to write to
   /// @param value  the value to write to the buffer
-  static void putLong(ByteBuffer buffer, long value) {
+  static int putLong(ByteBuffer buffer, long value) {
+    int count = 0;
     value = (value << 1) ^ (value >> 63);
     if (value >>> 7 == 0) {
       buffer.put((byte) value);
+      count++;
     } else {
       buffer.put((byte) ((value & 0x7F) | 0x80));
+      count++;
       if (value >>> 14 == 0) {
         buffer.put((byte) (value >>> 7));
+        count++;
       } else {
         buffer.put((byte) (value >>> 7 | 0x80));
+        count++;
         if (value >>> 21 == 0) {
           buffer.put((byte) (value >>> 14));
+          count++;
         } else {
           buffer.put((byte) (value >>> 14 | 0x80));
+          count++;
           if (value >>> 28 == 0) {
             buffer.put((byte) (value >>> 21));
+            count++;
           } else {
             buffer.put((byte) (value >>> 21 | 0x80));
+            count++;
             if (value >>> 35 == 0) {
               buffer.put((byte) (value >>> 28));
+              count++;
             } else {
               buffer.put((byte) (value >>> 28 | 0x80));
+              count++;
               if (value >>> 42 == 0) {
                 buffer.put((byte) (value >>> 35));
+                count++;
               } else {
                 buffer.put((byte) (value >>> 35 | 0x80));
+                count++;
                 if (value >>> 49 == 0) {
                   buffer.put((byte) (value >>> 42));
+                  count++;
                 } else {
                   buffer.put((byte) (value >>> 42 | 0x80));
+                  count++;
                   if (value >>> 56 == 0) {
                     buffer.put((byte) (value >>> 49));
+                    count++;
                   } else {
                     buffer.put((byte) (value >>> 49 | 0x80));
                     buffer.put((byte) (value >>> 56));
+                    count += 2;
                   }
                 }
               }
@@ -68,34 +85,46 @@ class ZigZagEncoding {
         }
       }
     }
+    return count;
   }
 
   /// Writes an int value to the given buffer in LEB128-64b9B ZigZag encoded format
   /// @param buffer the buffer to write to
   /// @param value  the value to write to the buffer
-  static void putInt(ByteBuffer buffer, int value) {
+  /// @return the number of bytes written
+  static int putInt(ByteBuffer buffer, int value) {
+    int count = 0;
     value = (value << 1) ^ (value >> 31);
     if (value >>> 7 == 0) {
       buffer.put((byte) value);
+      count++;
     } else {
       buffer.put((byte) ((value & 0x7F) | 0x80));
+      count++;
       if (value >>> 14 == 0) {
         buffer.put((byte) (value >>> 7));
+
       } else {
         buffer.put((byte) (value >>> 7 | 0x80));
+        count++;
         if (value >>> 21 == 0) {
           buffer.put((byte) (value >>> 14));
+          count++;
         } else {
           buffer.put((byte) (value >>> 14 | 0x80));
+          count++;
           if (value >>> 28 == 0) {
             buffer.put((byte) (value >>> 21));
+            count++;
           } else {
             buffer.put((byte) (value >>> 21 | 0x80));
             buffer.put((byte) (value >>> 28));
+            count += 2;
           }
         }
       }
     }
+    return count;
   }
 
   /// Read an LEB128-64b9B ZigZag encoded long value from the given buffer
@@ -166,6 +195,9 @@ class ZigZagEncoding {
     return value;
   }
 
+  /// Counts the number of bytes needed to encode the given int value in LEB128-64b9B ZigZag format
+  /// @param value the value that would be encoded
+  /// @return the number of bytes needed to LEB128-64b9B ZigZag encode the value
   static int sizeOf(int value) {
     int length = 0;
     value = (value << 1) ^ (value >> 31);

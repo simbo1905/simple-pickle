@@ -401,8 +401,10 @@ class PicklerTests {
     // Get a pickler for the Shape sealed interface
     Pickler<Shape> pickler = Pickler.forSealedInterface(Shape.class);
 
+    int size = pickler.sizeOf(circle);
+
     // Test circle
-    ByteBuffer circleBuffer = ByteBuffer.allocate(pickler.sizeOf(circle));
+    ByteBuffer circleBuffer = ByteBuffer.allocate(size);
     pickler.serialize(circle, circleBuffer);
     assertFalse(circleBuffer.hasRemaining());
     circleBuffer.flip();
@@ -532,7 +534,6 @@ class PicklerTests {
 
     // Get picklers for the protocol interfaces
     Pickler<StackCommand> commandPickler = Pickler.forSealedInterface(StackCommand.class);
-    Pickler<StackResponse> responsePickler = Pickler.forSealedInterface(StackResponse.class);
 
     // Test Command serialization/deserialization
     StackCommand[] commands = {
@@ -542,8 +543,10 @@ class PicklerTests {
     };
 
     for (StackCommand command : commands) {
-      ByteBuffer buffer = ByteBuffer.allocate(1024);
+      int size = commandPickler.sizeOf(command);
+      ByteBuffer buffer = ByteBuffer.allocate(size);
       commandPickler.serialize(command, buffer);
+      assertFalse(buffer.hasRemaining());
       buffer.flip();
       StackCommand deserializedCommand = commandPickler.deserialize(buffer);
       assertEquals(command, deserializedCommand);
@@ -556,11 +559,13 @@ class PicklerTests {
         new Failure("operation failed")
     };
 
+    Pickler<StackResponse> responsePickler = Pickler.forSealedInterface(StackResponse.class);
+
     for (StackResponse response : responses) {
-      ByteBuffer buffer = ByteBuffer.allocate(1024);
+      int size = responsePickler.sizeOf(response);
+      ByteBuffer buffer = ByteBuffer.allocate(size);
       responsePickler.serialize(response, buffer);
-      int bytesWritten = buffer.position();
-      assertEquals(bytesWritten, responsePickler.sizeOf(response));
+      assertFalse(buffer.hasRemaining());
       buffer.flip();
       StackResponse deserializedResponse = responsePickler.deserialize(buffer);
       assertEquals(response, deserializedResponse);
@@ -710,7 +715,7 @@ class PicklerTests {
     // Read component type
     Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
     try {
-      Class<?> componentType = resolveClass(buffer, bufferOffset2Class);
+      Class<?> componentType = resolveClass(Work.of(buffer), bufferOffset2Class);
       assertEquals(Shape.class, componentType);
     } catch (ClassNotFoundException e) {
       fail("Failed to read component type: " + e.getMessage());
@@ -1272,7 +1277,7 @@ class PicklerTests {
     // Read outer component type
     Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
     try {
-      Class<?> componentType = resolveClass(buffer, bufferOffset2Class);
+      Class<?> componentType = resolveClass(Work.of(buffer), bufferOffset2Class);
       assertEquals(Person[].class, componentType);
     } catch (ClassNotFoundException e) {
       fail("Failed to read component type: " + e.getMessage());
@@ -1289,7 +1294,7 @@ class PicklerTests {
 
       // Read inner component type
       try {
-        final Class<?> innerComponentType = resolveClass(buffer, bufferOffset2Class);
+        final Class<?> innerComponentType = resolveClass(Work.of(buffer), bufferOffset2Class);
         assertEquals(Person.class, innerComponentType);
       } catch (ClassNotFoundException e) {
         fail("Failed to read inner component type: " + e.getMessage());

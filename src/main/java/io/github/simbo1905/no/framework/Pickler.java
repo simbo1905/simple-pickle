@@ -201,13 +201,13 @@ public interface Pickler<T> {
 
 abstract class SealedPickler<S> implements Pickler<S> {
 
-  abstract Class<? extends S> resolveCachedClassByPickedName(ByteBuffer buffer);
+  abstract Class<? extends S> resolveCachedClassByPickedName(Work buffer);
 }
 
 abstract class RecordPickler<R extends Record> implements Pickler<R> {
 
   abstract void serializeWithMap(Map<Class<?>, Integer> classToOffset, Work work, R object);
 
-  abstract R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class);
+  abstract R deserializeWithMap(Work buffer, Map<Integer, Class<?>> bufferOffset2Class);
 }
 

@@ -75,7 +75,7 @@ class Companion {
       case String str -> {
         buffer.put(typeMarker(c));
         final var bytes = str.getBytes(UTF_8);
-        buffer.putShort((short) bytes.length); // Using full int instead of byte
+        buffer.putShort((short) bytes.length); // FIXME MUST USE Using full int instead of byte
         buffer.put(bytes);
       }
       case Optional<?> opt -> {
@@ -162,7 +162,7 @@ class Companion {
       int currentPosition = buffer.position();
 
       // Write positive length and class name
-      buffer.putInt(classNameLength);
+      buffer.putShort((short) classNameLength);
       buffer.put(classNameBytes);
 
       // Store the position where we wrote this class
@@ -198,7 +198,7 @@ class Companion {
     };
   }
 
-  static Object deserializeValue(Map<Integer, Class<?>> bufferOffset2Class, ByteBuffer buffer) {
+  static Object deserializeValue(Map<Integer, Class<?>> bufferOffset2Class, Work buffer) {
     final byte type = buffer.get();
     final Constants typeEnum = fromMarker(type);
     return switch (typeEnum) {
@@ -316,7 +316,7 @@ class Companion {
   /// @param bufferOffset2Class Map tracking buffer position to class
   /// @return The loaded class
   @Deprecated
-  static Class<?> resolveClass(ByteBuffer buffer,
+  static Class<?> resolveClass(Work buffer,
                                       Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
     // Read the class name length or reference
@@ -631,12 +631,12 @@ class Companion {
       void serializeWithMap(Map<Class<?>, Integer> classToOffset, Work buffer, R object) {
         final var components = components(object);
         // Write the number of components as an unsigned byte (max 255)
-        buffer.putShort((short) components.length);
+        buffer.putShort((short) components.length); // FIXME use zz
         Arrays.stream(components).forEach(c -> Companion.write(classToOffset, buffer, c));
       }
 
       @Override
-      R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
+      R deserializeWithMap(Work buffer, Map<Integer, Class<?>> bufferOffset2Class) {
         // Read the number of components as an unsigned byte
         final int length = buffer.getShort();
         Compatibility.validate(compatibility, recordClassName, componentCount, length);
@@ -706,7 +706,7 @@ class Companion {
       @Override
       public R deserialize(ByteBuffer buffer) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        return deserializeWithMap(buffer, new HashMap<>());
+        return deserializeWithMap(Work.of(buffer), new HashMap<>());
       }
 
       /// This recursively descends through the object graph to find the size of the object
@@ -743,6 +743,9 @@ class Companion {
             }
         ));
 
+    // We do not want to use the full class name as it is very long. So we will chop of the common prefix. Note that
+    // normally a sealed interface and its permitted classes are in the same package yet there are special rules for
+    // Java module feature. If you move stuff around in that model you may break backwards compatibility.
     final Map<Class<? extends S>, String> shortNames = subPicklers.keySet().stream().
         collect(Collectors.toMap(
             cls -> cls,
@@ -780,29 +783,31 @@ class Companion {
           work.put(NULL.marker());
           return;
         }
-        @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
-        Pickler<? extends S> pickler = subPicklers.get(concreteType);
 
+        @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
         writeDeduplicatedClassName(work, concreteType, new HashMap<>(), shortNames.get(concreteType));
+
         // Delegate to subtype pickler
+        Pickler<? extends S> pickler = subPicklers.get(concreteType);
         //noinspection unchecked
-        ((Pickler<Object>) pickler).serialize(object, buffer);
+        ((RecordPickler<Record>) pickler).serializeWithMap(new HashMap<>(), work, (Record) object);
       }
 
       @Override
-      public S deserialize(ByteBuffer buffer) {
-        buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+      public S deserialize(ByteBuffer buffer2) {
+        buffer2.order(java.nio.ByteOrder.BIG_ENDIAN);
         // if the type is NULL, return null, else read the type identifier
-        buffer.mark();
-        if (buffer.get() == NULL.marker()) {
+        buffer2.mark();
+        if (buffer2.get() == NULL.marker()) {
           return null;
         }
-        buffer.reset();
+        buffer2.reset();
+        Work buffer = Work.of(buffer2);
         // Read type identifier
         Class<? extends S> concreteType = resolveCachedClassByPickedName(buffer);
         // Get subtype pickler
-        Pickler<? extends S> pickler = subPicklers.get(concreteType);
-        return pickler.deserialize(buffer);
+        RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(concreteType);
+        return (S) pickler.deserializeWithMap(buffer, new HashMap<>());
       }
 
       @Override
@@ -812,10 +817,11 @@ class Companion {
         }
 
         Class<?> clazz = object.getClass();
-        int classNameLength = shortNames.get(clazz).getBytes(UTF_8).length;
+        final var shortName = shortNames.get(clazz);
+        final int classNameLength = shortName.getBytes(UTF_8).length;
 
-        // Size of length prefix (4 bytes) plus class name bytes
-        int classNameSize = 4 + classNameLength;
+        // Size of length prefix (2 bytes) plus class name bytes
+        int classNameSize = 2 + classNameLength;
 
         // Get the concrete pickler for this object type
         @SuppressWarnings("unchecked")
@@ -826,7 +832,7 @@ class Companion {
       }
 
       @Override
-      Class<? extends S> resolveCachedClassByPickedName(ByteBuffer buffer) {
+      Class<? extends S> resolveCachedClassByPickedName(Work buffer) {
         final int classNameLength = buffer.getInt();
         final byte[] classNameBytes = new byte[classNameLength];
         buffer.get(classNameBytes);

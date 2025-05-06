@@ -16,14 +16,13 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
     return box[0];
   }
 
-  public void add(int size) {
+  public int add(int size) {
     box[0] += size;
+    return size;
   }
 
-  public Work putShort(short length) {
-    add(Short.BYTES);
-    buffer.ifPresent(byteBuffer -> byteBuffer.putShort(length));
-    return this;
+  public int putShort(short length) {
+    return add(buffer.map(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, length)).orElse(ZigZagEncoding.sizeOf(length)));
   }
 
   public Work put(byte marker) {
@@ -33,8 +32,12 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public Work putInt(int length) {
-    add(Integer.BYTES);
-    buffer.ifPresent(byteBuffer -> byteBuffer.putInt(length));
+    int count = buffer.map(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, length)).orElse(0);
+    if (count > 0) {
+      add(count);
+    } else {
+      add(ZigZagEncoding.sizeOf(length));
+    }
     return this;
   }
 
@@ -45,8 +48,12 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public Work putLong(Long l) {
-    add(Long.BYTES);
-    buffer.ifPresent(byteBuffer -> byteBuffer.putLong(l));
+    int count = buffer.map(byteBuffer -> ZigZagEncoding.putLong(byteBuffer, l)).orElse(0);
+    if (count > 0) {
+      add(count);
+    } else {
+      add(ZigZagEncoding.sizeOf(l));
+    }
     return this;
   }
 
@@ -70,5 +77,41 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
 
   public int position() {
     return buffer.map(ByteBuffer::position).orElse(0);
+  }
+
+  public short getShort() {
+    return buffer.map(ZigZagEncoding::getInt).orElse(0).shortValue();
+  }
+
+  public byte get() {
+    return buffer.map(ByteBuffer::get).orElse((byte) 0);
+  }
+
+  public int getInt() {
+    return buffer.map(ZigZagEncoding::getInt).orElse(0);
+  }
+
+  public Object getLong() {
+    return buffer.map(ZigZagEncoding::getLong).orElse(0L);
+  }
+
+  public Object getDouble() {
+    return buffer.map(ByteBuffer::getDouble).orElse(0.0);
+  }
+
+  public Object getFloat() {
+    return buffer.map(ByteBuffer::getFloat).orElse(0.0f);
+  }
+
+  public Object getChar() {
+    return buffer.map(ByteBuffer::getChar).orElse((char) 0);
+  }
+
+  public void get(byte[] bytes) {
+    buffer.ifPresent(byteBuffer -> byteBuffer.get(bytes));
+  }
+
+  public int remaining() {
+    return buffer.map(ByteBuffer::remaining).orElse(0);
   }
 }

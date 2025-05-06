@@ -1,19 +1,13 @@
 # No Framework Pickler
 
-No Framework Pickler is a tiny serialization library that generates elegant, fast, type-safe serializers for Java records and sealed interfaces in a single Java source file — perfect for building elegant message protocols using modern idiomatic Java. 
-
-It supports nested records, arrays, maps and simple enum constants. Binary backwards compatibility is enabled through alternative constructors and adding components to the end of the record declaration (see Schema Evolution section below).
-
-No Framework Pickler is fast as it avoids reflection on the hot path by using the JDK's `unreflect` on the resolved constructors and component accessors of the Java records. This work is one once when the type-safe pickler is constructed. The cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh) then do the actual work. On some workloads it can be 2x faster than standard Java serialization while creating a binary payload that is 0.5x the size.
-
-The benefits of using this library are that we can write modern Java code for Data Oriented Programming code without the boilerplate or build time overhead of using more complex serialization frameworks. We can create a typesafe pickler for right sealed interfaces of records in a single line of code then use it with a single method call to serialize and deserialize complex data structures:
+No Framework Pickler is a tiny serialization library that generates elegant, fast, type-safe serializers for Java records and sealed interface hierarchies of records — perfect for building elegant message protocols using modern Data Oriented Programming techniques:
 
 ```java
 /// Given a sealed interface and its permitted record types using Java's new Data Oriented Programming paradigm:
 public sealed interface TreeNode permits TreeNode.InternalNode, TreeNode.LeafNode {
   record LeafNode(int value) implements TreeNode { }
   record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode { }
-  /// Sealed interfaces are exhaustively matched within matched pattern matching switch expressions
+  /// Sealed interfaces allow for exhaustively pattern matched within switch expressions
   static boolean areTreesEqual(TreeNode l, TreeNode r) {
     return switch (l) {
       case null -> r == null;
@@ -27,28 +21,37 @@ public sealed interface TreeNode permits TreeNode.InternalNode, TreeNode.LeafNod
   }
 }
 
+// ByteBuffer for high performance serialization 
+ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+// Given a tree of nodes:
+final var rootNode = new TreeNode.InternalNode("Root",
+    new TreeNode.InternalNode("Branch1", new TreeNode.LeafNode(42), new TreeNode.LeafNode(99)),
+    new TreeNode.InternalNode("Branch2", new TreeNode.LeafNode(123), null));
+
 // And a type safe pickler for the sealed interface:
 Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
 
-// When we serialize a tree of nodes to a ByteBuffer:
-ByteBuffer buffer = ByteBuffer.allocate(1024);
+// When we serialize a tree of nodes to a ByteBuffer and load it back out again:
 treeNodePickler.serialize(rootNode, buffer);
-
-// And deserialize it back:
 buffer.flip();
 TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
 
 // Then it has elegantly and safely reconstructed the entire tree structure
 if( TreeNode.areTreesEqual(originalRoot, deserializedRoot) ){
-  // This it true
+  System.out.println("The trees are equal!");
 }
 ```
 
-Notice that there is more logic in the `TreeNode` code to define a very elegant data structure than there was logic to create and ue the picklers. There are no annotations. There are no build-time steps. The entire codebase is in one Java source file with less than 1,200 lines of code. It creates a single Jar file with no dependencies that is less than 34k in size.
+**No Framework Pickler is Java** where in a single line of code creates a typesafe pickler for a sealed interface hierarchy of records. There are no annotations. There are no build-time steps. There are n generated data structures you need to map to your regular code. There is no special configuration files. There is no manual just Java. You get all the convenience that the built-in JDK serialization with none of the downsides. 
 
-This approach is also safer than many other approaches. It uses the JDK's `ByteBuffer` class to read and write binary data, which correctly validates the data on the wire. The pickler resolves the legal code paths that regular Java code would take when creating the pickler, not when deserializing. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour. 
+**No Framework Pickler is fast** as it avoids reflection on the hot path by using the JDK's `unreflect` on the resolved constructors and component accessors of the Java records. This work is one once when the type-safe pickler is constructed. The cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh) then do the actual work. On some workloads it can be 2x faster than standard Java serialization while creating a binary payload that is 0.5x the size.
 
-No Framework Pickler works out of the box with nested sealed interfaces of permitted record types or an outer array of such where the records may contain arbitrarily nested:
+**No Framework Pickler is compact** as the entire codebase is in one Java source file with 1,300 lines of code not counting the extensive comments. It creates a single Jar file with no dependencies that is around 36k in size. It has no dependencies.  
+
+**No Framework Pickler is safer** than many alternative approaches. The pickler resolves the legal code paths that regular Java code would take when creating the pickler; not when it is reading binary data. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour. 
+
+**No Framework Pickler is expressive** as it works out of the box with nested sealed interfaces of permitted record types or an outer array of such where the records may contain arbitrarily nested:
 
 - boolean.class
 - byte.class
@@ -68,7 +71,7 @@ No Framework Pickler works out of the box with nested sealed interfaces of permi
 
 When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. This allows you to use record patterns with type safe exhaustive switch statements.
 
-This tiny library has built in support for dealing with binary compatibility when you are running different version of the code in different versions of your microservices. A system properties setting allows the picklers to match record constructors to what is unloaded from the ByteBuffer. You simply have to add record constructors to your new code that match your old code. You also have to chanage a system setting on the jvm of the old code to tell it to ignore the extra components that it unloads from the ByteBuffer that it does not understand. This is a very simple way to do schema evolution. By default, the code does a strict match. 
+**No Framework Pickler backwards compatibility** supports opt-in binary compatibility for adding new components to the end of your `record` types. You simply provide alternative constructors in your newer code to match the default constructor of your old code. This is disabled by default.  
 
 ## Usage
 
@@ -402,14 +405,39 @@ public record UserInfo(String username, int accessLevel, String department) {
 }
 ```
 
+### Sealed Interface Evolution
+
+We might expect that a team may add new permitted records to a sealed interface. This leads to the following scenario:
+
+1. The original code has a sealed interface with `N` permitted records. It might upgrade them all in a safe way as described above to be a new set `N'` records. 
+2. The new codebase adds `M` new permitted records to the sealed interface to have `N' ∪ M` records.
+3. The original code sends records that the new codebase has constructors for `N` as long as the new code has Compatibility set `BACKWARDS|ALL`.
+4. The new codebase can send upgraded records `N'` to the original codebase as long as the original codebase has Compatibility set `FORWARDS|ALL`.
+5. The old codebase will never send any `M` records to the new codebase as it does not know about them. No setting of compatibility is needed for this.
+6. The new codebase **cannot** send `M` records to the old codebase as it has no logic to handle them. 
+
+The upshot means that you have to write your own routing logic to avoid new microservices sending new record types to old microservices.
+
+There is one more constraint. In *most* code the sealed trait and its permitted classes will be in the same package. 
+Yet if you are using the Java Module Exports System they can be in different packages: 
+
+```java
+
+```
+
 ### Schema Evolution Summary
 
-- Supports adding new components to the end of the record definition
-- Requires explicit backward compatibility constructors matching the canonical constructor of the prior code
-- Cannot remove or reorder existing fields
-- Can reorder, remove or change the types of existing components
+- The default setting is `NONE` for schema evolution. You must explicitly set the system property to enable it.
+- This library supports backwards compatibility when you add new components onto the end of the record definition. 
 - You **may** change the name of components as the `MethodHandle` is resolved by position in source file not by name
 - You **may** use `null` or set your own default value for added components within your backward compatibility constructor(s)
+- In the code you must add alternative constructors to match the old code and set compatibility to `BACKWARDS|ALL`.
+- In the old code you must set compatibility to `FORWARDS|ALL` for it to ignore the extra components that it does not understand.
+- If you are using sealed interfaces picklers the new codebase will be able to read all records from the old codebase where the above hold true. 
+- If you are using sealed interfaces picklers the old codebase will be able to read only records sent by the new codebase where the above hold true.
+- The old codebase **will not** be able to read any new records sent by the new codebase as it does not know about them. 
+ 
+You need to configure your microservices to avoid the unsupported scenario of sending new records to old codebases that have no code for them. 
 
 There are unit tests that dynamically compile and class load different versions of records to explicitly test both backwards and forwards compatibility across three generations. See `SchemaEvolutionTest.java` and `BackwardsCompatibilityTest.java` for examples of how to write your own tests.
 
