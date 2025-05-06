@@ -2,11 +2,9 @@
 
 No Framework Pickler is a tiny serialization library that generates elegant, fast, type-safe serializers for Java records and sealed interfaces in a single Java source file — perfect for building elegant message protocols using modern idiomatic Java. 
 
-It supports nested records, arrays, maps and simple enum constants. Binary backwards compatibility is enabled through alternative constructors and adding components to the end of the record declaration (see Schema Evolution section below).
+No Framework Pickler supports nested records, arrays, maps, and enums with binary backward compatibility. It is fast as it avoids reflection on the hot path by using the JDK's `unreflect` on resolved record constructors and component accessors. This work is done once when the type-safe pickler is constructed. Cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh) do the heavy lifting. On some workloads, it can be 2x faster than standard Java serialization while creating a binary payload that is 0.5x the size. The entire codebase is in one Java source file with less than 1,200 lines of code. The Jar file has no dependencies and is less than 34k in size.
 
-No Framework Pickler is fast as it avoids reflection on the hot path by using the JDK's `unreflect` on the resolved constructors and component accessors of the Java records. This work is one once when the type-safe pickler is constructed. The cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh) then do the actual work. On some workloads it can be 2x faster than standard Java serialization while creating a binary payload that is 0.5x the size.
-
-The benefits of using this library are that we can write modern Java code for Data Oriented Programming code without the boilerplate or build time overhead of using more complex serialization frameworks. We can create a typesafe pickler for right sealed interfaces of records in a single line of code then use it with a single method call to serialize and deserialize complex data structures:
+The benefits of using this library are that we can write modern Java code for Data-Oriented Programming code without the boilerplate or build time overhead of more complex serialization frameworks. We can create a typesafe pickler for a sealed interface heirachy of records in a single line of code. It is a single method call to serialize and deserialize complex data structures:
 
 ```java
 /// Given a sealed interface and its permitted record types using Java's new Data Oriented Programming paradigm:
@@ -44,7 +42,7 @@ if( TreeNode.areTreesEqual(originalRoot, deserializedRoot) ){
 }
 ```
 
-Notice that there is more logic in the `TreeNode` code to define a very elegant data structure than there was logic to create and ue the picklers. There are no annotations. There are no build-time steps. The entire codebase is in one Java source file with less than 1,200 lines of code. It creates a single Jar file with no dependencies that is less than 34k in size.
+Notice that there is more logic in the `TreeNode` code to define a very elegant data structure than there was logic to create and ue the picklers. There are no annotations. There are no build-time steps. 
 
 This approach is also safer than many other approaches. It uses the JDK's `ByteBuffer` class to read and write binary data, which correctly validates the data on the wire. The pickler resolves the legal code paths that regular Java code would take when creating the pickler, not when deserializing. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour. 
 
