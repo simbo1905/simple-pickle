@@ -38,7 +38,7 @@ TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
 
 // Then it has elegantly and safely reconstructed the entire tree structure
 if( TreeNode.areTreesEqual(originalRoot, deserializedRoot) ){
-  // This it true
+  // This is true
 }
 ```
 
