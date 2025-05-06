@@ -322,6 +322,11 @@ Dog[] dogArray = new Dog[dogs.size()];
 java.util.Arrays.setAll(dogArray, i -> dogs.get(i));
 // This is safe:
 serializeMany(dogArray),dogBuffer);
+// You can do this as a one liner if-and-only-if you perform an explict cast:
+serializeManyanimals.stream()
+        .filter(Dog.class::isInstance)
+        .map(Dog.class::cast)
+        .toArray(Dog[]::new);
 ```
 
 If you want to avoid the shallow copy you can simply manually `writeInt` the size of the list and loop over the list to serialize each element:
