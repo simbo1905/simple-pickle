@@ -311,6 +311,7 @@ class Companion {
   static Class<?> resolveClass(Work buffer,
                                       Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
+    LOGGER.finer(() -> "readInt componentTypeLength");
     // Read the class name length or reference
     int componentTypeLength = buffer.getInt();
 
