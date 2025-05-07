@@ -321,7 +321,7 @@ class Companion {
                                       Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
     // Read the class name length or reference
-    int componentTypeLength = buffer.getInt();
+    int componentTypeLength = buffer.getShort();
 
     if (componentTypeLength > Short.MAX_VALUE) {
       final var msg = "The max length of a string in java is 65535 bytes, " +
@@ -531,7 +531,7 @@ class Companion {
       void serializeWithMap(Map<Class<?>, Integer> classToOffset, Work buffer, R object) {
         final var components = components(object);
         // Write the number of components as an unsigned byte (max 255)
-        buffer.putShort((short) components.length); // FIXME use zz
+        buffer.putShort((short) components.length);
         Arrays.stream(components).forEach(c -> Companion.write(classToOffset, buffer, c));
       }
 
