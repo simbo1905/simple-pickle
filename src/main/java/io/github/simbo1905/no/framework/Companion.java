@@ -139,19 +139,31 @@ class Companion {
   /// @param classNameShorted The short name of the class after taking all the record types and chopping off the common initial substring.
   static void writeDeduplicatedClassName(Work buffer, Class<?> clazz,
                                          Map<Class<?>, Integer> classToOffset, String classNameShorted) {
+    LOGGER.finer(() -> "writeDeduplicatedClassName: clazz=" + clazz + 
+        " classNameShorted=" + classNameShorted + 
+        " buffer.position=" + buffer.position());
+    
     // Check if we've seen this class before
     Integer offset = classToOffset.get(clazz);
     if (offset != null) {
+      LOGGER.finer(() -> "Class reference found: clazz=" + clazz + 
+          " offset=" + offset + 
+          " reference=" + (~offset));
       // We've seen this class before, write a negative reference
       int reference = ~offset;
       buffer.putInt(reference); // Using bitwise complement for negative reference
     } else {
+      LOGGER.finer(() -> "Writing new class name: clazz=" + clazz + 
+          " classNameShorted=" + classNameShorted);
       // First time seeing this class, write the full name
       byte[] classNameBytes = classNameShorted.getBytes(UTF_8);
       int classNameLength = classNameBytes.length;
 
       // Store current position before writing
       int currentPosition = buffer.position();
+      LOGGER.finer(() -> "Writing class name at position: " + currentPosition + 
+          " length=" + classNameLength + 
+          " bytes=" + java.util.Arrays.toString(classNameBytes));
 
       // Write positive length and class name
       buffer.putInt(classNameLength);
@@ -159,6 +171,8 @@ class Companion {
 
       // Store the position where we wrote this class
       classToOffset.put(clazz, currentPosition);
+      LOGGER.finer(() -> "Stored class offset: clazz=" + clazz + 
+          " position=" + currentPosition);
     }
   }
 
