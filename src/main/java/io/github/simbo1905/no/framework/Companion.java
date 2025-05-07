@@ -734,7 +734,7 @@ class Companion {
 
       @Override
       Class<? extends S> resolveCachedClassByPickedName(Work buffer) {
-        final int classNameLength = buffer.getInt();
+        final int classNameLength = buffer.getShort();
         final byte[] classNameBytes = new byte[classNameLength];
         buffer.get(classNameBytes);
         final String classNameShortened = new String(classNameBytes, UTF_8);
