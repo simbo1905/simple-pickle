@@ -311,9 +311,12 @@ class Companion {
   static Class<?> resolveClass(Work buffer,
                                       Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
-    LOGGER.finer(() -> "readInt componentTypeLength");
+    LOGGER.finer(() -> "resolveClass: buffer.position=" + buffer.position());
+    
     // Read the class name length or reference
     int componentTypeLength = buffer.getInt();
+    LOGGER.finer(() -> "readInt componentTypeLength=" + componentTypeLength + 
+        " at position " + (buffer.position() - 4));
 
     if (componentTypeLength > Short.MAX_VALUE) {
       final var msg = "The max length of a string in java is 65535 bytes, " +
@@ -323,19 +326,26 @@ class Companion {
     }
 
     if (componentTypeLength < 0) {
+      LOGGER.finer(() -> "Negative componentTypeLength, treating as reference");
       // This is a reference to a previously seen class
       int offset = ~componentTypeLength; // Decode the reference using bitwise complement
+      LOGGER.finer(() -> "Resolving class reference: offset=" + offset);
+      
       Class<?> referencedClass = bufferOffset2Class.get(offset);
-
       if (referencedClass == null) {
         final var msg = "Invalid class reference offset: " + offset;
         LOGGER.severe(() -> msg);
         throw new IllegalArgumentException(msg);
       }
+      LOGGER.finer(() -> "Resolved class reference: offset=" + offset + 
+          " clazz=" + referencedClass);
       return referencedClass;
     } else {
+      LOGGER.finer(() -> "Positive componentTypeLength, reading new class name: length=" + componentTypeLength);
+      
       // This is a new class name
       int currentPosition = buffer.position() - 2; // Position before reading the length
+      LOGGER.finer(() -> "Current position before class name: " + currentPosition);
 
       if (buffer.remaining() < componentTypeLength) {
         final var msg = "Buffer underflow: needed " + componentTypeLength +
@@ -348,7 +358,9 @@ class Companion {
       byte[] classNameBytes = new byte[componentTypeLength];
       buffer.get(classNameBytes);
       String className = new String(classNameBytes, UTF_8);
-
+      
+      LOGGER.finer(() -> "Read class name: " + className);
+      
       // Validate class name - add basic validation that allows array type names like `[I`, `[[I`, `[L`java.lang.String;` etc.
       if (!className.matches("[\\[\\]a-zA-Z0-9_.$;]+")) {
         final var msg = "Invalid class name format: " + className;
@@ -358,9 +370,12 @@ class Companion {
 
       // Load the class using our helper method
       Class<?> loadedClass = getClassForName(className);
+      LOGGER.finer(() -> "Loaded class: " + loadedClass);
 
       // Store in our map for future references
       bufferOffset2Class.put(currentPosition, loadedClass);
+      LOGGER.finer(() -> "Stored class in bufferOffset2Class: " + loadedClass + 
+          " at position " + currentPosition);
 
       return loadedClass;
     }
