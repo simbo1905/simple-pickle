@@ -26,8 +26,8 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public Work putShort(short length) {
-    add(Short.BYTES);
-    buffer.ifPresent(byteBuffer -> byteBuffer.putShort(length));
+    add(ZigZagEncoding.sizeOf(length));
+    buffer.ifPresent(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, length));
     return this;
   }
 
@@ -78,7 +78,7 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public short getShort() {
-    return buffer.map(ByteBuffer::getShort).orElse((short) 0);
+    return buffer.map(buffer1 -> (short) ZigZagEncoding.getInt(buffer1)).orElse((short) 0);
   }
 
   public byte get() {
