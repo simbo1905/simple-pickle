@@ -28,16 +28,6 @@ class Companion {
     return (Pickler<T>) REGISTRY.computeIfAbsent(type, k -> supplier.get());
   }
 
-  // TODO inline
-  static void writeZz(ByteBuffer buffer, short value) {
-    ZigZagEncoding.putInt(buffer, value);
-  }
-
-  // TODO inline
-  static int readZz(ByteBuffer buffer) {
-    return ZigZagEncoding.getInt(buffer);
-  }
-
   static void write(Map<Class<?>, Integer> classToOffset, Work buffer, Object c) {
     if (c == null) {
       buffer.put(NULL.marker());
@@ -47,6 +37,7 @@ class Companion {
     if (c.getClass().isArray()) {
       buffer.put(ARRAY.marker());
 
+      // TODO this will write out "java.lang.String" as the type of the array. surely we can do collision detection and use String
       writeDeduplicatedClassName(buffer, c.getClass().getComponentType(), classToOffset,
           c.getClass().getComponentType().getName());
 
@@ -75,7 +66,7 @@ class Companion {
       case String str -> {
         buffer.put(typeMarker(c));
         final var bytes = str.getBytes(UTF_8);
-        buffer.putShort((short) bytes.length); // FIXME MUST USE Using full int instead of byte
+        buffer.putInt(bytes.length); // FIXME MUST USE Using full int instead of byte
         buffer.put(bytes);
       }
       case Optional<?> opt -> {
@@ -163,7 +154,7 @@ class Companion {
       int currentPosition = buffer.position();
 
       // Write positive length and class name
-      buffer.putShort((short) classNameLength);
+      buffer.putInt(classNameLength);
       buffer.put(classNameBytes);
 
       // Store the position where we wrote this class
@@ -212,7 +203,7 @@ class Companion {
       case CHARACTER -> buffer.getChar();
       case BOOLEAN -> buffer.get() == 1;
       case STRING -> {
-        final var strLength = buffer.getShort();
+        final var strLength = buffer.getInt();
         final byte[] bytes = new byte[strLength];
         buffer.get(bytes);
         yield new String(bytes, UTF_8);
@@ -321,7 +312,7 @@ class Companion {
                                       Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
     // Read the class name length or reference
-    int componentTypeLength = buffer.getShort();
+    int componentTypeLength = buffer.getInt();
 
     if (componentTypeLength > Short.MAX_VALUE) {
       final var msg = "The max length of a string in java is 65535 bytes, " +
@@ -343,7 +334,7 @@ class Companion {
       return referencedClass;
     } else {
       // This is a new class name
-      int currentPosition = buffer.position() - 4; // Position before reading the length
+      int currentPosition = buffer.position() - 2; // Position before reading the length
 
       if (buffer.remaining() < componentTypeLength) {
         final var msg = "Buffer underflow: needed " + componentTypeLength +
@@ -531,14 +522,14 @@ class Companion {
       void serializeWithMap(Map<Class<?>, Integer> classToOffset, Work buffer, R object) {
         final var components = components(object);
         // Write the number of components as an unsigned byte (max 255)
-        buffer.putShort((short) components.length);
+        buffer.putInt(components.length);
         Arrays.stream(components).forEach(c -> Companion.write(classToOffset, buffer, c));
       }
 
       @Override
       R deserializeWithMap(Work buffer, Map<Integer, Class<?>> bufferOffset2Class) {
         // Read the number of components as an unsigned byte
-        final int length = buffer.getShort();
+        final int length = buffer.getInt();
         Compatibility.validate(compatibility, recordClassName, componentCount, length);
         // This may unload from the stream things that we will ignore
         final Object[] components = new Object[length];
@@ -734,7 +725,7 @@ class Companion {
 
       @Override
       Class<? extends S> resolveCachedClassByPickedName(Work buffer) {
-        final int classNameLength = buffer.getShort();
+        final int classNameLength = buffer.getInt();
         final byte[] classNameBytes = new byte[classNameLength];
         buffer.get(classNameBytes);
         final String classNameShortened = new String(classNameBytes, UTF_8);
