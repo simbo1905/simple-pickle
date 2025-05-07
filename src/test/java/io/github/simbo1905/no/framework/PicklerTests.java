@@ -13,9 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.logging.ConsoleHandler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.logging.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
@@ -33,12 +31,22 @@ class PicklerTests {
 
   @BeforeAll
   static void setupLogging() {
-    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "WARNING");
+    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
     final Level level = Level.parse(logLevel);
 
     LOGGER.setLevel(level);
     ConsoleHandler consoleHandler = new ConsoleHandler();
     consoleHandler.setLevel(level);
+
+    // Create and set a custom formatter
+    Formatter simpleFormatter = new Formatter() {
+      @Override
+      public String format(LogRecord record) {
+        return record.getMessage() + "\n";
+      }
+    };
+    consoleHandler.setFormatter(simpleFormatter);
+
     LOGGER.addHandler(consoleHandler);
 
     // Configure SessionKeyManager logger
@@ -46,6 +54,7 @@ class PicklerTests {
     logger.setLevel(level);
     ConsoleHandler skmHandler = new ConsoleHandler();
     skmHandler.setLevel(level);
+    skmHandler.setFormatter(simpleFormatter); // Apply the same formatter
     logger.addHandler(skmHandler);
 
     // Optionally disable parent handlers if needed

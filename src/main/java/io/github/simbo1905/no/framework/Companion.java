@@ -29,6 +29,7 @@ class Companion {
   }
 
   static void write(Map<Class<?>, Integer> classToOffset, Work buffer, Object c) {
+    LOGGER.finer(() -> "write Writing " + c.getClass().getSimpleName() + " position=" + buffer.position());
     if (c == null) {
       buffer.put(NULL.marker());
       return;
@@ -41,11 +42,13 @@ class Companion {
       writeDeduplicatedClassName(buffer, c.getClass().getComponentType(), classToOffset,
           c.getClass().getComponentType().getName());
 
+      LOGGER.finer(() -> "write ARRAY length position=" + buffer.position());
       // Write the array length
       int length = Array.getLength(c);
       buffer.putInt(length);
 
       if (byte.class.equals(c.getClass().getComponentType())) {
+        LOGGER.finer(() -> "write ARRAY byte[] length " + ((byte[]) c).length + " position=" + buffer.position());
         buffer.put((byte[]) c);
       } else {
         IntStream.range(0, length).forEach(i -> write(classToOffset, buffer, Array.get(c, i)));
@@ -64,6 +67,7 @@ class Companion {
       case Character ch -> buffer.put(typeMarker(c)).putChar(ch);
       case Boolean bool -> buffer.put(typeMarker(c)).put((byte) (bool ? 1 : 0));
       case String str -> {
+        LOGGER.finer(() -> "write String size of 4 and bytes " + str.getBytes(UTF_8).length + " position=" + buffer.position());
         buffer.put(typeMarker(c));
         final var bytes = str.getBytes(UTF_8);
         buffer.putInt(bytes.length); // FIXME MUST USE Using full int instead of byte
@@ -72,14 +76,17 @@ class Companion {
       case Optional<?> opt -> {
         buffer.put(typeMarker(c));
         if (opt.isEmpty()) {
+          LOGGER.finer(() -> "write Optional.empty() position=" + buffer.position());
           buffer.put((byte) 0); // 0 = empty
         } else {
+          LOGGER.finer(() -> "write Optional value position=" + buffer.position());
           buffer.put((byte) 1); // 1 = present
           Object value = opt.get();
           write(classToOffset, buffer, value);
         }
       }
       case Record record -> {
+        LOGGER.finer(() -> "write Record " + record.getClass().getSimpleName() + " position=" + buffer.position());
         buffer.put(typeMarker(c));
 
         // Write the class name with deduplication
@@ -92,6 +99,7 @@ class Companion {
         nestedPickler.serializeWithMap(classToOffset, buffer, record);
       }
       case Map<?, ?> map -> {
+        LOGGER.finer(() -> "write Map of size " + map.size() + " position=" + buffer.position());
         buffer.put(typeMarker(c));
 
         // Write the number of entries
@@ -106,6 +114,7 @@ class Companion {
         });
       }
       case List<?> list -> {
+        LOGGER.finer(() -> "write List of size " + list.size() + " position=" + buffer.position());
         buffer.put(typeMarker(c));
 
         // Write the number of elements
@@ -115,6 +124,7 @@ class Companion {
         list.forEach(element -> write(classToOffset, buffer, element));
       }
       case Enum<?> enumValue -> {
+        LOGGER.finer(() -> "write Enum " + enumValue.name() + " position=" + buffer.position());
         buffer.put(typeMarker(c));
         // Write the enum class name with deduplication
         writeDeduplicatedClassName(buffer, enumValue.getClass(), classToOffset, c.getClass().getName());
@@ -139,31 +149,23 @@ class Companion {
   /// @param classNameShorted The short name of the class after taking all the record types and chopping off the common initial substring.
   static void writeDeduplicatedClassName(Work buffer, Class<?> clazz,
                                          Map<Class<?>, Integer> classToOffset, String classNameShorted) {
-    LOGGER.finer(() -> "writeDeduplicatedClassName: clazz=" + clazz + 
-        " classNameShorted=" + classNameShorted + 
-        " buffer.position=" + buffer.position());
-    
     // Check if we've seen this class before
     Integer offset = classToOffset.get(clazz);
     if (offset != null) {
-      LOGGER.finer(() -> "Class reference found: clazz=" + clazz + 
-          " offset=" + offset + 
+      LOGGER.finer(() -> "writeDeduplicatedClassName Class reference found: offset=" + offset +
           " reference=" + (~offset));
       // We've seen this class before, write a negative reference
       int reference = ~offset;
       buffer.putInt(reference); // Using bitwise complement for negative reference
     } else {
-      LOGGER.finer(() -> "Writing new class name: clazz=" + clazz + 
-          " classNameShorted=" + classNameShorted);
       // First time seeing this class, write the full name
       byte[] classNameBytes = classNameShorted.getBytes(UTF_8);
       int classNameLength = classNameBytes.length;
 
       // Store current position before writing
       int currentPosition = buffer.position();
-      LOGGER.finer(() -> "Writing class name at position: " + currentPosition + 
-          " length=" + classNameLength + 
-          " bytes=" + java.util.Arrays.toString(classNameBytes));
+      LOGGER.finer(() -> "writeDeduplicatedClassName Writing class name at position: " + currentPosition +
+          " length=" + classNameLength + " className=" + classNameShorted);
 
       // Write positive length and class name
       buffer.putInt(classNameLength);
@@ -171,8 +173,6 @@ class Companion {
 
       // Store the position where we wrote this class
       classToOffset.put(clazz, currentPosition);
-      LOGGER.finer(() -> "Stored class offset: clazz=" + clazz + 
-          " position=" + currentPosition);
     }
   }
 
@@ -207,6 +207,7 @@ class Companion {
   static Object deserializeValue(Map<Integer, Class<?>> bufferOffset2Class, Work buffer) {
     final byte type = buffer.get();
     final Constants typeEnum = fromMarker(type);
+    LOGGER.finer(() -> "deserializeValue reading " + typeEnum + " position=" + buffer.position());
     return switch (typeEnum) {
       case INTEGER -> buffer.getInt();
       case LONG -> buffer.getLong();
@@ -217,6 +218,7 @@ class Companion {
       case CHARACTER -> buffer.getChar();
       case BOOLEAN -> buffer.get() == 1;
       case STRING -> {
+        LOGGER.finer(() -> "deserializeValue reading STRING position=" + buffer.position());
         final var strLength = buffer.getInt();
         final byte[] bytes = new byte[strLength];
         buffer.get(bytes);
@@ -225,16 +227,17 @@ class Companion {
       case OPTIONAL -> {
         byte isPresent = buffer.get();
         if (isPresent == 0) {
+          LOGGER.finer(() -> "deserializeValue OPTIONAL empty position=" + buffer.position());
           yield Optional.empty();
         } else {
+          LOGGER.finer(() -> "deserializeValue OPTIONAL value position=" + buffer.position());
           Object value = deserializeValue(bufferOffset2Class, buffer);
           yield Optional.ofNullable(value);
         }
       }
       case RECORD -> { // Handle nested record
         try {
-          // Read the class with deduplication support
-          // FIXME: This should not do classForName as we should do that at instantiation of the pickler
+          LOGGER.finer(() -> "deserializeValue Record value position=" + buffer.position());
           Class<?> recordClass = resolveClass(buffer, bufferOffset2Class);
 
           // Get or create the pickler for this class
@@ -252,6 +255,8 @@ class Companion {
       case NULL -> null; // Handle null values
       case ARRAY -> { // Handle arrays
         try {
+          LOGGER.finer(() -> "deserializeValue ARRAY value position=" + buffer.position());
+
           // Get the component class
           Class<?> componentType = resolveClass(buffer, bufferOffset2Class);
 
@@ -276,19 +281,25 @@ class Companion {
           throw new IllegalArgumentException(msg, e);
         }
       }
-      case MAP -> // Handle maps
-          IntStream.range(0, buffer.getInt())
-              .mapToObj(i ->
-                  Map.entry(
-                      Objects.requireNonNull(deserializeValue(bufferOffset2Class, buffer)),
-                      Objects.requireNonNull(deserializeValue(bufferOffset2Class, buffer))))
-              .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
-      case LIST -> // Handle Lists
-          IntStream.range(0, buffer.getInt())
-              .mapToObj(i -> deserializeValue(bufferOffset2Class, buffer))
-              .toList();
+      case MAP -> {
+        LOGGER.finer(() -> "deserializeValue MAP value position=" + buffer.position());
+        yield IntStream.range(0, buffer.getInt())
+            .mapToObj(i ->
+                Map.entry(
+                    Objects.requireNonNull(deserializeValue(bufferOffset2Class, buffer)),
+                    Objects.requireNonNull(deserializeValue(bufferOffset2Class, buffer))))
+            .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+
+      }
+      case LIST -> {
+        LOGGER.finer(() -> "deserializeValue LIST value position=" + buffer.position());
+        yield IntStream.range(0, buffer.getInt())
+            .mapToObj(i -> deserializeValue(bufferOffset2Class, buffer))
+            .toList();
+      }
       case ENUM -> { // Handle enums
         try {
+          LOGGER.finer(() -> "deserializeValue ENUM class position=" + buffer.position());
           // Read the enum class with deduplication support
           Class<?> enumClass = resolveClass(buffer, bufferOffset2Class);
 
@@ -298,7 +309,7 @@ class Companion {
             LOGGER.severe(() -> msg);
             throw new IllegalArgumentException(msg);
           }
-
+          LOGGER.finer(() -> "deserializeValue ENUM value position=" + buffer.position());
           // Read the enum constant name
           int enumNameLength = buffer.getInt();
           byte[] enumNameBytes = new byte[enumNameLength];
@@ -323,13 +334,13 @@ class Companion {
   /// @return The loaded class
   @Deprecated
   static Class<?> resolveClass(Work buffer,
-                                      Map<Integer, Class<?>> bufferOffset2Class)
+                               Map<Integer, Class<?>> bufferOffset2Class)
       throws ClassNotFoundException {
     LOGGER.finer(() -> "resolveClass: buffer.position=" + buffer.position());
-    
+
     // Read the class name length or reference
     int componentTypeLength = buffer.getInt();
-    LOGGER.finer(() -> "readInt componentTypeLength=" + componentTypeLength + 
+    LOGGER.finer(() -> "readInt componentTypeLength=" + componentTypeLength +
         " at position " + (buffer.position() - 4));
 
     if (componentTypeLength > Short.MAX_VALUE) {
@@ -344,19 +355,19 @@ class Companion {
       // This is a reference to a previously seen class
       int offset = ~componentTypeLength; // Decode the reference using bitwise complement
       LOGGER.finer(() -> "Resolving class reference: offset=" + offset);
-      
+
       Class<?> referencedClass = bufferOffset2Class.get(offset);
       if (referencedClass == null) {
         final var msg = "Invalid class reference offset: " + offset;
         LOGGER.severe(() -> msg);
         throw new IllegalArgumentException(msg);
       }
-      LOGGER.finer(() -> "Resolved class reference: offset=" + offset + 
+      LOGGER.finer(() -> "Resolved class reference: offset=" + offset +
           " clazz=" + referencedClass);
       return referencedClass;
     } else {
       LOGGER.finer(() -> "Positive componentTypeLength, reading new class name: length=" + componentTypeLength);
-      
+
       // This is a new class name
       int currentPosition = buffer.position() - 2; // Position before reading the length
       LOGGER.finer(() -> "Current position before class name: " + currentPosition);
@@ -372,9 +383,9 @@ class Companion {
       byte[] classNameBytes = new byte[componentTypeLength];
       buffer.get(classNameBytes);
       String className = new String(classNameBytes, UTF_8);
-      
+
       LOGGER.finer(() -> "Read class name: " + className);
-      
+
       // Validate class name - add basic validation that allows array type names like `[I`, `[[I`, `[L`java.lang.String;` etc.
       if (!className.matches("[\\[\\]a-zA-Z0-9_.$;]+")) {
         final var msg = "Invalid class name format: " + className;
@@ -388,7 +399,7 @@ class Companion {
 
       // Store in our map for future references
       bufferOffset2Class.put(currentPosition, loadedClass);
-      LOGGER.finer(() -> "Stored class in bufferOffset2Class: " + loadedClass + 
+      LOGGER.finer(() -> "Stored class in bufferOffset2Class: " + loadedClass +
           " at position " + currentPosition);
 
       return loadedClass;
@@ -552,6 +563,7 @@ class Companion {
       void serializeWithMap(Map<Class<?>, Integer> classToOffset, Work buffer, R object) {
         final var components = components(object);
         // Write the number of components as an unsigned byte (max 255)
+        LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
         buffer.putInt(components.length);
         Arrays.stream(components).forEach(c -> Companion.write(classToOffset, buffer, c));
       }
@@ -559,6 +571,7 @@ class Companion {
       @Override
       R deserializeWithMap(Work buffer, Map<Integer, Class<?>> bufferOffset2Class) {
         // Read the number of components as an unsigned byte
+        LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
         final int length = buffer.getInt();
         Compatibility.validate(compatibility, recordClassName, componentCount, length);
         // This may unload from the stream things that we will ignore
