@@ -369,7 +369,7 @@ class Companion {
       LOGGER.finer(() -> "Positive componentTypeLength, reading new class name: length=" + componentTypeLength);
 
       // This is a new class name
-      int currentPosition = buffer.position() - 2; // Position before reading the length
+      int currentPosition = buffer.position() - 4; // Position before reading the length
       LOGGER.finer(() -> "Current position before class name: " + currentPosition);
 
       if (buffer.remaining() < componentTypeLength) {
