@@ -25,10 +25,13 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
     return size;
   }
 
-  public Work putShort(short length) {
-    add(ZigZagEncoding.sizeOf(length));
-    buffer.ifPresent(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, length));
-    return this;
+  public void putShort(short value) {
+    add(ZigZagEncoding.sizeOf(value));
+    buffer.ifPresent(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, value));
+  }
+
+  public short getShort() {
+    return buffer.map(byteBuffer -> (short) ZigZagEncoding.getInt(byteBuffer)).orElse((short) 0);
   }
 
   public Work put(byte marker) {
@@ -37,56 +40,50 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
     return this;
   }
 
-  public Work putInt(int length) {
+  public void putInt(int value) {
+//    add(ZigZagEncoding.sizeOf(value));
+//    buffer.ifPresent(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, value));
     add(Integer.BYTES);
-    buffer.ifPresent(byteBuffer -> byteBuffer.putInt(length));
-    return this;
+    buffer.ifPresent(byteBuffer -> byteBuffer.putInt(value));
   }
 
-  public Work put(byte[] c) {
+  public int getInt() {
+//    return buffer.map(ZigZagEncoding::getInt).orElse(0);
+    return buffer.map(ByteBuffer::getInt).orElse(0);
+  }
+
+  public void put(byte[] c) {
     add(c.length);
     buffer.ifPresent(byteBuffer -> byteBuffer.put(c));
-    return this;
   }
 
-  public Work putLong(Long l) {
+  public void putLong(Long l) {
     add(Long.BYTES);
     buffer.ifPresent(byteBuffer -> byteBuffer.putLong(l));
-    return this;
   }
 
-  public Work putDouble(Double d) {
+  public void putDouble(Double d) {
     add(Double.BYTES);
     buffer.ifPresent(byteBuffer -> byteBuffer.putDouble(d));
-    return this;
   }
 
-  public Work putFloat(Float f) {
+  public void putFloat(Float f) {
     add(Float.BYTES);
     buffer.ifPresent(byteBuffer -> byteBuffer.putFloat(f));
-    return this;
   }
 
-  public Work putChar(Character ch) {
+  public void putChar(Character ch) {
     add(Character.BYTES);
     buffer.ifPresent(byteBuffer -> byteBuffer.putChar(ch));
-    return this;
   }
 
   public int position() {
     return buffer.map(ByteBuffer::position).orElse(0);
   }
 
-  public short getShort() {
-    return buffer.map(buffer1 -> (short) ZigZagEncoding.getInt(buffer1)).orElse((short) 0);
-  }
 
   public byte get() {
     return buffer.map(ByteBuffer::get).orElse((byte) 0);
-  }
-
-  public int getInt() {
-    return buffer.map(ByteBuffer::getInt).orElse(0);
   }
 
   public Object getLong() {
