@@ -29,11 +29,12 @@ class Companion {
   }
 
   static void write(Map<Class<?>, Integer> classToOffset, Work buffer, Object c) {
-    LOGGER.finer(() -> "write Writing " + c.getClass().getSimpleName() + " position=" + buffer.position());
     if (c == null) {
+      LOGGER.finer(() -> "write Writing null position=" + buffer.position());
       buffer.put(NULL.marker());
       return;
     }
+    LOGGER.finer(() -> "write Writing " + c.getClass().getSimpleName() + " position=" + buffer.position());
 
     if (c.getClass().isArray()) {
       buffer.put(ARRAY.marker());
