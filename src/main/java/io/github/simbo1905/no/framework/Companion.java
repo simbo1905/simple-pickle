@@ -145,6 +145,7 @@ class Companion {
   /// @param buffer The buffer to write to
   /// @param clazz The class to write
   /// @param classToOffset Map tracking class to buffer position offset
+  /// @param classNameShorted The short name of the class after taking all the record types and chopping off the common initial substring.
   static void writeDeduplicatedClassName(Work buffer, Class<?> clazz,
                                          Map<Class<?>, Integer> classToOffset, String classNameShorted) {
     // Check if we've seen this class before
@@ -397,107 +398,6 @@ class Companion {
       case "double" -> DOUBLE._class();
       default -> Class.forName(name);
     };
-  }
-
-  static int staticSizeOf(Object c, Set<Class<?>> classes) {
-    if (c == null) {
-      return 1;
-    }
-    int plainSize = switch (c) {
-      case Integer ignored -> INTEGER.getSizeInBytes();
-      case Long ignored -> LONG.getSizeInBytes();
-      case Short ignored -> SHORT.getSizeInBytes();
-      case Byte ignored -> BYTE.getSizeInBytes();
-      case Double ignored -> DOUBLE.getSizeInBytes();
-      case Float ignored -> FLOAT.getSizeInBytes();
-      case Character ignored -> CHARACTER.getSizeInBytes();
-      case Boolean ignored -> BOOLEAN.getSizeInBytes();
-      default -> 0;
-    };
-    int size = 1; // Type marker byte
-    if (c.getClass().isArray()) {
-      final int[] arrayHeaderSize = {4 + 4}; // 4 bytes for length + 4 bytes for type name length - use array for mutability
-
-      if (!classes.contains(c.getClass())) {
-        // Component type name size
-        String componentTypeName = c.getClass().getComponentType().getName();
-        byte[] componentTypeBytes = componentTypeName.getBytes(UTF_8);
-        arrayHeaderSize[0] += componentTypeBytes.length;
-        classes.add(c.getClass());
-      }
-
-      // Calculate size of all array elements
-      int length = Array.getLength(c);
-
-      final int[] elementsSize = {0};
-
-      for (int i = 0; i < length; i++) {
-        final Object element = Array.get(c, i);
-        final int elementSize = staticSizeOf(element, classes);
-        elementsSize[0] += elementSize;
-      }
-
-      size += arrayHeaderSize[0] + elementsSize[0];
-    } else if (c instanceof String) {
-      size += ((String) c).getBytes(UTF_8).length + 2; // 2 bytes for the length of the string
-    } else if (c instanceof Optional<?> opt) {
-      // 1 byte for the presence marker when empty
-      // 1 byte for marker + size of contained value
-      size += opt.map(o -> 1 + staticSizeOf(o, classes)).orElse(1);
-    } else if (c instanceof Record record) {
-      size += 4; // Length int (4 bytes)
-
-      if (!classes.contains(record.getClass())) {
-        // Add size for class name
-        String className = record.getClass().getName();
-        byte[] classNameBytes = className.getBytes(UTF_8);
-        size += classNameBytes.length; // Class name bytes
-        classes.add(record.getClass()); // Add class to seen classes
-      }
-      // Get the appropriate pickler for this record type
-      @SuppressWarnings("unchecked")
-      Pickler<Record> nestedPickler = (Pickler<Record>) Pickler.forRecord(record.getClass());
-      size += nestedPickler.sizeOf(record); // Size of the record itself
-    } else if (c instanceof Map<?, ?> map) {
-      // 4 bytes for the number of entries
-      size += 4;
-
-      // Calculate size for each key-value pair
-      for (Map.Entry<?, ?> entry : map.entrySet()) {
-        // Add size of key
-        size += staticSizeOf(entry.getKey(), classes);
-
-        // Add size of value
-        size += staticSizeOf(entry.getValue(), classes);
-      }
-    } else if (c instanceof List<?> list) {
-      // 4 bytes for the number of entries
-      size += 4;
-
-      // Calculate size for each key-value pair
-      for (var entry : list) {
-        // Add size of key
-        size += staticSizeOf(entry, classes);
-      }
-    } else if (c instanceof Enum<?> enumValue) {
-      // Add size for enum class name
-      if (!classes.contains(c.getClass())) {
-        String enumClassName = c.getClass().getName();
-        byte[] enumClassNameBytes = enumClassName.getBytes(UTF_8);
-        int classNameSize = 4 + enumClassNameBytes.length; // 4 bytes for length + name bytes
-        size += classNameSize;
-        classes.add(c.getClass());
-      }
-
-      // Add size for enum constant name
-      String enumConstantName = enumValue.name();
-      byte[] enumNameBytes = enumConstantName.getBytes(UTF_8);
-      int constantNameSize = 4 + enumNameBytes.length; // 4 bytes for length + name bytes
-      size += constantNameSize;
-    } else {
-      size += plainSize;
-    }
-    return size;
   }
 
   static <R extends Record> Pickler<R> manufactureRecordPickler(Class<R> recordClass) {
@@ -784,7 +684,10 @@ class Companion {
           return;
         }
 
+        // Cast the sealed interface to the concrete type.
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
+
+        // write the type identifier
         writeDeduplicatedClassName(work, concreteType, new HashMap<>(), shortNames.get(concreteType));
 
         // Delegate to subtype pickler
@@ -807,6 +710,7 @@ class Companion {
         Class<? extends S> concreteType = resolveCachedClassByPickedName(buffer);
         // Get subtype pickler
         RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(concreteType);
+        //noinspection unchecked
         return (S) pickler.deserializeWithMap(buffer, new HashMap<>());
       }
 
@@ -815,20 +719,17 @@ class Companion {
         if (object == null) {
           return 1; // Size of NULL marker
         }
-
-        Class<?> clazz = object.getClass();
-        final var shortName = shortNames.get(clazz);
-        final int classNameLength = shortName.getBytes(UTF_8).length;
-
-        // Size of length prefix (2 bytes) plus class name bytes
-        int classNameSize = 2 + classNameLength;
-
-        // Get the concrete pickler for this object type
-        @SuppressWarnings("unchecked")
-        Pickler<S> pickler = (Pickler<S>) subPicklers.get(object.getClass());
-
-        // Total size is class name size + object size
-        return classNameSize + pickler.sizeOf(object);
+        // Use a dry run buffer that counts up what would be written
+        Work work = Work.of();
+        // Cast the sealed interface to the concrete type.
+        @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
+        // write the type identifier
+        writeDeduplicatedClassName(work, concreteType, new HashMap<>(), shortNames.get(concreteType));
+        // Delegate to subtype pickler
+        Pickler<? extends S> pickler = subPicklers.get(concreteType);
+        //noinspection unchecked
+        ((RecordPickler<Record>) pickler).serializeWithMap(new HashMap<>(), work, (Record) object);
+        return work.size();
       }
 
       @Override

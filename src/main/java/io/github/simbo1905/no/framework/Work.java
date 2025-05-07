@@ -12,6 +12,10 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
     return new Work(new int[]{0}, ofNullable(buffer));
   }
 
+  static Work of() {
+    return new Work(new int[]{0}, Optional.empty());
+  }
+
   public int size() {
     return box[0];
   }
@@ -21,8 +25,10 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
     return size;
   }
 
-  public int putShort(short length) {
-    return add(buffer.map(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, length)).orElse(ZigZagEncoding.sizeOf(length)));
+  public Work putShort(short length) {
+    add(Short.BYTES);
+    buffer.ifPresent(byteBuffer -> byteBuffer.putShort(length));
+    return this;
   }
 
   public Work put(byte marker) {
@@ -32,12 +38,8 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public Work putInt(int length) {
-    int count = buffer.map(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, length)).orElse(0);
-    if (count > 0) {
-      add(count);
-    } else {
-      add(ZigZagEncoding.sizeOf(length));
-    }
+    add(Integer.BYTES);
+    buffer.ifPresent(byteBuffer -> byteBuffer.putInt(length));
     return this;
   }
 
@@ -48,12 +50,8 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public Work putLong(Long l) {
-    int count = buffer.map(byteBuffer -> ZigZagEncoding.putLong(byteBuffer, l)).orElse(0);
-    if (count > 0) {
-      add(count);
-    } else {
-      add(ZigZagEncoding.sizeOf(l));
-    }
+    add(Long.BYTES);
+    buffer.ifPresent(byteBuffer -> byteBuffer.putLong(l));
     return this;
   }
 
@@ -80,7 +78,7 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public short getShort() {
-    return buffer.map(ZigZagEncoding::getInt).orElse(0).shortValue();
+    return buffer.map(ByteBuffer::getShort).orElse((short) 0);
   }
 
   public byte get() {
@@ -88,11 +86,11 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public int getInt() {
-    return buffer.map(ZigZagEncoding::getInt).orElse(0);
+    return buffer.map(ByteBuffer::getInt).orElse(0);
   }
 
   public Object getLong() {
-    return buffer.map(ZigZagEncoding::getLong).orElse(0L);
+    return buffer.map(ByteBuffer::getLong).orElse(0L);
   }
 
   public Object getDouble() {
