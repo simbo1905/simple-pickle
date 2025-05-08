@@ -2,7 +2,6 @@ package io.github.simbo1905.no.framework;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
@@ -439,11 +438,21 @@ class Companion {
   static <R extends Record> Pickler<R> manufactureRecordPickler(Class<R> recordClass) {
     final Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
     final MethodHandle[] componentAccessors;
-    final int canonicalParamCount;
+    final RecordComponent[] components = recordClass.getRecordComponents();
+    final int componentCount = components.length;
     final MethodHandles.Lookup lookup = MethodHandles.lookup();
-    MethodHandle canonicalConstructorHandle;
+    final MethodHandle canonicalConstructorHandle;
     try {
-      RecordComponent[] components = recordClass.getRecordComponents();
+      // Get parameter types for the canonical constructor
+      Class<?>[] parameterTypes = Arrays.stream(components)
+          .map(RecordComponent::getType)
+          .toArray(Class<?>[]::new);
+
+      // Get the canonical constructor
+      Constructor<?> constructorHandle = recordClass.getDeclaredConstructor(parameterTypes);
+      canonicalConstructorHandle = lookup.unreflectConstructor(constructorHandle);
+
+      // and the number of components
       Optional
           .ofNullable(components)
           .orElseThrow(() ->
@@ -470,26 +479,12 @@ class Companion {
       throw new IllegalArgumentException(msg, inner);
     }
 
-    final int componentCount;
-
     // Get the canonical constructor and any fallback constructors for schema evolution
     try {
-      final RecordComponent[] components = recordClass.getRecordComponents();
-      componentCount = components.length;
-      // Extract component types for the canonical constructor
-      final Class<?>[] canonicalParamTypes = Arrays.stream(components)
-          .map(RecordComponent::getType)
-          .toArray(Class<?>[]::new);
-      canonicalParamCount = canonicalParamTypes.length;
-
       // Get all public constructors
       final Constructor<?>[] allConstructors = recordClass.getConstructors();
 
-      // Find the canonical constructor and potential fallback constructors
-      canonicalConstructorHandle = null;
-
       for (Constructor<?> constructor : allConstructors) {
-        Class<?>[] currentParamTypes = constructor.getParameterTypes();
         int currentParamCount = constructor.getParameterCount();
         MethodHandle handle;
 
@@ -501,36 +496,18 @@ class Companion {
           continue;
         }
 
-        if (Arrays.equals(currentParamTypes, canonicalParamTypes)) {
-          // Found the canonical constructor
-          canonicalConstructorHandle = handle;
+        // This is a potential fallback constructor for schema evolution
+        if (fallbackConstructorHandles.containsKey(currentParamCount)) {
+          LOGGER.warning("Multiple fallback constructors with " + currentParamCount +
+              " parameters found for " + recordClass.getName() +
+              ". Using the first one encountered.");
+          // We keep the first one we found
         } else {
-          // This is a potential fallback constructor for schema evolution
-          if (fallbackConstructorHandles.containsKey(currentParamCount)) {
-            LOGGER.warning("Multiple fallback constructors with " + currentParamCount +
-                " parameters found for " + recordClass.getName() +
-                ". Using the first one encountered.");
-            // We keep the first one we found
-          } else {
-            fallbackConstructorHandles.put(currentParamCount, handle);
-            LOGGER.fine("Found fallback constructor with " + currentParamCount +
-                " parameters for " + recordClass.getName());
-          }
+          fallbackConstructorHandles.put(currentParamCount, handle);
+          LOGGER.fine("Found fallback constructor with " + currentParamCount +
+              " parameters for " + recordClass.getName());
         }
-      }
 
-      // If we didn't find the canonical constructor, try to find it directly
-      if (canonicalConstructorHandle == null) {
-        try {
-          // Create method type for the canonical constructor
-          MethodType constructorType = MethodType.methodType(void.class, canonicalParamTypes);
-          canonicalConstructorHandle = lookup.findConstructor(recordClass, constructorType);
-        } catch (NoSuchMethodException | IllegalAccessException e) {
-          final var msg = "Failed to access canonical constructor for record '" +
-              recordClass.getName() + "' due to " + e.getClass().getSimpleName();
-          LOGGER.severe(() -> msg);
-          throw new IllegalArgumentException(msg, e);
-        }
       }
     } catch (Exception e) {
       final var msg = "Failed to access constructors for record '" +
@@ -609,7 +586,7 @@ class Companion {
           int numComponents = components.length;
           MethodHandle constructorToUse;
 
-          if (numComponents == canonicalParamCount) {
+          if (numComponents == componentCount) {
             // Number of components matches the canonical constructor - use it directly
             constructorToUse = finalCanonicalConstructorHandle;
           } else {
@@ -725,13 +702,15 @@ class Companion {
         // Cast the sealed interface to the concrete type.
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
 
+        Map<Class<?>, Integer> classToOffset = new HashMap<>();
+
         // write the type identifier
-        writeDeduplicatedClassName(work, concreteType, new HashMap<>(), shortNames.get(concreteType));
+        writeDeduplicatedClassName(work, concreteType, classToOffset, shortNames.get(concreteType));
 
         // Delegate to subtype pickler
         Pickler<? extends S> pickler = subPicklers.get(concreteType);
         //noinspection unchecked
-        ((RecordPickler<Record>) pickler).serializeWithMap(new HashMap<>(), work, (Record) object);
+        ((RecordPickler<Record>) pickler).serializeWithMap(classToOffset, work, (Record) object);
       }
 
       @Override
@@ -761,12 +740,15 @@ class Companion {
         Work work = Work.of();
         // Cast the sealed interface to the concrete type.
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
+
+        Map<Class<?>, Integer> classToOffset = new HashMap<>();
+
         // write the type identifier
-        writeDeduplicatedClassName(work, concreteType, new HashMap<>(), shortNames.get(concreteType));
+        writeDeduplicatedClassName(work, concreteType, classToOffset, shortNames.get(concreteType));
         // Delegate to subtype pickler
         Pickler<? extends S> pickler = subPicklers.get(concreteType);
         //noinspection unchecked
-        ((RecordPickler<Record>) pickler).serializeWithMap(new HashMap<>(), work, (Record) object);
+        ((RecordPickler<Record>) pickler).serializeWithMap(classToOffset, work, (Record) object);
         return work.size();
       }
 
