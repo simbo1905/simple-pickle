@@ -34,7 +34,14 @@ class PicklerTests {
     final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
     final Level level = Level.parse(logLevel);
 
+    // Configure the primary LOGGER instance
     LOGGER.setLevel(level);
+    // Remove all existing handlers to prevent duplicates if this method is called multiple times
+    // or if there are handlers configured by default.
+    for (Handler handler : LOGGER.getHandlers()) {
+      LOGGER.removeHandler(handler);
+    }
+
     ConsoleHandler consoleHandler = new ConsoleHandler();
     consoleHandler.setLevel(level);
 
@@ -49,17 +56,8 @@ class PicklerTests {
 
     LOGGER.addHandler(consoleHandler);
 
-    // Configure SessionKeyManager logger
-    Logger logger = Logger.getLogger(Pickler.class.getName());
-    logger.setLevel(level);
-    ConsoleHandler skmHandler = new ConsoleHandler();
-    skmHandler.setLevel(level);
-    skmHandler.setFormatter(simpleFormatter); // Apply the same formatter
-    logger.addHandler(skmHandler);
-
-    // Optionally disable parent handlers if needed
+    // Ensure parent handlers are not used to prevent duplicate logging from higher-level loggers
     LOGGER.setUseParentHandlers(false);
-    logger.setUseParentHandlers(false);
 
     LOGGER.info("Logging initialized at level: " + level);
   }
@@ -1149,23 +1147,16 @@ class PicklerTests {
 
     // Get a pickler for the record
     Pickler<MixedRecord> pickler = Pickler.forRecord(MixedRecord.class);
-
-    // Calculate size and allocate buffer
-    int size = pickler.sizeOf(original);
-    LOGGER.info("Calculated size for MixedRecord: " + size + " bytes");
-
-    // Add extra space to avoid buffer overflow during debugging
-    LOGGER.info("Allocating buffer with size: " + size + " bytes (added 256 bytes safety margin)");
-    ByteBuffer buffer = ByteBuffer.allocate(size);
-
-    // Serialize
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    LOGGER.info("Starting size calculation: ");
+    int size2 = pickler.sizeOf(original);
     LOGGER.info("Starting serialization");
     pickler.serialize(original, buffer);
-    assertFalse(buffer.hasRemaining());
     int actualSize = buffer.position();
-    LOGGER.info("Serialization complete, actual bytes written: " + actualSize +
-        " (calculated size was: " + size + ", difference: " + (actualSize - size) + ")");
     buffer.flip();
+
+    LOGGER.info("Serialization size: " + actualSize);
+    assertEquals(actualSize, size2);
 
     // Deserialize
     MixedRecord deserialized = pickler.deserialize(buffer);

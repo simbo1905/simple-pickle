@@ -68,7 +68,7 @@ class Companion {
       case Character ch -> buffer.put(typeMarker(c)).putChar(ch);
       case Boolean bool -> buffer.put(typeMarker(c)).put((byte) (bool ? 1 : 0));
       case String str -> {
-        LOGGER.finer(() -> "write String size of 4 and bytes " + str.getBytes(UTF_8).length + " position=" + buffer.position());
+        LOGGER.finer(() -> "write String size as varint and bytes " + str.getBytes(UTF_8).length + " position=" + buffer.position());
         buffer.put(typeMarker(c));
         final var bytes = str.getBytes(UTF_8);
         buffer.putInt(bytes.length); // FIXME MUST USE Using full int instead of byte

@@ -83,7 +83,7 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public int position() {
-    return buffer.map(ByteBuffer::position).orElse(0);
+    return buffer.map(ByteBuffer::position).orElse(box()[0]);
   }
 
 
