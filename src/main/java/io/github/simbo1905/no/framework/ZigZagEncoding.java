@@ -103,7 +103,7 @@ class ZigZagEncoding {
       count++;
       if (value >>> 14 == 0) {
         buffer.put((byte) (value >>> 7));
-
+        count++;
       } else {
         buffer.put((byte) (value >>> 7 | 0x80));
         count++;

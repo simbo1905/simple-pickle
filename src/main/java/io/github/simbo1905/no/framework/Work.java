@@ -3,6 +3,7 @@ package io.github.simbo1905.no.framework;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static java.util.Optional.ofNullable;
 
 /// This is a way to pass down either a dry run of writing things or the actual work
@@ -41,15 +42,19 @@ record Work(int[] box, Optional<ByteBuffer> buffer) {
   }
 
   public void putInt(int value) {
-//    add(ZigZagEncoding.sizeOf(value));
-//    buffer.ifPresent(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, value));
-    add(Integer.BYTES);
-    buffer.ifPresent(byteBuffer -> byteBuffer.putInt(value));
+    buffer.ifPresent(byteBuffer -> {
+      LOGGER.finer("putInt position: " + byteBuffer.position());
+    });
+    final var size = buffer.map(byteBuffer -> ZigZagEncoding.putInt(byteBuffer, value)).orElse(ZigZagEncoding.sizeOf(value));
+    add(size);
   }
 
   public int getInt() {
-//    return buffer.map(ZigZagEncoding::getInt).orElse(0);
-    return buffer.map(ByteBuffer::getInt).orElse(0);
+    buffer.ifPresent(byteBuffer -> {
+      LOGGER.finer("getInt position: " + byteBuffer.position());
+    });
+    return buffer.map(ZigZagEncoding::getInt).orElse(0);
+//    return buffer.map(ByteBuffer::getInt).orElse(0);
   }
 
   public void put(byte[] c) {
