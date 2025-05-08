@@ -341,8 +341,6 @@ class Companion {
 
     // Read the class name length or reference
     int componentTypeLength = buffer.getInt();
-    LOGGER.finer(() -> "readInt componentTypeLength=" + componentTypeLength +
-        " at position " + (buffer.position() - 4));
 
     if (componentTypeLength > Short.MAX_VALUE) {
       final var msg = "The max length of a string in java is 65535 bytes, " +
@@ -353,6 +351,7 @@ class Companion {
 
     if (componentTypeLength < 0) {
       LOGGER.finer(() -> "Negative componentTypeLength, treating as reference");
+
       // This is a reference to a previously seen class
       int offset = ~componentTypeLength; // Decode the reference using bitwise complement
       LOGGER.finer(() -> "Resolving class reference: offset=" + offset);
@@ -361,6 +360,10 @@ class Companion {
       if (referencedClass == null) {
         final var msg = "Invalid class reference offset: " + offset;
         LOGGER.severe(() -> msg);
+        // Add diagnostic logging to understand the context
+        LOGGER.severe(() -> "Invalid class reference offset: " + offset +
+            ", buffer position: " + buffer.position() +
+            ", buffer remaining: " + buffer.remaining() + ", existing offsets: " + bufferOffset2Class.keySet());
         throw new IllegalArgumentException(msg);
       }
       LOGGER.finer(() -> "Resolved class reference: offset=" + offset +
@@ -370,7 +373,7 @@ class Companion {
       LOGGER.finer(() -> "Positive componentTypeLength, reading new class name: length=" + componentTypeLength);
 
       // This is a new class name
-      int currentPosition = buffer.position() - 4; // Position before reading the length
+      int currentPosition = buffer.position() - ZigZagEncoding.sizeOf(componentTypeLength); // Position before reading the length
       LOGGER.finer(() -> "Current position before class name: " + currentPosition);
 
       if (buffer.remaining() < componentTypeLength) {
