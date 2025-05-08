@@ -11,9 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.logging.ConsoleHandler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.logging.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
@@ -26,24 +24,33 @@ import static org.junit.jupiter.api.Assertions.*;
 public class MorePicklerTests {
   @BeforeAll
   static void setupLogging() {
-    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "WARNING");
+    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
     final Level level = Level.parse(logLevel);
 
+    // Configure the primary LOGGER instance
     LOGGER.setLevel(level);
+    // Remove all existing handlers to prevent duplicates if this method is called multiple times
+    // or if there are handlers configured by default.
+    for (Handler handler : LOGGER.getHandlers()) {
+      LOGGER.removeHandler(handler);
+    }
+
     ConsoleHandler consoleHandler = new ConsoleHandler();
     consoleHandler.setLevel(level);
+
+    // Create and set a custom formatter
+    Formatter simpleFormatter = new Formatter() {
+      @Override
+      public String format(LogRecord record) {
+        return record.getMessage() + "\n";
+      }
+    };
+    consoleHandler.setFormatter(simpleFormatter);
+
     LOGGER.addHandler(consoleHandler);
 
-    // Configure SessionKeyManager logger
-    Logger logger = Logger.getLogger(Pickler.class.getName());
-    logger.setLevel(level);
-    ConsoleHandler skmHandler = new ConsoleHandler();
-    skmHandler.setLevel(level);
-    logger.addHandler(skmHandler);
-
-    // Optionally disable parent handlers if needed
+    // Ensure parent handlers are not used to prevent duplicate logging from higher-level loggers
     LOGGER.setUseParentHandlers(false);
-    logger.setUseParentHandlers(false);
 
     LOGGER.info("Logging initialized at level: " + level);
   }
@@ -134,7 +141,19 @@ public class MorePicklerTests {
   @Test
   void treeStructurePickling() {
     // Get the standard tree nodes
-    final var originalNodes = getTreeNodes();
+    final var leaf1 = new LeafNode(42);
+    final var leaf2 = new LeafNode(99);
+    final var leaf3 = new LeafNode(123);
+
+    // Internal nodes
+    final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
+    final var internal2 = new InternalNode("Branch2", leaf3, null);
+
+    // Root node
+    final var root = new InternalNode("root", internal1, internal2);
+
+    // Create an array of all tree nodes (excluding null values)
+    final var originalNodes = new TreeNode[]{root, internal1, internal2, leaf1, leaf2, leaf3};
 
     // Get a pickler for the TreeNode sealed interface
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
@@ -321,7 +340,19 @@ public class MorePicklerTests {
   @Test
   void treeGraphSerialization() {
     // Get the standard tree nodes
-    final var originalNodes = getTreeNodes();
+    final var leaf1 = new LeafNode(42);
+    final var leaf2 = new LeafNode(99);
+    final var leaf3 = new LeafNode(123);
+
+    // Internal nodes
+    final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
+    final var internal2 = new InternalNode("Branch2", leaf3, null);
+
+    // Root node
+    final var root = new InternalNode("root", internal1, internal2);
+
+    // Create an array of all tree nodes (excluding null values)
+    final var originalNodes = new TreeNode[]{root, internal1, internal2, leaf1, leaf2, leaf3};
     final var originalRoot = originalNodes[0];
     
     // Get a pickler for the TreeNode sealed interface
@@ -360,22 +391,6 @@ public class MorePicklerTests {
     
     // Validate the entire tree structure was properly deserialized
     assertTrue(TreeNode.areTreesEqual(originalRoot, deserializedRoot), "Tree structure validation failed");
-  }
-
-  static TreeNode[] getTreeNodes() {
-    final var leaf1 = new LeafNode(42);
-    final var leaf2 = new LeafNode(99);
-    final var leaf3 = new LeafNode(123);
-
-    // Internal nodes
-    final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
-    final var internal2 = new InternalNode("Branch2", leaf3, null);
-
-    // Root node
-    final var root = new InternalNode("root", internal1, internal2);
-
-    // Create an array of all tree nodes (excluding null values)
-    return new TreeNode[]{root, internal1, internal2, leaf1, leaf2, leaf3};
   }
 
   // Record for testing Unicode content
