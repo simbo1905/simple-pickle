@@ -17,13 +17,13 @@ public class WriteOperations {
         }
         
         int count = 0;
-        while ((value & 0xFFFFFFFFFFFFFF80L) != 0) {
+        // Use do-while to always write at least one byte
+        do {
             buffer.put((byte) (value & 0x7F));
             value >>= 7;
             count++;
-        }
-        buffer.put((byte) (value & 0x7F));
-        count++;
+        } while (value != 0 || (count == 1 && (value & 0xFFFFFFFFFFFFFF80L) != 0)));
+        
         return count;
     }
 
@@ -40,14 +40,14 @@ public class WriteOperations {
         
         int count = 0;
         // Apply ZigZag encoding
-        value = (value << 1) ^ (value >> 63);
-        while ((value & 0xFFFFFFFFFFFFFF80L) != 0) {
-            buffer.put((byte) (value & 0x7F));
-            value >>= 7;
+        long encodedValue = (value << 1) ^ (value >> 63);
+        
+        do {
+            buffer.put((byte) (encodedValue & 0x7F));
+            encodedValue >>= 7;
             count++;
-        }
-        buffer.put((byte) (value & 0x7F));
-        count++;
+        } while (encodedValue != 0 || (count == 1 && (encodedValue & 0x7F) >= 0x80)));
+        
         return count;
     }
 
