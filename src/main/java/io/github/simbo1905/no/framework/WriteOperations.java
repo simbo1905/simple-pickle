@@ -4,54 +4,92 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 public class WriteOperations {
-    
-    /**
-     * Writes a signed long value to the given buffer in LEB128 format
-     * @param buffer The buffer to write to
-     * @param value The long value to write
-     * @return The number of bytes written
-     */
-    static int putLong(ByteBuffer buffer, long value) {
-        if (buffer == null) {
-            throw new IllegalArgumentException("Buffer cannot be null");
-        }
-        
-        int count = 0;
-        long encodedValue = value;
-        
-        do {
-            buffer.put((byte) (encodedValue & 0x7F));
-            encodedValue >>= 7;
-            count++;
-        } while (encodedValue != 0 || ((encodedValue & 0x7F) >= 0x80));
-        
-        return count;
-    }
+  public static long readVarInt(ByteBuffer buf) {
+    final var marker = buf.get();
+    return (marker == WriteOperations.Constants.LONG_LEB128.typeMarker)
+        ? decodeULEB128(buf)
+        : decodeSLEB128(buf);
+  }
 
-    /**
-     * Writes a long value to the given buffer in LEB128 ZigZag encoded format
-     * @param buffer The buffer to write to
-     * @param value The long value to write
-     * @return The number of bytes written
-     */
-    static int putLongZigZag(ByteBuffer buffer, long value) {
-        if (buffer == null) {
-            throw new IllegalArgumentException("Buffer cannot be null");
-        }
-        
-        int count = 0;
-        long encodedValue = (value << 1) ^ (value >> 63);
-        
-        do {
-            buffer.put((byte) (encodedValue & 0x7F));
-            encodedValue >>= 7;
-            count++;
-        } while (encodedValue != 0 || ((encodedValue & 0x7F) >= 0x80));
-        
-        return count;
-    }
+  enum Constants {
+    LONG_LEB128((byte) 0x01),
+    LONG_SLEB128((byte) 0x02);
 
-    static void write(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer, Object c) {
+    final byte typeMarker;
+
+    Constants(byte marker) {
+      this.typeMarker = marker;
+    }
+  }
+
+  static int writeVarInt(ByteBuffer buffer, long value) {
+    if (value >= 0) {
+      buffer.put(Constants.LONG_LEB128.typeMarker);
+      return 1 + encodeULEB128(buffer, value);
+    } else {
+      buffer.put(Constants.LONG_SLEB128.typeMarker);
+      return 1 + encodeSLEB128(buffer, value);
+    }
+  }
+
+  static int encodeULEB128(ByteBuffer buffer, long value) {
+    int written = 0;
+    do {
+      byte b = (byte) (value & 0x7F);
+      value >>>= 7;
+      if (value != 0) b |= 0x80;
+      buffer.put(b);
+      written++;
+    } while (value != 0);
+    return written;
+  }
+
+  static int encodeSLEB128(ByteBuffer buffer, long value) {
+    int written = 0;
+    boolean more;
+    do {
+      byte b = (byte) (value & 0x7F);
+      value >>= 7;
+      more = !((value == 0 && (b & 0x40) == 0) ||
+          (value == -1 && (b & 0x40) != 0));
+      if (more) b |= 0x80;
+      buffer.put(b);
+      written++;
+    } while (more);
+    return written;
+  }
+
+
+  // Decoder implementations for test validation
+  static long decodeULEB128(ByteBuffer buffer) {
+    long result = 0;
+    int shift = 0;
+    byte b;
+    do {
+      b = buffer.get();
+      result |= (long) (b & 0x7F) << shift;
+      shift += 7;
+    } while ((b & 0x80) != 0);
+    return result;
+  }
+
+  static long decodeSLEB128(ByteBuffer buffer) {
+    long result = 0;
+    int shift = 0;
+    byte b;
+    do {
+      b = buffer.get();
+      result |= (long) (b & 0x7F) << shift;
+      shift += 7;
+    } while ((b & 0x80) != 0);
+
+    if ((b & 0x40) != 0 && shift < 64) {
+      result |= -(1L << shift);
+    }
+    return result;
+  }
+
+  static void write(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer, Object c) {
         throw new AssertionError("not implemented");
     }
 

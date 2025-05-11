@@ -5,43 +5,66 @@ import org.junit.jupiter.api.Test;
 import java.nio.ByteBuffer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class WriteOperationsTests {
+public class WriteOperationsTests {
+  @Test
+  void testUnsignedEncoding() {
+    ByteBuffer buf = ByteBuffer.allocate(10);
+    int written = WriteOperations.writeVarInt(buf, 624485L);
+    buf.flip();
 
-    @Test
-    void testPutLong() {
-        // Test positive number
-        ByteBuffer buffer = ByteBuffer.allocate(16);
-        long value = 0x7FFFFFFFFFFFFFFFL; // Maximum positive long
-        int expectedBytes = 8; // Long in LEB128 will take 8 bytes for max value
-        
-        int bytesWritten = WriteOperations.putLong(buffer, value);
-        assertEquals(expectedBytes, bytesWritten, "Bytes written for max positive long");
-        
-        // Test negative number
-        value = -1L;
-        bytesWritten = WriteOperations.putLong(buffer, value);
-        assertEquals(1, bytesWritten, "Bytes written for -1");
+    assertEquals(0x01, buf.get()); // Marker check
+    byte[] expected = {(byte) 0xE5, (byte) 0x8E, 0x26};
+    for (int i = 0; i < 3; i++) {
+      assertEquals(expected[i], buf.get());
     }
+    assertEquals(4, written); // 1 marker + 3 bytes
+  }
 
-    @Test
-    void testPutLongZigZag() {
-        // Test positive number with zigzag encoding
-        ByteBuffer buffer = ByteBuffer.allocate(16);
-        long value = 0x7FFFFFFFFFFFFFFFL; // Maximum positive long
-        
-        int bytesWritten = WriteOperations.putLongZigZag(buffer, value);
-        assertEquals(8, bytesWritten, "Bytes written for max positive long with zigzag");
-        
-        // Test negative number with zigzag encoding
-        value = -1L;
-        bytesWritten = WriteOperations.putLongZigZag(buffer, value);
-        assertEquals(1, bytesWritten, "Bytes written for -1 with zigzag");
-    }
+  @Test
+  void testSignedEncoding() {
+    ByteBuffer buf = ByteBuffer.allocate(10);
+    int written = WriteOperations.writeVarInt(buf, -12345L);
+    buf.flip();
 
-    @Test
-    void testInvalidBuffer() {
-      assertThrows(IllegalArgumentException.class, () -> WriteOperations.putLong(null, 0L), "Null buffer should throw IllegalArgumentException");
+    assertEquals(0x02, buf.get()); // Marker check
+    byte[] expected = {(byte) 0xC7, (byte) 0x9F, 0x7F};
+    for (int i = 0; i < 3; i++) {
+      assertEquals(expected[i], buf.get());
     }
+    assertEquals(4, written); // 1 marker + 3 bytes
+  }
+
+  @Test
+  void testZeroValue() {
+    ByteBuffer buf = ByteBuffer.allocate(2);
+    int written = WriteOperations.writeVarInt(buf, 0L);
+    buf.flip();
+
+    assertEquals(0x01, buf.get());
+    assertEquals(0x00, buf.get());
+    assertEquals(2, written);
+  }
+
+  @Test
+  void testMax() {
+    testRoundTrip(Long.MAX_VALUE);
+  }
+
+  @Test
+  void testMin() {
+    testRoundTrip(Long.MIN_VALUE);
+  }
+
+  private void testRoundTrip(long value) {
+    ByteBuffer buf = ByteBuffer.allocate(12);
+    WriteOperations.writeVarInt(buf, value);
+    buf.flip();
+
+    byte marker = buf.get();
+    long decoded = WriteOperations.readVarInt(buf);
+
+    assertEquals(value, decoded);
+  }
+
 }
