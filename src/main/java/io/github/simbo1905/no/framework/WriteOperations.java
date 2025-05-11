@@ -37,11 +37,28 @@ public class WriteOperations {
     do {
       byte b = (byte) (value & 0x7F);
       value >>>= 7;
-      if (value != 0) b |= 0x80;
+      if (value != 0) {
+        b |= 0x80;
+      }
       buffer.put(b);
       written++;
     } while (value != 0);
     return written;
+  }
+
+  static long decodeULEB128(ByteBuffer buffer) {
+    long result = 0;
+    int shift = 0;
+    byte b;
+    do {
+      if (shift >= 64) {
+        throw new RuntimeException("ULEB128 value exceeds maximum size");
+      }
+      b = buffer.get();
+      result |= ((long) (b & 0x7F)) << shift;
+      shift += 7;
+    } while ((b & 0x80) != 0);
+    return result;
   }
 
   static int encodeSLEB128(ByteBuffer buffer, long value) {
@@ -49,28 +66,17 @@ public class WriteOperations {
     boolean more;
     do {
       byte b = (byte) (value & 0x7F);
+      // Check if sign bit of byte matches sign bit of value
       value >>= 7;
       more = !((value == 0 && (b & 0x40) == 0) ||
           (value == -1 && (b & 0x40) != 0));
-      if (more) b |= 0x80;
+      if (more) {
+        b |= 0x80;
+      }
       buffer.put(b);
       written++;
     } while (more);
     return written;
-  }
-
-
-  // Decoder implementations for test validation
-  static long decodeULEB128(ByteBuffer buffer) {
-    long result = 0;
-    int shift = 0;
-    byte b;
-    do {
-      b = buffer.get();
-      result |= (long) (b & 0x7F) << shift;
-      shift += 7;
-    } while ((b & 0x80) != 0);
-    return result;
   }
 
   static long decodeSLEB128(ByteBuffer buffer) {
@@ -78,16 +84,22 @@ public class WriteOperations {
     int shift = 0;
     byte b;
     do {
+      if (shift >= 64) {
+        throw new RuntimeException("SLEB128 value exceeds maximum size");
+      }
       b = buffer.get();
-      result |= (long) (b & 0x7F) << shift;
+      result |= ((long) (b & 0x7F)) << shift;
       shift += 7;
     } while ((b & 0x80) != 0);
 
-    if ((b & 0x40) != 0 && shift < 64) {
-      result |= -(1L << shift);
+    // Sign extend if necessary
+    if ((shift < 64) && ((b & 0x40) != 0)) {
+      // Fill with 1s
+      result |= (~0L) << shift;
     }
     return result;
   }
+
 
   static void write(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer, Object c) {
         throw new AssertionError("not implemented");
