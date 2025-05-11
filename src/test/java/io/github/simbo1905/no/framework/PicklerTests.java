@@ -9,20 +9,14 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.logging.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
-import static io.github.simbo1905.no.framework.Companion.resolveClass;
-import static io.github.simbo1905.no.framework.Companion.writeDeduplicatedClassName;
-import static io.github.simbo1905.no.framework.Constants.ARRAY;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Test class for the Pickler functionality.
@@ -668,76 +662,6 @@ class PicklerTests {
     for (int i = 0; i < people.length; i++) {
       assertEquals(people[i], deserialized[i]);
     }
-
-    // Verify buffer is fully consumed
-    assertEquals(buffer.limit(), buffer.position());
-  }
-
-  @Test
-  void testMixedRecordArray() {
-    // Create an array of different shapes using the sealed interface
-    Shape[] shapes = new Shape[]{
-        new Circle(5.0),
-        new Rectangle(4.0, 6.0),
-        new Triangle(3.0, 4.0, 5.0)
-    };
-
-    // Calculate size for the array
-    int size = 0;
-    Pickler<Shape> pickler = Pickler.forSealedInterface(Shape.class);
-
-    // 1 byte for ARRAY marker + 4 bytes for component type name length + component type name bytes
-    size += 1 + 4 + Shape.class.getName().getBytes(UTF_8).length;
-
-    // 4 bytes for array length
-    size += 4;
-
-    // Size of each element
-    for (Shape shape : shapes) {
-      size += pickler.sizeOf(shape);
-    }
-
-    ByteBuffer buffer = ByteBuffer.allocate(size);
-
-    // Write array marker
-    buffer.put(ARRAY.marker());
-
-    // Write component type
-    Map<Class<?>, Integer> class2BufferOffset = new HashMap<>();
-    writeDeduplicatedClassName(Work.of(buffer), Shape.class, class2BufferOffset, Shape.class.getName());
-
-    // Write array length
-    buffer.putInt(shapes.length);
-
-    // Write each element
-    for (Shape shape : shapes) {
-      pickler.serialize(shape, buffer);
-    }
-
-    buffer.flip();
-
-    // Skip the array marker
-    buffer.get();
-
-    // Read component type
-    Map<Integer, Class<?>> bufferOffset2Class = new HashMap<>();
-    try {
-      Class<?> componentType = resolveClass(Work.of(buffer), bufferOffset2Class);
-      assertEquals(Shape.class, componentType);
-    } catch (ClassNotFoundException e) {
-      fail("Failed to read component type: " + e.getMessage());
-    }
-
-    // Read array length
-    int length = buffer.getInt();
-    assertEquals(shapes.length, length);
-
-    // Read each element using IntStream instead of traditional for loop
-    java.util.stream.IntStream.range(0, length)
-        .forEach(i -> {
-          Shape deserialized = pickler.deserialize(buffer);
-          assertEquals(shapes[i], deserialized);
-        });
 
     // Verify buffer is fully consumed
     assertEquals(buffer.limit(), buffer.position());

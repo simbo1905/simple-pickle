@@ -1,10 +1,13 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.IntStream;
 
-import static io.github.simbo1905.no.framework.Companion.*;
+import static io.github.simbo1905.no.framework.CompanionNew.*;
 import static io.github.simbo1905.no.framework.Constants.ARRAY;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -194,29 +197,17 @@ public interface Pickler<T> {
                 .sum())
         .orElse(1);
   }
-
-  record TypedBuffer(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
-    public TypedBuffer(ByteBuffer buffer) {
-      this(buffer, Map.of());
-    }
-
-    public TypedBuffer {
-      Objects.requireNonNull(buffer);
-      buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-      Objects.requireNonNull(bufferOffset2Class);
-    }
-  }
 }
 
 abstract class SealedPickler<S> implements Pickler<S> {
 
-  abstract Class<? extends S> resolveCachedClassByPickedName(Work buffer);
+  abstract Class<? extends S> resolveCachedClassByPickedName(ByteBuffer buffer);
 }
 
 abstract class RecordPickler<R extends Record> implements Pickler<R> {
 
-  abstract void serializeWithMap(Map<Class<?>, Integer> classToOffset, Work work, R object);
+  abstract void serializeWithMap(Map<Class<?>, Integer> classToOffset, ByteBuffer work, R object);
 
-  abstract R deserializeWithMap(Work buffer, Map<Integer, Class<?>> bufferOffset2Class);
+  abstract R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class);
 }
 
