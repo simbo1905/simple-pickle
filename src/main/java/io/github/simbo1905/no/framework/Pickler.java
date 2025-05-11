@@ -1,10 +1,7 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Companion.*;
@@ -196,6 +193,18 @@ public interface Pickler<T> {
                 .mapToInt(Pickler.forRecord((Class<R>) arr.getClass().getComponentType())::sizeOf)
                 .sum())
         .orElse(1);
+  }
+
+  record TypedBuffer(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
+    public TypedBuffer(ByteBuffer buffer) {
+      this(buffer, Map.of());
+    }
+
+    public TypedBuffer {
+      Objects.requireNonNull(buffer);
+      buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+      Objects.requireNonNull(bufferOffset2Class);
+    }
   }
 }
 

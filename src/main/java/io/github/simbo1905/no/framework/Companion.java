@@ -19,7 +19,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 class Companion {
 
-  public static final Map<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
+  public static final ConcurrentHashMap<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
 
   // In Pickler interface
   @SuppressWarnings("unchecked")
@@ -333,8 +333,7 @@ class Companion {
   /// @param bufferOffset2Class Map tracking buffer position to class
   /// @return The loaded class
   @Deprecated
-  static Class<?> resolveClass(Work buffer,
-                               Map<Integer, Class<?>> bufferOffset2Class)
+  static Class<?> resolveClass(Pickler.TypedBuffer buffer)
       throws ClassNotFoundException {
     LOGGER.finer(() -> "resolveClass: buffer.position=" + buffer.position());
 
