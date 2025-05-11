@@ -1,17 +1,13 @@
 package io.github.simbo1905.no.framework;
 
+import org.junit.jupiter.api.Test;
+
+import java.nio.ByteBuffer;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.nio.ByteBuffer;
-import java.util.logging.Logger;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 class WriteOperationsTests {
-
-    private static final Logger LOGGER = Logger.getLogger(WriteOperationsTests.class.getName());
 
     @Test
     void testPutLong() {
@@ -46,8 +42,6 @@ class WriteOperationsTests {
 
     @Test
     void testInvalidBuffer() {
-        assertThrows(IllegalArgumentException.class, () -> {
-            WriteOperations.putLong(null, 0L);
-        }, "Null buffer should throw IllegalArgumentException");
+      assertThrows(IllegalArgumentException.class, () -> WriteOperations.putLong(null, 0L), "Null buffer should throw IllegalArgumentException");
     }
 }
