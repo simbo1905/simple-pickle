@@ -1,13 +1,14 @@
 package io.github.simbo1905.no.framework;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.IntStream;
 
-import static io.github.simbo1905.no.framework.CompanionNew.*;
+import static io.github.simbo1905.no.framework.Companion.*;
 import static io.github.simbo1905.no.framework.Constants.ARRAY;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -95,7 +96,7 @@ public interface Pickler<T> {
   }
 
   /// Returns the compatibility mode for this pickler. See [Compatibility] for details of how to set via a system property.
-  Compatibility compatibility();
+  //Compatibility compatibility();
 
   /// Obtains the cached a pickler for a record type or creates a new one and adds it into the cache.
   /// This method uses a concurrent map to store the picklers so it is thread-safe.
@@ -120,18 +121,11 @@ public interface Pickler<T> {
   }
 
   /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.
-  /// Older codebase can be set to ignore the extra fields in the buffer if the compatibility mode is set to `FORWARDS`.
   /// @param record The record to serialize
   /// @param buffer The buffer to write into
   void serialize(T record, ByteBuffer buffer);
 
-  /// Recursively unloads components from the buffer and invokes the matching constructor.
-  /// By default, the compatibility mode is set to `NONE` and the components encoded into the buffer must exactly match
-  /// the current record definition which defines the canonical constructor. This is the default and most secure option.
-  /// Older codebase can be set to ignore the extra fields in the buffer if the compatibility mode is set to `FORWARDS`.
-  /// Newer codebase set the compatibility mode to `BACKWARDS` and the logic will attempt to use alternative constructors
-  /// that match the source code order of the older code version. If the compatibility mode is set to `ALL` then both
-  /// `BACKWARDS` and `FORWARDS` compatibility are enabled.
+  /// Recursively unloads components from the buffer and invokes a constructor following compatibility rules.
   /// @param buffer The buffer to read from
   /// @return The deserialized record
   T deserialize(ByteBuffer buffer);
@@ -205,9 +199,174 @@ abstract class SealedPickler<S> implements Pickler<S> {
 }
 
 abstract class RecordPickler<R extends Record> implements Pickler<R> {
+  final MethodHandle[] componentAccessors;
+  final Class<R> recordClass;
+  final int componentCount;
+  final MethodHandle canonicalConstructorHandle;
+  final Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
+  final Compatibility compatibility = null;
 
-  abstract void serializeWithMap(Map<Class<?>, Integer> classToOffset, ByteBuffer work, R object);
+  RecordPickler(final Class<R> recordClass) {
+    this.recordClass = recordClass;
+    final RecordComponent[] components = recordClass.getRecordComponents();
+    componentCount = components.length;
+    final MethodHandles.Lookup lookup = MethodHandles.lookup();
+    try {
+      // Get parameter types for the canonical constructor
+      Class<?>[] parameterTypes = Arrays.stream(components)
+          .map(RecordComponent::getType)
+          .toArray(Class<?>[]::new);
 
-  abstract R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class);
+      // Get the canonical constructor
+      Constructor<?> constructorHandle = recordClass.getDeclaredConstructor(parameterTypes);
+      canonicalConstructorHandle = lookup.unreflectConstructor(constructorHandle);
+
+      componentAccessors = new MethodHandle[components.length];
+      Arrays.setAll(componentAccessors, i -> {
+        try {
+          return lookup.unreflect(components[i].getAccessor());
+        } catch (IllegalAccessException e) {
+          final var msg = "Failed to access component accessor for " + components[i].getName() +
+              " in record class " + recordClass.getName() + ": " + e.getClass().getSimpleName();
+          LOGGER.severe(() -> msg);
+          throw new IllegalArgumentException(msg, e);
+        }
+      });
+    } catch (Exception e) {
+      Throwable inner = e;
+      while (inner.getCause() != null) {
+        inner = inner.getCause();
+      }
+      final var msg = "Failed to access record components for class '" +
+          recordClass.getName() + "' due to " + inner.getClass().getSimpleName() + " " + inner.getMessage();
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg, inner);
+    }
+
+    // Get the canonical constructor and any fallback constructors for schema evolution
+    try {
+      // Get all public constructors
+      final Constructor<?>[] allConstructors = recordClass.getConstructors();
+
+      for (Constructor<?> constructor : allConstructors) {
+        int currentParamCount = constructor.getParameterCount();
+        MethodHandle handle;
+
+        try {
+          handle = lookup.unreflectConstructor(constructor);
+        } catch (IllegalAccessException e) {
+          LOGGER.warning("Cannot access constructor with " + currentParamCount +
+              " parameters for " + recordClass.getName() + ": " + e.getMessage());
+          continue;
+        }
+
+        // This is a potential fallback constructor for schema evolution
+        if (fallbackConstructorHandles.containsKey(currentParamCount)) {
+          LOGGER.warning("Multiple fallback constructors with " + currentParamCount +
+              " parameters found for " + recordClass.getName() +
+              ". Using the first one encountered.");
+          // We keep the first one we found
+        } else {
+          fallbackConstructorHandles.put(currentParamCount, handle);
+          LOGGER.fine("Found fallback constructor with " + currentParamCount +
+              " parameters for " + recordClass.getName());
+        }
+      }
+    } catch (Exception e) {
+      final var msg = "Failed to access constructors for record '" +
+          recordClass.getName() + "' due to " + e.getClass().getSimpleName() + " " + e.getMessage();
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg, e);
+    }
+
+    final Pickler.Compatibility compatibility = Pickler.Compatibility.valueOf(
+        System.getProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, "NONE"));
+
+    final String recordClassName = recordClass.getName();
+    if (compatibility != Pickler.Compatibility.NONE) {
+      // We are secure by default this is opt-in and should not be left on forever so best to nag
+      LOGGER.warning(() -> "Pickler for " + recordClassName + " has Compatibility set to " + compatibility.name());
+    }
+
+    // we are security by default so if we are set to strict mode do not allow fallback constructors
+    final Map<Integer, MethodHandle> finalFallbackConstructorHandles =
+        (Pickler.Compatibility.BACKWARDS == compatibility || Pickler.Compatibility.ALL == compatibility) ?
+            Collections.unmodifiableMap(fallbackConstructorHandles) : Collections.emptyMap();
+  }
+
+  Object[] components(R record) {
+    Object[] result = new Object[componentAccessors.length];
+    Arrays.setAll(result, i -> {
+      try {
+        return componentAccessors[i].invokeWithArguments(record);
+      } catch (Throwable e) {
+        final var msg = "Failed to access component: " + i +
+            " in record class '" + recordClass.getName() + "' : " + e.getMessage();
+        LOGGER.severe(() -> msg);
+        throw new IllegalArgumentException(msg, e);
+      }
+    });
+    return result;
+  }
+
+  void serializeWithMap(WriteOperations buffer, R object) {
+    final var components = components(object);
+    // Write the number of components as an unsigned byte (max 255)
+    LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
+    buffer.write(components.length);
+    Arrays.stream(components).forEach(c -> {
+      switch (c) {
+        case Integer i -> buffer.write(i);
+        default -> throw new AssertionError("not implemented");
+      }
+    });
+  }
+
+  R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
+    // Read the number of components as an unsigned byte
+    LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
+    final int length = buffer.getInt();
+    Compatibility.validate(compatibility, recordClass.getName(), componentCount, length);
+    // This may unload from the stream things that we will ignore
+    final Object[] components = new Object[length];
+//    Arrays.setAll(components, ignored -> WriteOperations.deserializeValue(bufferOffset2Class, buffer));
+    if (componentCount < length && (Compatibility.FORWARDS == compatibility || Compatibility.ALL == compatibility)) {
+      return this.staticCreateFromComponents(Arrays.copyOfRange(components, 0, componentCount));
+    }
+    return this.staticCreateFromComponents(components);
+  }
+
+  @SuppressWarnings("unchecked")
+  private R staticCreateFromComponents(Object[] components) {
+    try {
+      // Get the number of components from the serialized data
+      int numComponents = components.length;
+      MethodHandle constructorToUse;
+
+      if (numComponents == componentCount) {
+        // Number of components matches the canonical constructor - use it directly
+        constructorToUse = canonicalConstructorHandle;
+      } else {
+        // Number of components differs, look for a fallback constructor
+        constructorToUse = fallbackConstructorHandles.get(numComponents);
+        if (constructorToUse == null) {
+          final var msg = "Schema evolution error: Cannot deserialize data for " +
+              this.recordClass.getName() + ". Found " + numComponents +
+              " components, but no matching constructor (canonical or fallback) exists.";
+          LOGGER.severe(() -> msg);
+          // No fallback constructor matches the number of components found
+          throw new IllegalArgumentException(msg);
+        }
+      }
+
+      // Invoke the selected constructor
+      return (R) constructorToUse.invokeWithArguments(components);
+    } catch (Throwable e) {
+      final var msg = "Failed to create instance of " + this.recordClass.getName() +
+          " with " + components.length + " components: " + e.getMessage();
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg, e);
+    }
+  }
+
 }
-

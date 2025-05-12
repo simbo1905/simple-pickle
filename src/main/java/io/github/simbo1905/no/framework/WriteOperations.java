@@ -1,111 +1,121 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 
-public class WriteOperations {
-  public static long readVarInt(ByteBuffer buf) {
-    final var marker = buf.get();
-    return (marker == WriteOperations.Constants.LONG_LEB128.typeMarker)
-        ? decodeULEB128(buf)
-        : decodeSLEB128(buf);
+import static io.github.simbo1905.no.framework.Constants.*;
+
+record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) {
+  WriteOperations(ByteBuffer buffer) {
+    this(new HashMap<>(), buffer);
   }
 
-  enum Constants {
-    LONG_LEB128((byte) 0x01),
-    LONG_SLEB128((byte) 0x02);
-
-    final byte typeMarker;
-
-    Constants(byte marker) {
-      this.typeMarker = marker;
-    }
+  int position() {
+    return buffer.position();
   }
 
-  static int writeVarInt(ByteBuffer buffer, long value) {
-    if (value >= 0) {
-      buffer.put(Constants.LONG_LEB128.typeMarker);
-      return 1 + encodeULEB128(buffer, value);
+  public int write(int value) {
+    if (ZigZagEncoding.sizeOf(value) < Integer.BYTES) {
+      buffer.put(Constants.VAR_INT.marker());
+      return 1 + ZigZagEncoding.putInt(buffer, value);
     } else {
-      buffer.put(Constants.LONG_SLEB128.typeMarker);
-      return 1 + encodeSLEB128(buffer, value);
+      buffer.put(Constants.INTEGER.marker());
+      buffer.putInt(value);
+      return 1 + Integer.BYTES;
     }
   }
 
-  static int encodeULEB128(ByteBuffer buffer, long value) {
-    int written = 0;
-    do {
-      byte b = (byte) (value & 0x7F);
-      value >>>= 7;
-      if (value != 0) {
-        b |= 0x80;
-      }
-      buffer.put(b);
-      written++;
-    } while (value != 0);
-    return written;
-  }
-
-  static long decodeULEB128(ByteBuffer buffer) {
-    long result = 0;
-    int shift = 0;
-    byte b;
-    do {
-      if (shift >= 64) {
-        throw new RuntimeException("ULEB128 value exceeds maximum size");
-      }
-      b = buffer.get();
-      result |= ((long) (b & 0x7F)) << shift;
-      shift += 7;
-    } while ((b & 0x80) != 0);
-    return result;
-  }
-
-  static int encodeSLEB128(ByteBuffer buffer, long value) {
-    int written = 0;
-    boolean more;
-    do {
-      byte b = (byte) (value & 0x7F);
-      // Check if sign bit of byte matches sign bit of value
-      value >>= 7;
-      more = !((value == 0 && (b & 0x40) == 0) ||
-          (value == -1 && (b & 0x40) != 0));
-      if (more) {
-        b |= 0x80;
-      }
-      buffer.put(b);
-      written++;
-    } while (more);
-    return written;
-  }
-
-  static long decodeSLEB128(ByteBuffer buffer) {
-    long result = 0;
-    int shift = 0;
-    byte b;
-    do {
-      if (shift >= 64) {
-        throw new RuntimeException("SLEB128 value exceeds maximum size");
-      }
-      b = buffer.get();
-      result |= ((long) (b & 0x7F)) << shift;
-      shift += 7;
-    } while ((b & 0x80) != 0);
-
-    // Sign extend if necessary
-    if ((shift < 64) && ((b & 0x40) != 0)) {
-      // Fill with 1s
-      result |= (~0L) << shift;
+  public int write(long value) {
+    if (ZigZagEncoding.sizeOf(value) < Long.BYTES) {
+      buffer.put(VAR_LONG.marker());
+      return 1 + ZigZagEncoding.putLong(buffer, value);
+    } else {
+      buffer.put(LONG.marker());
+      buffer.putLong(value);
+      return 1 + Long.BYTES;
     }
-    return result;
   }
 
+  public Object read() {
+    final byte marker = buffer.get();
+    return switch (Constants.fromMarker(marker)) {
+      case NULL -> null;
+      case BOOLEAN -> buffer.get() != 0x0;
+      case BYTE -> buffer.get();
+      case SHORT -> buffer.getShort();
+      case CHARACTER -> buffer.getChar();
+      case INTEGER -> buffer.getInt();
+      case VAR_INT -> ZigZagEncoding.getInt(buffer);
+      case LONG -> buffer.getLong();
+      case VAR_LONG -> ZigZagEncoding.getLong(buffer);
+      case FLOAT -> buffer.getFloat();
+      case DOUBLE -> buffer.getDouble();
+      case STRING -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        yield new String(bytes, StandardCharsets.UTF_8);
+      }
+      case OPTIONAL -> null;
+      case RECORD -> null;
+      case ARRAY -> null;
+      case MAP -> null;
+      case ENUM -> null;
+      case LIST -> null;
+    };
+  }
 
-  static void write(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer, Object c) {
-        throw new AssertionError("not implemented");
-    }
+  public int write(double value) {
+    buffer.put(DOUBLE.marker());
+    buffer.putDouble(value);
+    return 1 + Double.BYTES;
+  }
 
-    static Object deserializeValue(Map<Integer, Class<?>> bufferOffset2Class, ByteBuffer buffer) {
-        throw new AssertionError("Not implemented");
+  public int write(float value) {
+    buffer.put(FLOAT.marker());
+    buffer.putFloat(value);
+    return 1 + Float.BYTES;
+  }
+
+  public int write(short value) {
+    buffer.put(SHORT.marker());
+    buffer.putShort(value);
+    return 1 + Short.BYTES;
+  }
+
+  public int write(char value) {
+    buffer.put(CHARACTER.marker());
+    buffer.putChar(value);
+    return 1 + Character.BYTES;
+  }
+
+  public int write(boolean value) {
+    buffer.put(BOOLEAN.marker());
+    if (value) {
+      buffer.put((byte) 1);
+    } else {
+      buffer.put((byte) 0);
     }
+    return 1 + 1;
+  }
+
+  public int write(String s) {
+    buffer.put(STRING.marker());
+    byte[] utf8 = s.getBytes(StandardCharsets.UTF_8);
+    int length = utf8.length;
+    ZigZagEncoding.putInt(buffer, length); // TODO check max string size
+    buffer.put(utf8);
+    return 1 + length;
+  }
+
+  public <R extends Record> int write(R r) {
+    throw new AssertionError("not implemented");
+  }
+
+  public int writeNull() {
+    buffer.put(NULL.marker());
+    return 1;
+  }
 }

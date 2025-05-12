@@ -4,67 +4,196 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class WriteOperationsTests {
   @Test
-  void testUnsignedEncoding() {
-    ByteBuffer buf = ByteBuffer.allocate(10);
-    int written = WriteOperations.writeVarInt(buf, 624485L);
+  void testSmallInt() {
+    ByteBuffer buf = ByteBuffer.allocate(4);
+    WriteOperations ops = new WriteOperations(buf);
+    int written = ops.write(100);
     buf.flip();
 
-    assertEquals(0x01, buf.get()); // Marker check
-    byte[] expected = {(byte) 0xE5, (byte) 0x8E, 0x26};
-    for (int i = 0; i < 3; i++) {
-      assertEquals(expected[i], buf.get());
-    }
-    assertEquals(4, written); // 1 marker + 3 bytes
+    assertEquals(100, ops.read());
+    assertEquals(1 + Math.ceil((double) 100 / (double) (127 / 2)), written);
+    assertFalse(buf.hasRemaining());
+
   }
 
   @Test
   void testSignedEncoding() {
-    ByteBuffer buf = ByteBuffer.allocate(10);
-    int written = WriteOperations.writeVarInt(buf, -12345L);
+    ByteBuffer buf = ByteBuffer.allocate(8);
+    WriteOperations ops = new WriteOperations(buf);
+
+    int written = ops.write(-12345L);
     buf.flip();
 
-    assertEquals(0x02, buf.get()); // Marker check
-    byte[] expected = {(byte) 0xC7, (byte) 0x9F, 0x7F};
-    for (int i = 0; i < 3; i++) {
-      assertEquals(expected[i], buf.get());
-    }
-    assertEquals(4, written); // 1 marker + 3 bytes
+    assertEquals(-12345L, ops.read());
+    assertEquals(4, written);
+    assertFalse(buf.hasRemaining());
   }
 
   @Test
-  void testZeroValue() {
-    ByteBuffer buf = ByteBuffer.allocate(2);
-    int written = WriteOperations.writeVarInt(buf, 0L);
+  void testZeroLong() {
+    ByteBuffer buf = ByteBuffer.allocate(8);
+    WriteOperations ops = new WriteOperations(buf);
+    int written = ops.write(0L);
     buf.flip();
 
-    assertEquals(0x01, buf.get());
-    assertEquals(0x00, buf.get());
+    assertEquals(0L, ops.read());
     assertEquals(2, written);
+    assertFalse(buf.hasRemaining());
   }
 
   @Test
-  void testMax() {
-    testRoundTrip(Long.MAX_VALUE);
-  }
-
-  @Test
-  void testMin() {
-    testRoundTrip(Long.MIN_VALUE);
-  }
-
-  private void testRoundTrip(long value) {
-    ByteBuffer buf = ByteBuffer.allocate(12);
-    WriteOperations.writeVarInt(buf, value);
+  void testZeroInt() {
+    ByteBuffer buf = ByteBuffer.allocate(8);
+    WriteOperations ops = new WriteOperations(buf);
+    int written = ops.write(0);
     buf.flip();
 
-    byte marker = buf.get();
-    long decoded = WriteOperations.readVarInt(buf);
-
-    assertEquals(value, decoded);
+    assertEquals(0x00, ops.read());
+    assertEquals(1 + 1, written);
+    assertFalse(buf.hasRemaining());
   }
 
+  @Test
+  void testMaxInt() {
+    ByteBuffer buf = ByteBuffer.allocate(1 + Integer.BYTES);
+    WriteOperations ops = new WriteOperations(buf);
+    int written = ops.write(Integer.MAX_VALUE);
+    buf.flip();
+
+    assertEquals(Integer.MAX_VALUE, ops.read());
+    assertEquals(1 + Integer.BYTES, written);
+    assertFalse(buf.hasRemaining());
+  }
+
+
+  @Test
+  void testMinInt() {
+    ByteBuffer buf = ByteBuffer.allocate(1 + Integer.BYTES);
+    WriteOperations ops = new WriteOperations(buf);
+    int written = ops.write(Integer.MIN_VALUE);
+    buf.flip();
+
+    assertEquals(Integer.MIN_VALUE, ops.read());
+    assertEquals(1 + Integer.BYTES, written);
+    assertFalse(buf.hasRemaining());
+  }
+
+  @Test
+  void testMaxLong() {
+    ByteBuffer buf = ByteBuffer.allocate(1 + Long.BYTES);
+    WriteOperations ops = new WriteOperations(buf);
+
+    final var written = ops.write(Long.MAX_VALUE);
+    buf.flip();
+
+    final var decoded = ops.read();
+
+    assertEquals(Long.MAX_VALUE, decoded);
+    assertEquals(1 + Long.BYTES, written);
+    assertFalse(buf.hasRemaining());
+  }
+
+  @Test
+  void testMinLong() {
+    ByteBuffer buf = ByteBuffer.allocate(1 + Long.BYTES);
+    WriteOperations ops = new WriteOperations(buf);
+
+    final var written = ops.write(Long.MIN_VALUE);
+    buf.flip();
+
+    final var decoded = ops.read();
+
+    assertEquals(Long.MIN_VALUE, decoded);
+    assertEquals(1 + Long.BYTES, written);
+    assertFalse(buf.hasRemaining());
+  }
+
+  @Test
+  void testBoolean() {
+    final var buffer = ByteBuffer.allocate(4);
+    WriteOperations ops = new WriteOperations(buffer);
+    var written = ops.write(true);
+    written += ops.write(false);
+    buffer.flip();
+    assertEquals(true, ops.read());
+    assertEquals(false, ops.read());
+    assertEquals(4, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testFloat() {
+    final var buffer = ByteBuffer.allocate(1 + Float.BYTES);
+    WriteOperations ops = new WriteOperations(buffer);
+    var written = ops.write(Float.MAX_VALUE);
+    buffer.flip();
+    assertEquals(Float.MAX_VALUE, ops.read());
+    assertEquals(1 + Float.BYTES, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testDouble() {
+    final var buffer = ByteBuffer.allocate(1 + Double.BYTES);
+    WriteOperations ops = new WriteOperations(buffer);
+    var written = ops.write(Double.MAX_VALUE);
+    buffer.flip();
+    assertEquals(Double.MAX_VALUE, ops.read());
+    assertEquals(1 + Double.BYTES, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testShort() {
+    final var buffer = ByteBuffer.allocate(1 + Short.BYTES);
+    WriteOperations ops = new WriteOperations(buffer);
+    var written = ops.write(Short.MAX_VALUE);
+    buffer.flip();
+    assertEquals(Short.MAX_VALUE, ops.read());
+    assertEquals(1 + Short.BYTES, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testChar() {
+    final var buffer = ByteBuffer.allocate(1 + Character.BYTES);
+    WriteOperations ops = new WriteOperations(buffer);
+    var written = ops.write(Character.MAX_VALUE);
+    buffer.flip();
+    assertEquals(Character.MAX_VALUE, ops.read());
+    assertEquals(1 + Character.BYTES, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testString() {
+    final var buffer = ByteBuffer.allocate(
+        1 +
+            ZigZagEncoding.sizeOf("hello world".length()) +
+            "hello world".length()
+    );
+    WriteOperations ops = new WriteOperations(buffer);
+    var written = ops.write("hello world");
+    buffer.flip();
+    assertEquals("hello world", ops.read());
+    assertEquals(1 + "hello world".length(), written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteNull() {
+    final var buffer = ByteBuffer.allocate(
+        1 + 1
+    );
+    WriteOperations ops = new WriteOperations(buffer);
+    var written = ops.writeNull();
+    buffer.flip();
+    assertNull(ops.read());
+    assertEquals(1, written);
+    assertFalse(buffer.hasRemaining());
+  }
 }

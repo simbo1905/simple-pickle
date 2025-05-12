@@ -14,16 +14,18 @@ enum Constants {
   SHORT((byte) 4, Short.BYTES, short.class),
   CHARACTER((byte) 5, Character.BYTES, char.class),
   INTEGER((byte) 6, Integer.BYTES, int.class),
-  LONG((byte) 7, Long.BYTES, long.class),
-  FLOAT((byte) 8, Float.BYTES, float.class),
-  DOUBLE((byte) 9, Double.BYTES, double.class),
-  STRING((byte) 10, 0, String.class),
-  OPTIONAL((byte) 11, 0, Optional.class),
-  RECORD((byte) 12, 0, Record.class),
-  ARRAY((byte) 13, 0, null),
-  MAP((byte) 14, 0, Map.class),
-  ENUM((byte) 15, 0, Enum.class),
-  LIST((byte) 16, 0, List.class);
+  VAR_INT((byte) 7, Integer.BYTES, int.class),
+  LONG((byte) 8, Long.BYTES, long.class),
+  VAR_LONG((byte) 9, Long.BYTES, long.class),
+  FLOAT((byte) 10, Float.BYTES, float.class),
+  DOUBLE((byte) 11, Double.BYTES, double.class),
+  STRING((byte) 12, 0, String.class),
+  OPTIONAL((byte) 13, 0, Optional.class),
+  RECORD((byte) 14, 0, Record.class),
+  ARRAY((byte) 15, 0, null),
+  MAP((byte) 16, 0, Map.class),
+  ENUM((byte) 17, 0, Enum.class),
+  LIST((byte) 18, 0, List.class);
 
   private final byte typeMarker;
   private final int sizeInBytes;

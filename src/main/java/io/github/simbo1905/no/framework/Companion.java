@@ -12,7 +12,7 @@ import static io.github.simbo1905.no.framework.Constants.*;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class CompanionNew {
+public class Companion {
 
   public static final ConcurrentHashMap<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
 
@@ -25,30 +25,6 @@ public class CompanionNew {
   static <R extends Record> Pickler<R> manufactureRecordPickler(Class<R> recordClass) {
 
     return new RecordPickler<>(recordClass) {
-//      @Override
-//      void serializeWithMap(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer, R object) {
-//        final var components = components(object);
-//        // Write the number of components as an unsigned byte (max 255)
-//        LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
-//        buffer.putInt(components.length);
-//        Arrays.stream(components).forEach(c -> WriteOperations.write(classToOffset, buffer, c));
-//      }
-//
-//      @Override
-//      R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
-//        // Read the number of components as an unsigned byte
-//        LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
-//        final int length = buffer.getInt();
-//        Compatibility.validate(compatibility, recordClassName, componentCount, length);
-//        // This may unload from the stream things that we will ignore
-//        final Object[] components = new Object[length];
-//        Arrays.setAll(components, ignored -> WriteOperations.deserializeValue(bufferOffset2Class, buffer));
-//        if (componentCount < length && (Compatibility.FORWARDS == compatibility || Compatibility.ALL == compatibility)) {
-//          return this.staticCreateFromComponents(Arrays.copyOfRange(components, 0, componentCount));
-//        }
-//        return this.staticCreateFromComponents(components);
-//      }
-
       @Override
       public void serialize(R object, ByteBuffer buffer) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
