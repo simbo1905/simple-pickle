@@ -3,6 +3,7 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -195,5 +196,151 @@ public class WriteOperationsTests {
     assertNull(ops.read());
     assertEquals(1, written);
     assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteOptionalEmpty() {
+    final var buffer = ByteBuffer.allocate(
+        1 + 1
+    );
+    final WriteOperations ops = new WriteOperations(buffer);
+    final var written = ops.write(Optional.empty());
+    buffer.flip();
+    final var read = ops.read();
+    assertEquals(Optional.empty(), read);
+    assertEquals(1, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteOptionalOfIntSmall() {
+    final var buffer = ByteBuffer.allocate(
+        3
+    );
+    final WriteOperations ops = new WriteOperations(buffer);
+    final var written = ops.write(Optional.of(1));
+    buffer.flip();
+    final var read = ops.read();
+    assertEquals(Optional.of(1), read);
+    assertEquals(3, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteOptionalOfIntLarge() {
+    final var buffer = ByteBuffer.allocate(
+        6
+    );
+    final WriteOperations ops = new WriteOperations(buffer);
+    final var written = ops.write(Optional.of(Integer.MAX_VALUE));
+    buffer.flip();
+    final var read = ops.read();
+    assertEquals(Optional.of(Integer.MAX_VALUE), read);
+    assertEquals(6, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteOptionalOfLongSmall() {
+    final var buffer = ByteBuffer.allocate(
+        3
+    );
+    final WriteOperations ops = new WriteOperations(buffer);
+    final var written = ops.write(Optional.of(1L));
+    buffer.flip();
+    final var read = ops.read();
+    assertEquals(Optional.of(1L), read);
+    assertEquals(3, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteOptionalOfLongLarge() {
+    final var buffer = ByteBuffer.allocate(
+        10
+    );
+    final WriteOperations ops = new WriteOperations(buffer);
+    final var written = ops.write(Optional.of(Long.MAX_VALUE));
+    buffer.flip();
+    final var read = ops.read();
+    assertEquals(Optional.of(Long.MAX_VALUE), read);
+    assertEquals(10, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteOptionalOfDouble() {
+    final var buffer = ByteBuffer.allocate(
+        10
+    );
+    final WriteOperations ops = new WriteOperations(buffer);
+    final var written = ops.write(Optional.of(Double.MIN_VALUE));
+    buffer.flip();
+    final var read = ops.read();
+    assertEquals(Optional.of(Double.MIN_VALUE), read);
+    assertEquals(10, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteOptionalOfFloat() {
+    final var buffer = ByteBuffer.allocate(
+        6
+    );
+    final WriteOperations ops = new WriteOperations(buffer);
+    final var written = ops.write(Optional.of(Float.MIN_VALUE));
+    buffer.flip();
+    final var read = ops.read();
+    assertEquals(Optional.of(Float.MIN_VALUE), read);
+    assertEquals(6, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteOptionalOfString() {
+    final var buffer = ByteBuffer.allocate(
+        2 + ZigZagEncoding.sizeOf("hello world".length()) + "hello world".length()
+    );
+    WriteOperations ops = new WriteOperations(buffer);
+    var written = ops.write(Optional.of("hello world"));
+    buffer.flip();
+    assertEquals(Optional.of("hello world"), ops.read());
+    assertEquals(2 + "hello world".length(), written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteType() {
+    final var expectedSize =
+        1 + ZigZagEncoding.sizeOf("Link".length()) + "Link".length();
+    final var buffer = ByteBuffer.allocate(
+        expectedSize
+    );
+    WriteOperations ops = new WriteOperations(buffer);
+    final var type = new Type("Link");
+    var written = ops.write(type);
+    buffer.flip();
+    assertEquals(type, ops.read());
+    assertEquals(expectedSize, written);
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testWriteTypeOffset() {
+    final var buffer = ByteBuffer.allocate(1024);
+    final var firstPosition = 56;
+    buffer.position(firstPosition);
+    WriteOperations ops = new WriteOperations(buffer);
+    final var type = new Type("Link");
+    ops.write(type);
+    final var secondPosition = 521;
+    buffer.position(secondPosition);
+    final var typeOffset = new TypeOffset(firstPosition - secondPosition);
+    ops.write(typeOffset);
+    buffer.flip();
+    buffer.position(firstPosition);
+    assertEquals(type, ops.read());
+    buffer.position(secondPosition);
+    assertEquals(type, ops.read());
   }
 }

@@ -180,8 +180,9 @@ public class Companion {
       case Character ignored -> CHARACTER.marker();
       case Boolean ignored -> BOOLEAN.marker();
       case String ignored -> STRING.marker();
-      case Optional<?> ignored -> OPTIONAL.marker();
-      case Record ignored -> RECORD.marker();
+      case Optional<?> ignored -> OPTIONAL_EMPTY.marker();
+      case Type ignored -> TYPE.marker();
+
       case Map<?, ?> ignored -> MAP.marker();
       case List<?> ignored -> LIST.marker();
       default -> throw new IllegalArgumentException("Unsupported type: " + c.getClass());
@@ -213,8 +214,9 @@ public class Companion {
 
 }
 
-record ComponentType(Class<?> clazz) {
+/// The  encoding used here diverges from the "original"
+record Type(String name) {
 }
 
-record ComponentOffset(int offset) {
+record TypeOffset(int offset) {
 }

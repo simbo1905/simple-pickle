@@ -20,12 +20,15 @@ enum Constants {
   FLOAT((byte) 10, Float.BYTES, float.class),
   DOUBLE((byte) 11, Double.BYTES, double.class),
   STRING((byte) 12, 0, String.class),
-  OPTIONAL((byte) 13, 0, Optional.class),
-  RECORD((byte) 14, 0, Record.class),
-  ARRAY((byte) 15, 0, null),
-  MAP((byte) 16, 0, Map.class),
-  ENUM((byte) 17, 0, Enum.class),
-  LIST((byte) 18, 0, List.class);
+  OPTIONAL_EMPTY((byte) 13, 0, Optional.class),
+  OPTIONAL_OF((byte) 14, 0, Optional.class),
+  TYPE((byte) 15, 0, Type.class),
+  TYPE_OFFSET((byte) 16, 0, TypeOffset.class),
+  TYPE_VAR_OFFSET((byte) 17, 0, TypeOffset.class),
+  ARRAY((byte) 18, 0, null),
+  MAP((byte) 19, 0, Map.class),
+  ENUM((byte) 20, 0, Enum.class),
+  LIST((byte) 21, 0, List.class);
 
   private final byte typeMarker;
   private final int sizeInBytes;

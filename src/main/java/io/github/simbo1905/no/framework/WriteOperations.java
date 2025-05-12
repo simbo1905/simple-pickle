@@ -4,9 +4,12 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 
 import static io.github.simbo1905.no.framework.Constants.*;
 
+/// Write operations may perform LEB128-64b9B-variant encoding of integers and longs
 record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) {
   WriteOperations(ByteBuffer buffer) {
     this(new HashMap<>(), buffer);
@@ -58,12 +61,39 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
         buffer.get(bytes);
         yield new String(bytes, StandardCharsets.UTF_8);
       }
-      case OPTIONAL -> null;
-      case RECORD -> null;
-      case ARRAY -> null;
-      case MAP -> null;
-      case ENUM -> null;
-      case LIST -> null;
+      case OPTIONAL_EMPTY -> Optional.empty();
+      case OPTIONAL_OF -> Optional.ofNullable(read());
+      case TYPE -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        yield new Type(new String(bytes, StandardCharsets.UTF_8));
+      }
+      case TYPE_OFFSET -> {
+        final int offset = buffer.getInt();
+        final int highWaterMark = buffer.position();
+        final int newPosition = buffer.position() + offset - 2;
+        buffer.position(newPosition);
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        buffer.position(highWaterMark);
+        yield new Type(new String(bytes, StandardCharsets.UTF_8));
+      }
+      case TYPE_VAR_OFFSET -> {
+        final int offset = ZigZagEncoding.getInt(buffer);
+        final int highWaterMark = buffer.position();
+        buffer.position(buffer.position() + offset - 2);
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        buffer.position(highWaterMark);
+        yield new Type(new String(bytes, StandardCharsets.UTF_8));
+      }
+      case ARRAY -> throw new AssertionError("not implemented 1");
+      case MAP -> throw new AssertionError("not implemented 2");
+      case ENUM -> throw new AssertionError("not implemented 3");
+      case LIST -> throw new AssertionError("not implemented 4");
     };
   }
 
@@ -102,6 +132,7 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
   }
 
   public int write(String s) {
+    Objects.requireNonNull(s);
     buffer.put(STRING.marker());
     byte[] utf8 = s.getBytes(StandardCharsets.UTF_8);
     int length = utf8.length;
@@ -110,12 +141,64 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
     return 1 + length;
   }
 
-  public <R extends Record> int write(R r) {
-    throw new AssertionError("not implemented");
-  }
-
   public int writeNull() {
     buffer.put(NULL.marker());
     return 1;
   }
+
+  public int write(Type type) {
+    Objects.requireNonNull(type);
+    Objects.requireNonNull(type.name());
+    buffer.put(TYPE.marker());
+    int size = 1;
+    final var name = type.name();
+    final var nameBytes = name.getBytes(StandardCharsets.UTF_8);
+    final var nameLength = nameBytes.length;
+    size += ZigZagEncoding.putInt(buffer, nameLength);
+    buffer.put(nameBytes);
+    size += nameLength;
+    return size;
+  }
+
+  public int write(TypeOffset typeOffset) {
+    Objects.requireNonNull(typeOffset);
+    final int offset = typeOffset.offset();
+    final int size = ZigZagEncoding.sizeOf(offset);
+    if (size < Integer.BYTES) {
+      buffer.put(TYPE_VAR_OFFSET.marker());
+      return 1 + ZigZagEncoding.putInt(buffer, offset);
+    } else {
+      buffer.put(TYPE_OFFSET.marker());
+      buffer.putInt(offset);
+      return 1 + Integer.BYTES;
+    }
+  }
+
+  public <T> int write(@SuppressWarnings("OptionalUsedAsFieldOrParameterType") Optional<T> optional) {
+    if (optional.isPresent()) {
+      buffer.put(OPTIONAL_OF.marker());
+      final T value = optional.get();
+      final int innerSize = switch (value) {
+        case Integer i -> write(i);
+        case Long l -> write(l);
+        case Short s -> write(s);
+        case Byte b -> write(b);
+        case Double d -> write(d);
+        case Float f -> write(f);
+        case Character c -> write(c);
+        case Boolean b -> write(b);
+        case String s -> write(s);
+        case Optional<?> o -> write(o);
+        case Type t -> write(t);
+        case TypeOffset t -> write(t);
+        default -> throw new AssertionError("unknown optional value " + value);
+      };
+      return 1 + innerSize;
+    } else {
+      buffer.put(OPTIONAL_EMPTY.marker());
+      return 1;
+    }
+  }
+
+
 }
