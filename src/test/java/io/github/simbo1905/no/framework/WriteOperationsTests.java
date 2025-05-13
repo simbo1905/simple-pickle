@@ -317,7 +317,7 @@ public class WriteOperationsTests {
         expectedSize
     );
     WriteOperations ops = new WriteOperations(buffer);
-    final var type = new Type("Link");
+    final var type = new InternedName("Link");
     var written = ops.write(type);
     buffer.flip();
     assertEquals(type, ops.read());
@@ -331,16 +331,46 @@ public class WriteOperationsTests {
     final var firstPosition = 56;
     buffer.position(firstPosition);
     WriteOperations ops = new WriteOperations(buffer);
-    final var type = new Type("Link");
+    final var type = new InternedName("Link");
     ops.write(type);
     final var secondPosition = 521;
     buffer.position(secondPosition);
-    final var typeOffset = new TypeOffset(firstPosition - secondPosition);
+    final var typeOffset = new InternedOffset(firstPosition - secondPosition);
     ops.write(typeOffset);
     buffer.flip();
     buffer.position(firstPosition);
     assertEquals(type, ops.read());
     buffer.position(secondPosition);
     assertEquals(type, ops.read());
+  }
+
+
+  @Test
+  void testEnum() {
+    final var buffer = ByteBuffer.allocate(1024);
+    WriteOperations ops = new WriteOperations(buffer);
+    final var type = EnumTest.ONE;
+    final var type2 = EnumTest.TWO;
+    final var ignoredPrefix = "io.github.simbo1905.no.framework.";
+    ops.write(ignoredPrefix, type);
+    ops.write(ignoredPrefix, type2);
+    buffer.flip();
+    assertEquals(new InternedName("EnumTest.ONE"), ops.read());
+    assertEquals(new InternedName("EnumTest.TWO"), ops.read());
+  }
+}
+
+enum EnumTest {
+  ONE("Link"),
+  TWO("Link2");
+
+  private final String lower;
+
+  EnumTest(String lower) {
+    this.lower = lower;
+  }
+
+  public String lower() {
+    return lower;
   }
 }

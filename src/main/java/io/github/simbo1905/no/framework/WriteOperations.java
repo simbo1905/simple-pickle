@@ -21,7 +21,7 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
 
   public int write(int value) {
     if (ZigZagEncoding.sizeOf(value) < Integer.BYTES) {
-      buffer.put(Constants.VAR_INT.marker());
+      buffer.put(Constants.INTEGER_VAR.marker());
       return 1 + ZigZagEncoding.putInt(buffer, value);
     } else {
       buffer.put(Constants.INTEGER.marker());
@@ -32,7 +32,7 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
 
   public int write(long value) {
     if (ZigZagEncoding.sizeOf(value) < Long.BYTES) {
-      buffer.put(VAR_LONG.marker());
+      buffer.put(LONG_VAR.marker());
       return 1 + ZigZagEncoding.putLong(buffer, value);
     } else {
       buffer.put(LONG.marker());
@@ -50,9 +50,9 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
       case SHORT -> buffer.getShort();
       case CHARACTER -> buffer.getChar();
       case INTEGER -> buffer.getInt();
-      case VAR_INT -> ZigZagEncoding.getInt(buffer);
+      case INTEGER_VAR -> ZigZagEncoding.getInt(buffer);
       case LONG -> buffer.getLong();
-      case VAR_LONG -> ZigZagEncoding.getLong(buffer);
+      case LONG_VAR -> ZigZagEncoding.getLong(buffer);
       case FLOAT -> buffer.getFloat();
       case DOUBLE -> buffer.getDouble();
       case STRING -> {
@@ -63,13 +63,13 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
       }
       case OPTIONAL_EMPTY -> Optional.empty();
       case OPTIONAL_OF -> Optional.ofNullable(read());
-      case TYPE -> {
+      case INTERNED_NAME -> {
         int length = ZigZagEncoding.getInt(buffer);
         byte[] bytes = new byte[length];
         buffer.get(bytes);
-        yield new Type(new String(bytes, StandardCharsets.UTF_8));
+        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
-      case TYPE_OFFSET -> {
+      case INTERNED_OFFSET -> {
         final int offset = buffer.getInt();
         final int highWaterMark = buffer.position();
         final int newPosition = buffer.position() + offset - 2;
@@ -78,9 +78,9 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
         byte[] bytes = new byte[length];
         buffer.get(bytes);
         buffer.position(highWaterMark);
-        yield new Type(new String(bytes, StandardCharsets.UTF_8));
+        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
-      case TYPE_VAR_OFFSET -> {
+      case INTERNED_OFFSET_VAR -> {
         final int offset = ZigZagEncoding.getInt(buffer);
         final int highWaterMark = buffer.position();
         buffer.position(buffer.position() + offset - 2);
@@ -88,11 +88,16 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
         byte[] bytes = new byte[length];
         buffer.get(bytes);
         buffer.position(highWaterMark);
-        yield new Type(new String(bytes, StandardCharsets.UTF_8));
+        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
+      }
+      case ENUM -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
       case ARRAY -> throw new AssertionError("not implemented 1");
       case MAP -> throw new AssertionError("not implemented 2");
-      case ENUM -> throw new AssertionError("not implemented 3");
       case LIST -> throw new AssertionError("not implemented 4");
     };
   }
@@ -146,10 +151,10 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
     return 1;
   }
 
-  public int write(Type type) {
+  public int write(InternedName type) {
     Objects.requireNonNull(type);
     Objects.requireNonNull(type.name());
-    buffer.put(TYPE.marker());
+    buffer.put(INTERNED_NAME.marker());
     int size = 1;
     final var name = type.name();
     final var nameBytes = name.getBytes(StandardCharsets.UTF_8);
@@ -160,15 +165,29 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
     return size;
   }
 
-  public int write(TypeOffset typeOffset) {
+  public <T extends Enum<?>> int write(String ignoredPrefix, T e) {
+    Objects.requireNonNull(e);
+    final var className = e.getDeclaringClass().getName();
+    final var shortName = className.substring(ignoredPrefix.length());
+    final var name = shortName + "." + e.name();
+    final var nameBytes = name.getBytes(StandardCharsets.UTF_8);
+    final var nameLength = nameBytes.length;
+    buffer.put(ENUM.marker());
+    int size = ZigZagEncoding.putInt(buffer, nameLength);
+    buffer.put(nameBytes);
+    size += nameLength;
+    return 1 + size;
+  }
+
+  public int write(InternedOffset typeOffset) {
     Objects.requireNonNull(typeOffset);
     final int offset = typeOffset.offset();
     final int size = ZigZagEncoding.sizeOf(offset);
     if (size < Integer.BYTES) {
-      buffer.put(TYPE_VAR_OFFSET.marker());
+      buffer.put(INTERNED_OFFSET_VAR.marker());
       return 1 + ZigZagEncoding.putInt(buffer, offset);
     } else {
-      buffer.put(TYPE_OFFSET.marker());
+      buffer.put(INTERNED_OFFSET.marker());
       buffer.putInt(offset);
       return 1 + Integer.BYTES;
     }
@@ -189,8 +208,8 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
         case Boolean b -> write(b);
         case String s -> write(s);
         case Optional<?> o -> write(o);
-        case Type t -> write(t);
-        case TypeOffset t -> write(t);
+        case InternedName t -> write(t);
+        case InternedOffset t -> write(t);
         default -> throw new AssertionError("unknown optional value " + value);
       };
       return 1 + innerSize;
@@ -199,6 +218,4 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
       return 1;
     }
   }
-
-
 }

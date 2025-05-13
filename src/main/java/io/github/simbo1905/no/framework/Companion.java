@@ -181,7 +181,7 @@ public class Companion {
       case Boolean ignored -> BOOLEAN.marker();
       case String ignored -> STRING.marker();
       case Optional<?> ignored -> OPTIONAL_EMPTY.marker();
-      case Type ignored -> TYPE.marker();
+      case InternedName ignored -> INTERNED_NAME.marker();
 
       case Map<?, ?> ignored -> MAP.marker();
       case List<?> ignored -> LIST.marker();
@@ -215,8 +215,8 @@ public class Companion {
 }
 
 /// The  encoding used here diverges from the "original"
-record Type(String name) {
+record InternedName(String name) {
 }
 
-record TypeOffset(int offset) {
+record InternedOffset(int offset) {
 }
