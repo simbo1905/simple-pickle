@@ -20,11 +20,12 @@ import java.nio.ByteBuffer;
 /// As such, this encoder/decoder should NOT be used for encoding or decoding
 /// "standard" LEB128 formats (e.g. Google Protocol Buffers).
 /// @author Gil Tene
-class ZigZagEncoding {
+public class ZigZagEncoding {
 
   /// Writes a long value to the given buffer in LEB128 ZigZag encoded format
   /// @param buffer the buffer to write to
   /// @param value  the value to write to the buffer
+  /// @return the number of bytes written
   static int putLong(ByteBuffer buffer, long value) {
     int count = 0;
     value = (value << 1) ^ (value >> 63);

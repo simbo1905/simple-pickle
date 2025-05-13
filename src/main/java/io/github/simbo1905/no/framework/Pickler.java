@@ -309,7 +309,7 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     return result;
   }
 
-  void serializeWithMap(WriteOperations buffer, R object) {
+  void serializeWithMap(CompactedBuffer buffer, R object) {
     final var components = components(object);
     // Write the number of components as an unsigned byte (max 255)
     LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
@@ -369,4 +369,12 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     }
   }
 
+  public record InternedName(String name) {
+  }
+
+  public record InternedOffset(int offset) {
+  }
+
+  public record InternedPosition(int position) {
+  }
 }

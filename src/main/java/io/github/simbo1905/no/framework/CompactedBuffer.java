@@ -9,10 +9,13 @@ import java.util.Optional;
 
 import static io.github.simbo1905.no.framework.Constants.*;
 
-/// Write operations may perform LEB128-64b9B-variant encoding of integers and longs
-record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) {
-  WriteOperations(ByteBuffer buffer) {
-    this(new HashMap<>(), buffer);
+/// This class tracks the written position of record class names so that they can be referenced by an offset.
+/// It also uses ZigZag encoding to reduce the size of whole numbers data written to the buffer.
+public record CompactedBuffer(ByteBuffer buffer,
+                              Map<RecordPickler.InternedName, RecordPickler.InternedPosition> offsetMap,
+                              int startPosition) {
+  CompactedBuffer(ByteBuffer buffer) {
+    this(buffer, new HashMap<>(), buffer.position());
   }
 
   int position() {
@@ -63,11 +66,11 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
       }
       case OPTIONAL_EMPTY -> Optional.empty();
       case OPTIONAL_OF -> Optional.ofNullable(read());
-      case INTERNED_NAME -> {
+      case INTERNED_NAME, ENUM -> {
         int length = ZigZagEncoding.getInt(buffer);
         byte[] bytes = new byte[length];
         buffer.get(bytes);
-        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
+        yield new RecordPickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
       case INTERNED_OFFSET -> {
         final int offset = buffer.getInt();
@@ -78,23 +81,17 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
         byte[] bytes = new byte[length];
         buffer.get(bytes);
         buffer.position(highWaterMark);
-        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
+        yield new RecordPickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
       case INTERNED_OFFSET_VAR -> {
-        final int offset = ZigZagEncoding.getInt(buffer);
         final int highWaterMark = buffer.position();
-        buffer.position(buffer.position() + offset - 2);
+        final int offset = ZigZagEncoding.getInt(buffer);
+        buffer.position(buffer.position() + offset - 1);
         int length = ZigZagEncoding.getInt(buffer);
         byte[] bytes = new byte[length];
         buffer.get(bytes);
         buffer.position(highWaterMark);
-        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
-      }
-      case ENUM -> {
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
+        yield new RecordPickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
       case ARRAY -> throw new AssertionError("not implemented 1");
       case MAP -> throw new AssertionError("not implemented 2");
@@ -151,15 +148,17 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
     return 1;
   }
 
-  public int write(InternedName type) {
+  public int write(RecordPickler.InternedName type) {
     Objects.requireNonNull(type);
     Objects.requireNonNull(type.name());
     buffer.put(INTERNED_NAME.marker());
-    int size = 1;
-    final var name = type.name();
-    final var nameBytes = name.getBytes(StandardCharsets.UTF_8);
+    return 1 + intern(type.name());
+  }
+
+  int intern(String string) {
+    final var nameBytes = string.getBytes(StandardCharsets.UTF_8);
     final var nameLength = nameBytes.length;
-    size += ZigZagEncoding.putInt(buffer, nameLength);
+    var size = ZigZagEncoding.putInt(buffer, nameLength);
     buffer.put(nameBytes);
     size += nameLength;
     return size;
@@ -167,19 +166,23 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
 
   public <T extends Enum<?>> int write(String ignoredPrefix, T e) {
     Objects.requireNonNull(e);
+    Objects.requireNonNull(ignoredPrefix);
     final var className = e.getDeclaringClass().getName();
     final var shortName = className.substring(ignoredPrefix.length());
-    final var name = shortName + "." + e.name();
-    final var nameBytes = name.getBytes(StandardCharsets.UTF_8);
-    final var nameLength = nameBytes.length;
-    buffer.put(ENUM.marker());
-    int size = ZigZagEncoding.putInt(buffer, nameLength);
-    buffer.put(nameBytes);
-    size += nameLength;
-    return 1 + size;
+    final var dotName = shortName + "." + e.name();
+    final var internedName = new RecordPickler.InternedName(dotName);
+    if (!offsetMap.containsKey(internedName)) {
+      offsetMap.put(internedName, new RecordPickler.InternedPosition(buffer.position()));
+      buffer.put(ENUM.marker());
+      return 1 + intern(dotName);
+    } else {
+      final var internedPosition = offsetMap.get(internedName);
+      final var internedOffset = new RecordPickler.InternedOffset(internedPosition.position() - buffer().position());
+      return write(internedOffset);
+    }
   }
 
-  public int write(InternedOffset typeOffset) {
+  public int write(RecordPickler.InternedOffset typeOffset) {
     Objects.requireNonNull(typeOffset);
     final int offset = typeOffset.offset();
     final int size = ZigZagEncoding.sizeOf(offset);
@@ -208,8 +211,8 @@ record WriteOperations(Map<Class<?>, Integer> classToOffset, ByteBuffer buffer) 
         case Boolean b -> write(b);
         case String s -> write(s);
         case Optional<?> o -> write(o);
-        case InternedName t -> write(t);
-        case InternedOffset t -> write(t);
+        case RecordPickler.InternedName t -> write(t);
+        case RecordPickler.InternedOffset t -> write(t);
         default -> throw new AssertionError("unknown optional value " + value);
       };
       return 1 + innerSize;

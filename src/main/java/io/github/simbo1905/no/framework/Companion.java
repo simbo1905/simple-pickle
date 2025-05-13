@@ -28,7 +28,7 @@ public class Companion {
       @Override
       public void serialize(R object, ByteBuffer buffer) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        WriteOperations operations = new WriteOperations(new HashMap<>(), buffer);
+        CompactedBuffer operations = new CompactedBuffer(buffer);
         serializeWithMap(operations, object);
       }
 
@@ -104,7 +104,7 @@ public class Companion {
           return;
         }
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        WriteOperations operations = new WriteOperations(new HashMap<>(), buffer);
+        CompactedBuffer operations = new CompactedBuffer(buffer);
         // Cast the sealed interface to the concrete type.
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
 
@@ -181,7 +181,7 @@ public class Companion {
       case Boolean ignored -> BOOLEAN.marker();
       case String ignored -> STRING.marker();
       case Optional<?> ignored -> OPTIONAL_EMPTY.marker();
-      case InternedName ignored -> INTERNED_NAME.marker();
+      case RecordPickler.InternedName ignored -> INTERNED_NAME.marker();
 
       case Map<?, ?> ignored -> MAP.marker();
       case List<?> ignored -> LIST.marker();
@@ -212,11 +212,4 @@ public class Companion {
         });
   }
 
-}
-
-/// The  encoding used here diverges from the "original"
-record InternedName(String name) {
-}
-
-record InternedOffset(int offset) {
 }

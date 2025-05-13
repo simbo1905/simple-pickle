@@ -11,7 +11,7 @@ public class WriteOperationsTests {
   @Test
   void testSmallInt() {
     ByteBuffer buf = ByteBuffer.allocate(4);
-    WriteOperations ops = new WriteOperations(buf);
+    CompactedBuffer ops = new CompactedBuffer(buf);
     int written = ops.write(100);
     buf.flip();
 
@@ -24,7 +24,7 @@ public class WriteOperationsTests {
   @Test
   void testSignedEncoding() {
     ByteBuffer buf = ByteBuffer.allocate(8);
-    WriteOperations ops = new WriteOperations(buf);
+    CompactedBuffer ops = new CompactedBuffer(buf);
 
     int written = ops.write(-12345L);
     buf.flip();
@@ -37,7 +37,7 @@ public class WriteOperationsTests {
   @Test
   void testZeroLong() {
     ByteBuffer buf = ByteBuffer.allocate(8);
-    WriteOperations ops = new WriteOperations(buf);
+    CompactedBuffer ops = new CompactedBuffer(buf);
     int written = ops.write(0L);
     buf.flip();
 
@@ -49,7 +49,7 @@ public class WriteOperationsTests {
   @Test
   void testZeroInt() {
     ByteBuffer buf = ByteBuffer.allocate(8);
-    WriteOperations ops = new WriteOperations(buf);
+    CompactedBuffer ops = new CompactedBuffer(buf);
     int written = ops.write(0);
     buf.flip();
 
@@ -61,7 +61,7 @@ public class WriteOperationsTests {
   @Test
   void testMaxInt() {
     ByteBuffer buf = ByteBuffer.allocate(1 + Integer.BYTES);
-    WriteOperations ops = new WriteOperations(buf);
+    CompactedBuffer ops = new CompactedBuffer(buf);
     int written = ops.write(Integer.MAX_VALUE);
     buf.flip();
 
@@ -74,7 +74,7 @@ public class WriteOperationsTests {
   @Test
   void testMinInt() {
     ByteBuffer buf = ByteBuffer.allocate(1 + Integer.BYTES);
-    WriteOperations ops = new WriteOperations(buf);
+    CompactedBuffer ops = new CompactedBuffer(buf);
     int written = ops.write(Integer.MIN_VALUE);
     buf.flip();
 
@@ -86,7 +86,7 @@ public class WriteOperationsTests {
   @Test
   void testMaxLong() {
     ByteBuffer buf = ByteBuffer.allocate(1 + Long.BYTES);
-    WriteOperations ops = new WriteOperations(buf);
+    CompactedBuffer ops = new CompactedBuffer(buf);
 
     final var written = ops.write(Long.MAX_VALUE);
     buf.flip();
@@ -101,7 +101,7 @@ public class WriteOperationsTests {
   @Test
   void testMinLong() {
     ByteBuffer buf = ByteBuffer.allocate(1 + Long.BYTES);
-    WriteOperations ops = new WriteOperations(buf);
+    CompactedBuffer ops = new CompactedBuffer(buf);
 
     final var written = ops.write(Long.MIN_VALUE);
     buf.flip();
@@ -116,7 +116,7 @@ public class WriteOperationsTests {
   @Test
   void testBoolean() {
     final var buffer = ByteBuffer.allocate(4);
-    WriteOperations ops = new WriteOperations(buffer);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(true);
     written += ops.write(false);
     buffer.flip();
@@ -129,7 +129,7 @@ public class WriteOperationsTests {
   @Test
   void testFloat() {
     final var buffer = ByteBuffer.allocate(1 + Float.BYTES);
-    WriteOperations ops = new WriteOperations(buffer);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Float.MAX_VALUE);
     buffer.flip();
     assertEquals(Float.MAX_VALUE, ops.read());
@@ -140,7 +140,7 @@ public class WriteOperationsTests {
   @Test
   void testDouble() {
     final var buffer = ByteBuffer.allocate(1 + Double.BYTES);
-    WriteOperations ops = new WriteOperations(buffer);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Double.MAX_VALUE);
     buffer.flip();
     assertEquals(Double.MAX_VALUE, ops.read());
@@ -151,7 +151,7 @@ public class WriteOperationsTests {
   @Test
   void testShort() {
     final var buffer = ByteBuffer.allocate(1 + Short.BYTES);
-    WriteOperations ops = new WriteOperations(buffer);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Short.MAX_VALUE);
     buffer.flip();
     assertEquals(Short.MAX_VALUE, ops.read());
@@ -162,7 +162,7 @@ public class WriteOperationsTests {
   @Test
   void testChar() {
     final var buffer = ByteBuffer.allocate(1 + Character.BYTES);
-    WriteOperations ops = new WriteOperations(buffer);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Character.MAX_VALUE);
     buffer.flip();
     assertEquals(Character.MAX_VALUE, ops.read());
@@ -177,7 +177,7 @@ public class WriteOperationsTests {
             ZigZagEncoding.sizeOf("hello world".length()) +
             "hello world".length()
     );
-    WriteOperations ops = new WriteOperations(buffer);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write("hello world");
     buffer.flip();
     assertEquals("hello world", ops.read());
@@ -190,7 +190,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         1 + 1
     );
-    WriteOperations ops = new WriteOperations(buffer);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.writeNull();
     buffer.flip();
     assertNull(ops.read());
@@ -203,7 +203,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         1 + 1
     );
-    final WriteOperations ops = new WriteOperations(buffer);
+    final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.empty());
     buffer.flip();
     final var read = ops.read();
@@ -217,7 +217,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         3
     );
-    final WriteOperations ops = new WriteOperations(buffer);
+    final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(1));
     buffer.flip();
     final var read = ops.read();
@@ -231,7 +231,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         6
     );
-    final WriteOperations ops = new WriteOperations(buffer);
+    final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(Integer.MAX_VALUE));
     buffer.flip();
     final var read = ops.read();
@@ -245,7 +245,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         3
     );
-    final WriteOperations ops = new WriteOperations(buffer);
+    final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(1L));
     buffer.flip();
     final var read = ops.read();
@@ -259,7 +259,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         10
     );
-    final WriteOperations ops = new WriteOperations(buffer);
+    final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(Long.MAX_VALUE));
     buffer.flip();
     final var read = ops.read();
@@ -273,7 +273,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         10
     );
-    final WriteOperations ops = new WriteOperations(buffer);
+    final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(Double.MIN_VALUE));
     buffer.flip();
     final var read = ops.read();
@@ -287,7 +287,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         6
     );
-    final WriteOperations ops = new WriteOperations(buffer);
+    final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(Float.MIN_VALUE));
     buffer.flip();
     final var read = ops.read();
@@ -301,7 +301,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         2 + ZigZagEncoding.sizeOf("hello world".length()) + "hello world".length()
     );
-    WriteOperations ops = new WriteOperations(buffer);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Optional.of("hello world"));
     buffer.flip();
     assertEquals(Optional.of("hello world"), ops.read());
@@ -316,8 +316,8 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(
         expectedSize
     );
-    WriteOperations ops = new WriteOperations(buffer);
-    final var type = new InternedName("Link");
+    CompactedBuffer ops = new CompactedBuffer(buffer);
+    final var type = new RecordPickler.InternedName("Link");
     var written = ops.write(type);
     buffer.flip();
     assertEquals(type, ops.read());
@@ -326,37 +326,32 @@ public class WriteOperationsTests {
   }
 
   @Test
-  void testWriteTypeOffset() {
-    final var buffer = ByteBuffer.allocate(1024);
-    final var firstPosition = 56;
-    buffer.position(firstPosition);
-    WriteOperations ops = new WriteOperations(buffer);
-    final var type = new InternedName("Link");
-    ops.write(type);
-    final var secondPosition = 521;
-    buffer.position(secondPosition);
-    final var typeOffset = new InternedOffset(firstPosition - secondPosition);
-    ops.write(typeOffset);
-    buffer.flip();
-    buffer.position(firstPosition);
-    assertEquals(type, ops.read());
-    buffer.position(secondPosition);
-    assertEquals(type, ops.read());
-  }
-
-
-  @Test
   void testEnum() {
     final var buffer = ByteBuffer.allocate(1024);
-    WriteOperations ops = new WriteOperations(buffer);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
     final var type = EnumTest.ONE;
     final var type2 = EnumTest.TWO;
     final var ignoredPrefix = "io.github.simbo1905.no.framework.";
     ops.write(ignoredPrefix, type);
     ops.write(ignoredPrefix, type2);
     buffer.flip();
-    assertEquals(new InternedName("EnumTest.ONE"), ops.read());
-    assertEquals(new InternedName("EnumTest.TWO"), ops.read());
+    assertEquals(new RecordPickler.InternedName("EnumTest.ONE"), ops.read());
+    assertEquals(new RecordPickler.InternedName("EnumTest.TWO"), ops.read());
+  }
+
+  @Test
+  void testEnumIntern() {
+    final var buffer = ByteBuffer.allocate(1024);
+    buffer.position(100);
+    CompactedBuffer ops = new CompactedBuffer(buffer);
+    final var one = EnumTest.ONE;
+    final var ignoredPrefix = "io.github.simbo1905.no.framework.";
+    ops.write(ignoredPrefix, one);
+    ops.write(ignoredPrefix, one);
+    buffer.flip();
+    buffer.position(100);
+    assertEquals(new RecordPickler.InternedName("EnumTest.ONE"), ops.read());
+    assertEquals(new RecordPickler.InternedName("EnumTest.ONE"), ops.read());
   }
 }
 
