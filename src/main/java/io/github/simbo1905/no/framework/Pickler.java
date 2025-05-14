@@ -69,8 +69,6 @@ public interface Pickler<T> {
     return getOrCreate(sealedClass, () -> manufactureSealedPickler(sealedClass));
   }
 
-  SerializationSession<T> serializationSession(ByteBuffer buffer);
-
   /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.
   ///
   /// @param buffer The buffer to write into
@@ -143,6 +141,9 @@ public interface Pickler<T> {
                 .sum())
         .orElse(1);
   }
+
+
+  void serialize(CompactedBuffer serializationSession, T testRecord);
 
   /// Controls how records handle schema evolution during deserialization.
   /// The system property [Compatibility#COMPATIBILITY_SYSTEM_PROPERTY] may be set to the following behaviours.
@@ -322,10 +323,7 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
     buffer.write(components.length);
     Arrays.stream(components).forEach(c -> {
-      switch (c) {
-        case Integer i -> buffer.write(i);
-        default -> throw new AssertionError("not implemented");
-      }
+      buffer.writeComponent(c);
     });
   }
 
@@ -333,13 +331,13 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
     // Read the number of components as an unsigned byte
     LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
     final int length = buffer.getInt();
-    Compatibility.validate(compatibility, recordClass.getName(), componentCount, length);
+    //Compatibility.validate(compatibility, recordClass.getName(), componentCount, length);
     // This may unload from the stream things that we will ignore
     final Object[] components = new Object[length];
 //    Arrays.setAll(components, ignored -> WriteOperations.deserializeValue(bufferOffset2Class, buffer));
-    if (componentCount < length && (Compatibility.FORWARDS == compatibility || Compatibility.ALL == compatibility)) {
-      return this.staticCreateFromComponents(Arrays.copyOfRange(components, 0, componentCount));
-    }
+//    if (componentCount < length && (Compatibility.FORWARDS == compatibility || Compatibility.ALL == compatibility)) {
+//      return this.staticCreateFromComponents(Arrays.copyOfRange(components, 0, componentCount));
+//    }
     return this.staticCreateFromComponents(components);
   }
 

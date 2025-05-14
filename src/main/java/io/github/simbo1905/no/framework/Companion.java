@@ -31,14 +31,9 @@ public class Companion {
       }
 
       @Override
-      public SerializationSession<R> serializationSession(ByteBuffer buffer) {
-        return new CompactedBuffer<>(buffer, this);
-      }
-
-      @Override
       public void serialize(ByteBuffer buffer, R object) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        CompactedBuffer compactedBuffer = new CompactedBuffer(buffer, this);
+        CompactedBuffer compactedBuffer = new CompactedBuffer(buffer);
         serializeWithMap(compactedBuffer, object);
       }
 
@@ -53,6 +48,12 @@ public class Companion {
       @Override
       public int sizeOf(R object) {
         throw new AssertionError("Not implemented");
+      }
+
+      @Override
+      public void serialize(CompactedBuffer compactedBuffer, R testRecord) {
+        compactedBuffer.buffer().order(java.nio.ByteOrder.BIG_ENDIAN);
+        serializeWithMap(compactedBuffer, testRecord);
       }
     };
   }
@@ -116,18 +117,13 @@ public class Companion {
       }
 
       @Override
-      public SerializationSession<S> serializationSession(ByteBuffer buffer) {
-        throw new AssertionError("not able to implement serialization session");
-      }
-
-      @Override
       public void serialize(ByteBuffer buffer, S object) {
         if (object == null) {
           buffer.put(NULL.marker());
           return;
         }
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        CompactedBuffer compactedBuffer = new CompactedBuffer(buffer, null);
+        CompactedBuffer compactedBuffer = new CompactedBuffer(buffer);
         // Cast the sealed interface to the concrete type.
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
 
@@ -163,6 +159,11 @@ public class Companion {
       @Override
       public int sizeOf(S object) {
         throw new AssertionError("not implemented");
+      }
+
+      @Override
+      public void serialize(CompactedBuffer serializationSession, S testRecord) {
+        throw new AssertionError("not possible to implement");
       }
 
       @Override

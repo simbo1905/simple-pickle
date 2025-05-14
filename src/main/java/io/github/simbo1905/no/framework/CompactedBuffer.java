@@ -11,22 +11,18 @@ import static io.github.simbo1905.no.framework.Constants.*;
 
 /// This class tracks the written position of record class names so that they can be referenced by an offset.
 /// It also uses ZigZag encoding to reduce the size of whole numbers data written to the buffer.
-public class CompactedBuffer<R extends Record> implements SerializationSession<R> {
-  private final ByteBuffer buffer;
-  private final Map<RecordPickler.InternedName, RecordPickler.InternedPosition> offsetMap = new HashMap<>();
-  private final RecordPickler<R> recordPickler;
-  boolean flipped = false;
-
-  CompactedBuffer(ByteBuffer buffer, RecordPickler<R> recordPickler) {
-    this.buffer = buffer;
-    this.recordPickler = recordPickler;
+public record CompactedBuffer(ByteBuffer buffer,
+                              Map<RecordPickler.InternedName, RecordPickler.InternedPosition> offsetMap,
+                              int startPosition) {
+  CompactedBuffer(ByteBuffer buffer) {
+    this(buffer, new HashMap<>(), buffer.position());
   }
 
-  public int position() {
+  int position() {
     return buffer.position();
   }
 
-  int write(int value) {
+  public int write(int value) {
     if (ZigZagEncoding.sizeOf(value) < Integer.BYTES) {
       buffer.put(Constants.INTEGER_VAR.marker());
       return 1 + ZigZagEncoding.putInt(buffer, value);
@@ -37,7 +33,7 @@ public class CompactedBuffer<R extends Record> implements SerializationSession<R
     }
   }
 
-  int write(long value) {
+  public int write(long value) {
     if (ZigZagEncoding.sizeOf(value) < Long.BYTES) {
       buffer.put(LONG_VAR.marker());
       return 1 + ZigZagEncoding.putLong(buffer, value);
@@ -48,11 +44,7 @@ public class CompactedBuffer<R extends Record> implements SerializationSession<R
     }
   }
 
-  // TODO: surely we do od not have a compacted buffer ehen reading??
-  Object read() {
-    if (!flipped) {
-      throw new IllegalStateException("Session buffer has not been flipped so cannot be read");
-    }
+  public Object read() {
     final byte marker = buffer.get();
     return switch (Constants.fromMarker(marker)) {
       case NULL -> null;
@@ -107,31 +99,31 @@ public class CompactedBuffer<R extends Record> implements SerializationSession<R
     };
   }
 
-  int write(double value) {
+  public int write(double value) {
     buffer.put(DOUBLE.marker());
     buffer.putDouble(value);
     return 1 + Double.BYTES;
   }
 
-  int write(float value) {
+  public int write(float value) {
     buffer.put(FLOAT.marker());
     buffer.putFloat(value);
     return 1 + Float.BYTES;
   }
 
-  int write(short value) {
+  public int write(short value) {
     buffer.put(SHORT.marker());
     buffer.putShort(value);
     return 1 + Short.BYTES;
   }
 
-  int write(char value) {
+  public int write(char value) {
     buffer.put(CHARACTER.marker());
     buffer.putChar(value);
     return 1 + Character.BYTES;
   }
 
-  int write(boolean value) {
+  public int write(boolean value) {
     buffer.put(BOOLEAN.marker());
     if (value) {
       buffer.put((byte) 1);
@@ -141,7 +133,7 @@ public class CompactedBuffer<R extends Record> implements SerializationSession<R
     return 1 + 1;
   }
 
-  int write(String s) {
+  public int write(String s) {
     Objects.requireNonNull(s);
     buffer.put(STRING.marker());
     byte[] utf8 = s.getBytes(StandardCharsets.UTF_8);
@@ -151,12 +143,12 @@ public class CompactedBuffer<R extends Record> implements SerializationSession<R
     return 1 + length;
   }
 
-  int writeNull() {
+  public int writeNull() {
     buffer.put(NULL.marker());
     return 1;
   }
 
-  int write(RecordPickler.InternedName type) {
+  public int write(RecordPickler.InternedName type) {
     Objects.requireNonNull(type);
     Objects.requireNonNull(type.name());
     buffer.put(INTERNED_NAME.marker());
@@ -172,7 +164,7 @@ public class CompactedBuffer<R extends Record> implements SerializationSession<R
     return size;
   }
 
-  <T extends Enum<?>> int write(String ignoredPrefix, T e) {
+  public <T extends Enum<?>> int write(String ignoredPrefix, T e) {
     Objects.requireNonNull(e);
     Objects.requireNonNull(ignoredPrefix);
     final var className = e.getDeclaringClass().getName();
@@ -185,12 +177,12 @@ public class CompactedBuffer<R extends Record> implements SerializationSession<R
       return 1 + intern(dotName);
     } else {
       final var internedPosition = offsetMap.get(internedName);
-      final var internedOffset = new RecordPickler.InternedOffset(internedPosition.position() - buffer.position());
+      final var internedOffset = new RecordPickler.InternedOffset(internedPosition.position() - buffer().position());
       return write(internedOffset);
     }
   }
 
-  int write(RecordPickler.InternedOffset typeOffset) {
+  public int write(RecordPickler.InternedOffset typeOffset) {
     Objects.requireNonNull(typeOffset);
     final int offset = typeOffset.offset();
     final int size = ZigZagEncoding.sizeOf(offset);
@@ -204,7 +196,7 @@ public class CompactedBuffer<R extends Record> implements SerializationSession<R
     }
   }
 
-  <T> int write(@SuppressWarnings("OptionalUsedAsFieldOrParameterType") Optional<T> optional) {
+  public <T> int write(@SuppressWarnings("OptionalUsedAsFieldOrParameterType") Optional<T> optional) {
     if (optional.isPresent()) {
       buffer.put(OPTIONAL_OF.marker());
       final T value = optional.get();
@@ -230,19 +222,41 @@ public class CompactedBuffer<R extends Record> implements SerializationSession<R
     }
   }
 
-  @Override
-  public void write(R record) {
-    if (flipped) {
-      throw new IllegalStateException("Session buffer has been flipped it is now invalidated");
-    }
-    Objects.requireNonNull(record);
-    Record recod = (Record) record;
-  }
-
-  @Override
+  // FIXME: ensure does not allow moe writes after flipped
   public ByteBuffer flip() {
     buffer.flip();
-    flipped = true;
     return buffer;
+  }
+
+  public void writeComponent(Object c) {
+    if (c == null) {
+      writeNull();
+    } else if (c instanceof Integer i) {
+      write(i);
+    } else if (c instanceof Long l) {
+      write(l);
+    } else if (c instanceof Short s) {
+      write(s);
+    } else if (c instanceof Byte b) {
+      write(b);
+    } else if (c instanceof Double d) {
+      write(d);
+    } else if (c instanceof Float f) {
+      write(f);
+    } else if (c instanceof Character ch) {
+      write(ch);
+    } else if (c instanceof Boolean b) {
+      write(b);
+    } else if (c instanceof String s) {
+      write(s);
+    } else if (c instanceof RecordPickler.InternedName t) {
+      write(t);
+    } else if (c instanceof RecordPickler.InternedOffset t) {
+      write(t);
+    } else if (c instanceof Enum<?> e) {
+      write("", e);
+    } else {
+      throw new AssertionError("unknown component type " + c.getClass());
+    }
   }
 }

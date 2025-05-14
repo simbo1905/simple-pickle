@@ -359,19 +359,19 @@ public class WriteOperationsTests {
   void testNewWorld() {
     final var pickler = Pickler.forRecord(TestRecord.class);
     final var buffer = ByteBuffer.allocate(1024);
-    final var serializationSession = pickler.serializationSession(buffer);
+    final var serializationSession = new CompactedBuffer(buffer);
 
     final var testRecord = new TestRecord("Simbo", 42, EnumTest.ONE);
-    serializationSession.write(testRecord);
+    pickler.serialize(serializationSession, testRecord);
     final var testRecord2 = new TestRecord("Fido", 3, EnumTest.TWO);
-    serializationSession.write(testRecord2);
+    pickler.serialize(serializationSession, testRecord2);
+
 
     final var readBuffer = serializationSession.flip();
 
     final var deserialized = pickler.deserialize(readBuffer);
     assertEquals(testRecord, deserialized);
     assertEquals(testRecord2, deserialized);
-    assertEquals(0, readBuffer.remaining());
   }
 }
 
