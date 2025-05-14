@@ -96,7 +96,7 @@ public interface Pickler<T> {
   }
 
   /// Returns the compatibility mode for this pickler. See [Compatibility] for details of how to set via a system property.
-  //Compatibility compatibility();
+  Compatibility compatibility();
 
   /// Obtains the cached a pickler for a record type or creates a new one and adds it into the cache.
   /// This method uses a concurrent map to store the picklers so it is thread-safe.
@@ -204,7 +204,9 @@ abstract class RecordPickler<R extends Record> implements Pickler<R> {
   final int componentCount;
   final MethodHandle canonicalConstructorHandle;
   final Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
-  final Compatibility compatibility = null;
+  final Compatibility compatibility = Pickler.Compatibility.valueOf(System.getProperty(
+      Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY,
+      Pickler.Compatibility.NONE.name()));
 
   RecordPickler(final Class<R> recordClass) {
     this.recordClass = recordClass;

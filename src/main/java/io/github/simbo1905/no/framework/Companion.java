@@ -26,6 +26,11 @@ public class Companion {
 
     return new RecordPickler<>(recordClass) {
       @Override
+      public Compatibility compatibility() {
+        return compatibility;
+      }
+
+      @Override
       public void serialize(R object, ByteBuffer buffer) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
         CompactedBuffer operations = new CompactedBuffer(buffer);
@@ -94,7 +99,16 @@ public class Companion {
             c -> (Class<? extends S>) c
         ));
 
+    final var compatibility =
+        Pickler.Compatibility.valueOf(System.getProperty(
+            Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY,
+            Pickler.Compatibility.NONE.name()));
+
     return new SealedPickler<>() {
+      @Override
+      public Compatibility compatibility() {
+        return compatibility;
+      }
 
       /// There is nothing effective we can do here.
       @Override
