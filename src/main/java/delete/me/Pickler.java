@@ -43,11 +43,11 @@ public interface Pickler<T> {
   }
 
   class SealedPickler<S> implements PicklerResolver<S, Pickler<S>> {
-//    @Override
-//    public Pickler<S> forRecord(S s) {
-//      //noinspection unchecked
-//      return (Pickler<S>) Pickler.getOrCreate(s.getClass());
-//    }
+    @Override
+    public Pickler<S> forRecord(S s) {
+      //noinspection unchecked
+      return (Pickler<S>) Pickler.getOrCreate(s.getClass());
+    }
 
     @Override
     public S deserialize(ByteBuffer buffer) {
