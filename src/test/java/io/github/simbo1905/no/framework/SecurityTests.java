@@ -57,7 +57,7 @@ class SecurityTests {
     // 3. Serialize the instance
     final int size = pickler.sizeOf(original);
     final ByteBuffer buffer = ByteBuffer.allocate(size);
-    pickler.serialize(original, buffer);
+    pickler.serialize(buffer, original);
     buffer.flip(); // Prepare for reading/manipulation
 
     // 4. Manipulate the byte buffer to replace the class name
@@ -93,7 +93,7 @@ class SecurityTests {
     // 3. Serialize the instance
     final int size = pickler.sizeOf(original);
     final ByteBuffer buffer = ByteBuffer.allocate(size);
-    pickler.serialize(original, buffer);
+    pickler.serialize(buffer, original);
     buffer.flip(); // Prepare for reading/manipulation
 
     // 4. Manipulate the byte buffer to replace the class name

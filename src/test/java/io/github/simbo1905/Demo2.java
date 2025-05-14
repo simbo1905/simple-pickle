@@ -28,7 +28,7 @@ public class Demo2 {
     final var buffer = ByteBuffer.allocate(bufferSize);
 
 // Serialize only the root node (which should include the entire graph)
-    pickler.serialize(originalRoot, buffer);
+    pickler.serialize(buffer, originalRoot);
 
 // Prepare buffer for reading
     buffer.flip();

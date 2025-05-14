@@ -49,7 +49,7 @@ public class PublicApiDemo {
     final var buffer = ByteBuffer.allocate(1024);
 
     for (Animal animal : animals) {
-      pickler.serialize(animal, buffer);
+      pickler.serialize(buffer, animal);
     }
 
     buffer.flip(); // Prepare for reading

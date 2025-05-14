@@ -46,7 +46,7 @@ public class DemoPickler2 {
     // Test 1: Round-trip dog2
     ByteBuffer dogBuffer = ByteBuffer.allocate(1024);
     Pickler<Dog> dogPickler = Pickler.forRecord(Dog.class);
-    dogPickler.serialize(dog2, dogBuffer);
+    dogPickler.serialize(dogBuffer, dog2);
     dogBuffer.flip();
     Dog deserializedDog = dogPickler.deserialize(dogBuffer);
     System.out.println("Dog2 round-trip: " + dog2.equals(deserializedDog));
@@ -62,7 +62,7 @@ public class DemoPickler2 {
     // Serialize
     animalBuffer.putInt(animals.size());
     for (Animal animal : animals) {
-      animalPickler.serialize(animal, animalBuffer);
+      animalPickler.serialize(animalBuffer, animal);
     }
     animalBuffer.flip();
 

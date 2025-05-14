@@ -78,7 +78,7 @@ public class MorePicklerTests {
     final var buffer = ByteBuffer.allocate(totalSize);
 
     // Serialize all animals into the buffer using streams
-    Arrays.stream(originalAnimals).forEach(animal -> pickler.serialize(animal, buffer));
+    Arrays.stream(originalAnimals).forEach(animal -> pickler.serialize(buffer, animal));
 
     assertFalse(buffer.hasRemaining());
 
@@ -182,7 +182,7 @@ public class MorePicklerTests {
     // Serialize all nodes into the buffer
     Arrays.stream(originalNodes).forEach(node -> {
       LOGGER.fine(() -> "Serializing node: " + node + " with buffer remaining: " + buffer.remaining());
-      pickler.serialize(node, buffer);
+      pickler.serialize(buffer, node);
     });
 
     assertFalse(buffer.hasRemaining());
@@ -259,7 +259,7 @@ public class MorePicklerTests {
     // Allocate a buffer to hold the entire chain
     var buffer = ByteBuffer.allocate(bufferSize);
     // Serialize the entire chain
-    pickler.serialize(link2, buffer);
+    pickler.serialize(buffer, link2);
     assertFalse(buffer.hasRemaining());
     // Prepare buffer for reading
     buffer.flip();
@@ -307,7 +307,7 @@ public class MorePicklerTests {
     // Allocate a buffer to hold the entire chain
     var buffer = ByteBuffer.allocate(bufferSize);
     // Serialize the entire chain
-    pickler.serialize(chained, buffer);
+    pickler.serialize(buffer, chained);
     assertFalse(buffer.hasRemaining());
     // Prepare buffer for reading
     buffer.flip();
@@ -373,7 +373,7 @@ public class MorePicklerTests {
     var buffer = ByteBuffer.allocate(bufferSize);
     
     // Serialize only the root node (which should include the entire graph)
-    pickler.serialize(originalRoot, buffer);
+    pickler.serialize(buffer, originalRoot);
 
     assertFalse(buffer.hasRemaining());
 
@@ -430,7 +430,7 @@ public class MorePicklerTests {
     );
 
     var buffer = ByteBuffer.allocate(pickler.sizeOf(original));
-    pickler.serialize(original, buffer);
+    pickler.serialize(buffer, original);
     assertFalse(buffer.hasRemaining());
     buffer.flip();
 

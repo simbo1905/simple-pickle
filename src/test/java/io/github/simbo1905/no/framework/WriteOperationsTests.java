@@ -7,6 +7,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@SuppressWarnings("rawtypes")
 public class WriteOperationsTests {
   @Test
   void testSmallInt() {
@@ -119,7 +120,7 @@ public class WriteOperationsTests {
     CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(true);
     written += ops.write(false);
-    buffer.flip();
+    ops.flip();
     assertEquals(true, ops.read());
     assertEquals(false, ops.read());
     assertEquals(4, written);
@@ -131,7 +132,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(1 + Float.BYTES);
     CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Float.MAX_VALUE);
-    buffer.flip();
+    ops.flip();
     assertEquals(Float.MAX_VALUE, ops.read());
     assertEquals(1 + Float.BYTES, written);
     assertFalse(buffer.hasRemaining());
@@ -142,7 +143,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(1 + Double.BYTES);
     CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Double.MAX_VALUE);
-    buffer.flip();
+    ops.flip();
     assertEquals(Double.MAX_VALUE, ops.read());
     assertEquals(1 + Double.BYTES, written);
     assertFalse(buffer.hasRemaining());
@@ -153,7 +154,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(1 + Short.BYTES);
     CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Short.MAX_VALUE);
-    buffer.flip();
+    ops.flip();
     assertEquals(Short.MAX_VALUE, ops.read());
     assertEquals(1 + Short.BYTES, written);
     assertFalse(buffer.hasRemaining());
@@ -164,7 +165,7 @@ public class WriteOperationsTests {
     final var buffer = ByteBuffer.allocate(1 + Character.BYTES);
     CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Character.MAX_VALUE);
-    buffer.flip();
+    ops.flip();
     assertEquals(Character.MAX_VALUE, ops.read());
     assertEquals(1 + Character.BYTES, written);
     assertFalse(buffer.hasRemaining());
@@ -179,7 +180,7 @@ public class WriteOperationsTests {
     );
     CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write("hello world");
-    buffer.flip();
+    ops.flip();
     assertEquals("hello world", ops.read());
     assertEquals(1 + "hello world".length(), written);
     assertFalse(buffer.hasRemaining());
@@ -192,7 +193,7 @@ public class WriteOperationsTests {
     );
     CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.writeNull();
-    buffer.flip();
+    ops.flip();
     assertNull(ops.read());
     assertEquals(1, written);
     assertFalse(buffer.hasRemaining());
@@ -205,7 +206,7 @@ public class WriteOperationsTests {
     );
     final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.empty());
-    buffer.flip();
+    ops.flip();
     final var read = ops.read();
     assertEquals(Optional.empty(), read);
     assertEquals(1, written);
@@ -219,7 +220,7 @@ public class WriteOperationsTests {
     );
     final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(1));
-    buffer.flip();
+    ops.flip();
     final var read = ops.read();
     assertEquals(Optional.of(1), read);
     assertEquals(3, written);
@@ -233,7 +234,7 @@ public class WriteOperationsTests {
     );
     final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(Integer.MAX_VALUE));
-    buffer.flip();
+    ops.flip();
     final var read = ops.read();
     assertEquals(Optional.of(Integer.MAX_VALUE), read);
     assertEquals(6, written);
@@ -247,7 +248,7 @@ public class WriteOperationsTests {
     );
     final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(1L));
-    buffer.flip();
+    ops.flip();
     final var read = ops.read();
     assertEquals(Optional.of(1L), read);
     assertEquals(3, written);
@@ -261,7 +262,7 @@ public class WriteOperationsTests {
     );
     final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(Long.MAX_VALUE));
-    buffer.flip();
+    ops.flip();
     final var read = ops.read();
     assertEquals(Optional.of(Long.MAX_VALUE), read);
     assertEquals(10, written);
@@ -275,7 +276,7 @@ public class WriteOperationsTests {
     );
     final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(Double.MIN_VALUE));
-    buffer.flip();
+    ops.flip();
     final var read = ops.read();
     assertEquals(Optional.of(Double.MIN_VALUE), read);
     assertEquals(10, written);
@@ -289,7 +290,7 @@ public class WriteOperationsTests {
     );
     final CompactedBuffer ops = new CompactedBuffer(buffer);
     final var written = ops.write(Optional.of(Float.MIN_VALUE));
-    buffer.flip();
+    ops.flip();
     final var read = ops.read();
     assertEquals(Optional.of(Float.MIN_VALUE), read);
     assertEquals(6, written);
@@ -303,7 +304,7 @@ public class WriteOperationsTests {
     );
     CompactedBuffer ops = new CompactedBuffer(buffer);
     var written = ops.write(Optional.of("hello world"));
-    buffer.flip();
+    ops.flip();
     assertEquals(Optional.of("hello world"), ops.read());
     assertEquals(2 + "hello world".length(), written);
     assertFalse(buffer.hasRemaining());
@@ -319,7 +320,7 @@ public class WriteOperationsTests {
     CompactedBuffer ops = new CompactedBuffer(buffer);
     final var type = new RecordPickler.InternedName("Link");
     var written = ops.write(type);
-    buffer.flip();
+    ops.flip();
     assertEquals(type, ops.read());
     assertEquals(expectedSize, written);
     assertFalse(buffer.hasRemaining());
@@ -334,7 +335,7 @@ public class WriteOperationsTests {
     final var ignoredPrefix = "io.github.simbo1905.no.framework.";
     ops.write(ignoredPrefix, type);
     ops.write(ignoredPrefix, type2);
-    buffer.flip();
+    ops.flip();
     assertEquals(new RecordPickler.InternedName("EnumTest.ONE"), ops.read());
     assertEquals(new RecordPickler.InternedName("EnumTest.TWO"), ops.read());
   }
@@ -348,11 +349,33 @@ public class WriteOperationsTests {
     final var ignoredPrefix = "io.github.simbo1905.no.framework.";
     ops.write(ignoredPrefix, one);
     ops.write(ignoredPrefix, one);
-    buffer.flip();
+    ops.flip();
     buffer.position(100);
     assertEquals(new RecordPickler.InternedName("EnumTest.ONE"), ops.read());
     assertEquals(new RecordPickler.InternedName("EnumTest.ONE"), ops.read());
   }
+
+  @Test
+  void testNewWorld() {
+    final var pickler = Pickler.forRecord(TestRecord.class);
+    final var buffer = ByteBuffer.allocate(1024);
+    final var serializationSession = pickler.serializationSession(buffer);
+
+    final var testRecord = new TestRecord("Simbo", 42, EnumTest.ONE);
+    serializationSession.write(testRecord);
+    final var testRecord2 = new TestRecord("Fido", 3, EnumTest.TWO);
+    serializationSession.write(testRecord2);
+
+    final var readBuffer = serializationSession.flip();
+
+    final var deserialized = pickler.deserialize(readBuffer);
+    assertEquals(testRecord, deserialized);
+    assertEquals(testRecord2, deserialized);
+    assertEquals(0, readBuffer.remaining());
+  }
+}
+
+record TestRecord(String name, int age, EnumTest testEnum) {
 }
 
 enum EnumTest {

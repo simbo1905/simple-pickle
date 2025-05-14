@@ -75,7 +75,7 @@ public class ListPicklerTests {
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
-    pickler.serialize(original, buffer);
+    pickler.serialize(buffer, original);
     assertFalse(buffer.hasRemaining());
     buffer.flip();
 
@@ -165,7 +165,7 @@ public class ListPicklerTests {
     var buffer = ByteBuffer.allocate(animalPickler.sizeOf(dog));
 
     // Serialize and deserialize the Dog instance
-    animalPickler.serialize(dog, buffer);
+    animalPickler.serialize(buffer, dog);
     assertFalse(buffer.hasRemaining());
     // Flip the buffer to prepare for reading
     int bytesWritten = buffer.position();

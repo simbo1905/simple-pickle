@@ -31,10 +31,15 @@ public class Companion {
       }
 
       @Override
-      public void serialize(R object, ByteBuffer buffer) {
+      public SerializationSession<R> serializationSession(ByteBuffer buffer) {
+        return new CompactedBuffer<>(buffer, this);
+      }
+
+      @Override
+      public void serialize(ByteBuffer buffer, R object) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        CompactedBuffer operations = new CompactedBuffer(buffer);
-        serializeWithMap(operations, object);
+        CompactedBuffer compactedBuffer = new CompactedBuffer(buffer, this);
+        serializeWithMap(compactedBuffer, object);
       }
 
       @Override
@@ -110,15 +115,19 @@ public class Companion {
         return compatibility;
       }
 
-      /// There is nothing effective we can do here.
       @Override
-      public void serialize(S object, ByteBuffer buffer) {
+      public SerializationSession<S> serializationSession(ByteBuffer buffer) {
+        throw new AssertionError("not able to implement serialization session");
+      }
+
+      @Override
+      public void serialize(ByteBuffer buffer, S object) {
         if (object == null) {
           buffer.put(NULL.marker());
           return;
         }
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        CompactedBuffer operations = new CompactedBuffer(buffer);
+        CompactedBuffer compactedBuffer = new CompactedBuffer(buffer, null);
         // Cast the sealed interface to the concrete type.
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
 
@@ -130,7 +139,7 @@ public class Companion {
         // Delegate to subtype pickler
         Pickler<? extends S> pickler = subPicklers.get(concreteType);
         //noinspection unchecked
-        ((RecordPickler<Record>) pickler).serializeWithMap(operations, (Record) object);
+        ((RecordPickler<Record>) pickler).serializeWithMap(compactedBuffer, (Record) object);
       }
 
       @Override

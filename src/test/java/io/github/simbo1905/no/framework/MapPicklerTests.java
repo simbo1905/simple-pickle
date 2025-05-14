@@ -67,7 +67,7 @@ class MapPicklerTests {
     final var buffer = ByteBuffer.allocate(size);
 
     // Serialize
-    pickler.serialize(original, buffer);
+    pickler.serialize(buffer, original);
     assertFalse(buffer.hasRemaining());
     buffer.flip();
 

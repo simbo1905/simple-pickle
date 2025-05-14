@@ -37,7 +37,7 @@ public class Demo1 {
 
 // When we serialize a tree of nodes to a ByteBuffer:
     ByteBuffer buffer = ByteBuffer.allocate(1024);
-    treeNodePickler.serialize(originalRoot, buffer);
+    treeNodePickler.serialize(buffer, originalRoot);
 
 // And deserialize it back:
     buffer.flip();

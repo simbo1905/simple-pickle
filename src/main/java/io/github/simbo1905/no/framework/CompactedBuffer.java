@@ -11,18 +11,22 @@ import static io.github.simbo1905.no.framework.Constants.*;
 
 /// This class tracks the written position of record class names so that they can be referenced by an offset.
 /// It also uses ZigZag encoding to reduce the size of whole numbers data written to the buffer.
-public record CompactedBuffer(ByteBuffer buffer,
-                              Map<RecordPickler.InternedName, RecordPickler.InternedPosition> offsetMap,
-                              int startPosition) {
-  CompactedBuffer(ByteBuffer buffer) {
-    this(buffer, new HashMap<>(), buffer.position());
+public class CompactedBuffer<R extends Record> implements SerializationSession<R> {
+  private final ByteBuffer buffer;
+  private final Map<RecordPickler.InternedName, RecordPickler.InternedPosition> offsetMap = new HashMap<>();
+  private final RecordPickler<R> recordPickler;
+  boolean flipped = false;
+
+  CompactedBuffer(ByteBuffer buffer, RecordPickler<R> recordPickler) {
+    this.buffer = buffer;
+    this.recordPickler = recordPickler;
   }
 
-  int position() {
+  public int position() {
     return buffer.position();
   }
 
-  public int write(int value) {
+  int write(int value) {
     if (ZigZagEncoding.sizeOf(value) < Integer.BYTES) {
       buffer.put(Constants.INTEGER_VAR.marker());
       return 1 + ZigZagEncoding.putInt(buffer, value);
@@ -33,7 +37,7 @@ public record CompactedBuffer(ByteBuffer buffer,
     }
   }
 
-  public int write(long value) {
+  int write(long value) {
     if (ZigZagEncoding.sizeOf(value) < Long.BYTES) {
       buffer.put(LONG_VAR.marker());
       return 1 + ZigZagEncoding.putLong(buffer, value);
@@ -44,7 +48,11 @@ public record CompactedBuffer(ByteBuffer buffer,
     }
   }
 
-  public Object read() {
+  // TODO: surely we do od not have a compacted buffer ehen reading??
+  Object read() {
+    if (!flipped) {
+      throw new IllegalStateException("Session buffer has not been flipped so cannot be read");
+    }
     final byte marker = buffer.get();
     return switch (Constants.fromMarker(marker)) {
       case NULL -> null;
@@ -99,31 +107,31 @@ public record CompactedBuffer(ByteBuffer buffer,
     };
   }
 
-  public int write(double value) {
+  int write(double value) {
     buffer.put(DOUBLE.marker());
     buffer.putDouble(value);
     return 1 + Double.BYTES;
   }
 
-  public int write(float value) {
+  int write(float value) {
     buffer.put(FLOAT.marker());
     buffer.putFloat(value);
     return 1 + Float.BYTES;
   }
 
-  public int write(short value) {
+  int write(short value) {
     buffer.put(SHORT.marker());
     buffer.putShort(value);
     return 1 + Short.BYTES;
   }
 
-  public int write(char value) {
+  int write(char value) {
     buffer.put(CHARACTER.marker());
     buffer.putChar(value);
     return 1 + Character.BYTES;
   }
 
-  public int write(boolean value) {
+  int write(boolean value) {
     buffer.put(BOOLEAN.marker());
     if (value) {
       buffer.put((byte) 1);
@@ -133,7 +141,7 @@ public record CompactedBuffer(ByteBuffer buffer,
     return 1 + 1;
   }
 
-  public int write(String s) {
+  int write(String s) {
     Objects.requireNonNull(s);
     buffer.put(STRING.marker());
     byte[] utf8 = s.getBytes(StandardCharsets.UTF_8);
@@ -143,12 +151,12 @@ public record CompactedBuffer(ByteBuffer buffer,
     return 1 + length;
   }
 
-  public int writeNull() {
+  int writeNull() {
     buffer.put(NULL.marker());
     return 1;
   }
 
-  public int write(RecordPickler.InternedName type) {
+  int write(RecordPickler.InternedName type) {
     Objects.requireNonNull(type);
     Objects.requireNonNull(type.name());
     buffer.put(INTERNED_NAME.marker());
@@ -164,7 +172,7 @@ public record CompactedBuffer(ByteBuffer buffer,
     return size;
   }
 
-  public <T extends Enum<?>> int write(String ignoredPrefix, T e) {
+  <T extends Enum<?>> int write(String ignoredPrefix, T e) {
     Objects.requireNonNull(e);
     Objects.requireNonNull(ignoredPrefix);
     final var className = e.getDeclaringClass().getName();
@@ -177,12 +185,12 @@ public record CompactedBuffer(ByteBuffer buffer,
       return 1 + intern(dotName);
     } else {
       final var internedPosition = offsetMap.get(internedName);
-      final var internedOffset = new RecordPickler.InternedOffset(internedPosition.position() - buffer().position());
+      final var internedOffset = new RecordPickler.InternedOffset(internedPosition.position() - buffer.position());
       return write(internedOffset);
     }
   }
 
-  public int write(RecordPickler.InternedOffset typeOffset) {
+  int write(RecordPickler.InternedOffset typeOffset) {
     Objects.requireNonNull(typeOffset);
     final int offset = typeOffset.offset();
     final int size = ZigZagEncoding.sizeOf(offset);
@@ -196,7 +204,7 @@ public record CompactedBuffer(ByteBuffer buffer,
     }
   }
 
-  public <T> int write(@SuppressWarnings("OptionalUsedAsFieldOrParameterType") Optional<T> optional) {
+  <T> int write(@SuppressWarnings("OptionalUsedAsFieldOrParameterType") Optional<T> optional) {
     if (optional.isPresent()) {
       buffer.put(OPTIONAL_OF.marker());
       final T value = optional.get();
@@ -220,5 +228,21 @@ public record CompactedBuffer(ByteBuffer buffer,
       buffer.put(OPTIONAL_EMPTY.marker());
       return 1;
     }
+  }
+
+  @Override
+  public void write(R record) {
+    if (flipped) {
+      throw new IllegalStateException("Session buffer has been flipped it is now invalidated");
+    }
+    Objects.requireNonNull(record);
+    Record recod = (Record) record;
+  }
+
+  @Override
+  public ByteBuffer flip() {
+    buffer.flip();
+    flipped = true;
+    return buffer;
   }
 }

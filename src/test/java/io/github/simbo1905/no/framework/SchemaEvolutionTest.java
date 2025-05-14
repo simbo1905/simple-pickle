@@ -309,7 +309,7 @@ public class SchemaEvolutionTest {
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize the record
-    pickler.serialize(record, buffer);
+    pickler.serialize(buffer, record);
     assertFalse(buffer.hasRemaining());
     buffer.flip();
 
