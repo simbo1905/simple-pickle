@@ -1,73 +1,19 @@
 package io.github.simbo1905.no.framework;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.RecordComponent;
+import java.io.*;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
 
-import static io.github.simbo1905.no.framework.Companion.*;
-import static io.github.simbo1905.no.framework.Constants.ARRAY;
-import static java.nio.charset.StandardCharsets.UTF_8;
-/// No Framework Pickler: A tiny, fast, type-safe, zero-dependency Java serialization library.
-/// This interface provides type-safe serialization for records to and from ByteBuffers using reflection-free
-/// [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh).
-/// You obtain a pickler for a record type using one of two static method [Pickler#forRecord(java.lang.Class)]
-/// or [Pickler#forSealedInterface(java.lang.Class)]. The returned pickler is type-safe and are cached in a concurrent
-/// static map. The picklers can then be used to serialize and deserialize the record type to and from a ByteBuffer:
-///
-///  - `void serialize(T record, ByteBuffer buffer)` recursively loads the components reachable through record T to the buffer.
-///  - `T deserialize(ByteBuffer buffer)` recursively unloads components from the buffer and invokes the matching constructor.
-///  - `int sizeOf(T record)` recursively sums the encoded byte size of this record type.
-///  - `void serializeMany(R[] array, ByteBuffer buffer)` serializes an array of objects.
-///  - `List<R> deserializeMany(Class<R> componentType, ByteBuffer buffer)` deserializes an array of objects.
-///  - `int sizeOfMany(R[] array)` recursively sums the encoded byte size of many records.
-///
-/// Key features:
-/// - Zero dependencies, single Java file (~1,100 LOC), tiny jar (~33k)
-/// - Works with nested sealed interfaces of permitted record types
-/// - Supports primitive types, String, Optional, Record, Map, List, Enum, Arrays
-/// - Fast performance by caching MethodHandles instead of using reflection
-/// - Secure by default with strict validation
-/// - Immutable collections in deserialized results
-/// - Binary backwards and forwards compatibility through alternative constructors
-///
-/// See [Pickler#forRecord(java.lang.Class)
-/// See the [Compatibility] enum which allows for backwards and forwards compatibility between pickers.
-///
-/// Logging is done using the standard Java logging framework java.util.logger known as "jul" logging.
-/// There are ways to bridge that to other logging frameworks like SLF4J or Log4j2.
-/// Errors are logged at the SEVERE level. If backwards compatibility is enabled, warnings are logged at the WARNING level.
-///
-/// @param <T> The type to be serialized/deserialized which may be a Record type or a sealed interface that
-/// may contain nested sealed interfaces where the only concrete types must be Records containing simple types
-/// or nested Records containing simple types.
+import static io.github.simbo1905.no.framework.Pickler.getOrCreate;
+
 public interface Pickler<T> {
   java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(Pickler.class.getName());
-
-  /// Obtains the cached a pickler for a record type or creates a new one and adds it into the cache.
-  /// This method uses a concurrent map to store the picklers so it is thread-safe.
-  /// Throws IllegalArgumentException at runtime if:
-  /// - The supplied class is not a record type.
-  /// - Any components of the record are not types that are supported by this library.
-  /// See [Constants] for details of supported value types.
-  static <R extends Record> Pickler<R> forRecord(Class<R> recordClass) {
-    return getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass));
-  }
-
-  /// Obtains the cached a pickler for a sealed interface that creates picklers for all permitted record types.
-  /// It creates a record pickler for each permitted record type and caches them in the returned object.
-  /// This method uses a concurrent map to store the top-level picker that is returned so it is thread-safe.
-  /// Throws IllegalArgumentException at runtime if:
-  /// - The supplied class is not a sealed interface.
-  /// - Any permitted subclasses are not record types that are supported by this library.
-  /// - Any permitted subclasses of any nested sealed interfaces are not record types that are supported by this library.
-  /// See [Constants] for details of supported value types.
-  static <S> Pickler<S> forSealedInterface(Class<S> sealedClass) {
-    return getOrCreate(sealedClass, () -> manufactureSealedPickler(sealedClass));
-  }
 
   /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.
   ///
@@ -80,306 +26,165 @@ public interface Pickler<T> {
   /// @return The deserialized record
   T deserialize(ByteBuffer buffer);
 
-  /// Recursively sums the encoded byte size of this record type. Note this may be quite a lot of work if the record
-  /// given is the root node in a massive nested tree of a hierarchy of records. If you know your records are always
-  /// small then it **may** be better to recycle buffers that are allocated to be  larger than your expected max size.
-  /// @param record The record to measure
-  /// @return The size in bytes
-  int sizeOf(T record);
+  ConcurrentHashMap<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
 
-  /// A convenient helper to serializes an array of records. Due to Java's runtime type erasure you must use
-  /// explicitly declared arrays and not have any compiler warnings about possible misalignment of types. Use
-  /// [Pickler#deserializeMany(java.lang.Class, java.nio.ByteBuffer)] for deserialization.
-  ///
-  /// WARNING: Do not attempt to use helper methods on Java collections into convert Collections into arrays!
-  ///
-  /// The boring safe way to make an array from a list of records is to do an explicit shallow copy into an explicitly
-  /// instantiated array:
-  ///
-  /// ```
-  /// People[] people = new People[peopleList.size()]
-  /// Arrays.setAll(people, i -> peopleList.get(i));
-  ///```
-  ///
-  /// The shallow copy is the price to pay for a type safe way to serialization many things.
-  /// See the `README.md` for a discussion on how to void the shallow copy.
-  ///
-  /// @param array The array to serialize
-  /// @param buffer The buffer to write into
-  static <R extends Record> void serializeMany(R[] array, ByteBuffer buffer) {
-    buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-    buffer.put(typeMarker(ARRAY));
-    buffer.putInt(array.length);
-
-    @SuppressWarnings("unchecked") Pickler<R> pickler = Pickler.forRecord((Class<R>) array.getClass().getComponentType());
-    Arrays.stream(array).forEach(element -> pickler.serialize(buffer, element));
-  }
-
-  /// Unloads from the buffer a list of messages that were written using [#serializeMany].
-  /// By default, there must be an exact match between the class name of the record and the class name in the buffer.
-  /// See [Compatibility] for details of how to change this behaviour to allow for both backwards and forward compatibility.
-  static <R extends Record> List<R> deserializeMany(Class<R> componentType, ByteBuffer buffer) {
-    buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-    byte marker = buffer.get();
-    if (marker != typeMarker(ARRAY)) throw new IllegalArgumentException("Invalid array marker");
-
-    return IntStream.range(0, buffer.getInt())
-        .mapToObj(i -> Pickler.forRecord(componentType).deserialize(buffer))
-        .toList();
-  }
-
-  /// Recursively sums the encoded byte size of many records.
-  /// @param array The array of records to measure
-  /// @return The total size in bytes
-  static <R extends Record> int sizeOfMany(R[] array) {
-    //noinspection unchecked
-    return Optional.ofNullable(array)
-        .map(arr -> 1 + 4 // 4 bytes for the length prefix (int)
-            + arr.getClass().getComponentType().getName().getBytes(UTF_8).length + 4 +
-            Arrays.stream(arr)
-                .mapToInt(Pickler.forRecord((Class<R>) arr.getClass().getComponentType())::sizeOf)
-                .sum())
-        .orElse(1);
-  }
-
-
-  void serialize(CompactedBuffer serializationSession, T testRecord);
-
-  /// Controls how records handle schema evolution during deserialization.
-  /// The system property [Compatibility#COMPATIBILITY_SYSTEM_PROPERTY] may be set to the following behaviours.
-  ///
-  /// `NONE`: No schema evolution support. The serialized record must exactly match
-  ///       the current record definition. This is the default and most secure option.
-  ///
-  /// `BACKWARDS`: The current code can read data written by older versions.
-  ///            Allows fewer fields in the buffer than in the current record definition.
-  ///            Requires fallback constructors in the current code that match source code
-  ///            order of the older code version.
-  ///
-  /// `FORWARDS`: The current code can read data written by newer versions.
-  ///           Allows more fields in the buffer than in the current record definition.
-  ///           Extra fields in the buffer will be ignored.
-  ///
-  /// `ALL`: Enables both `BACKWARDS` and `FORWARDS` compatibility.
-  enum Compatibility {
-    NONE,
-    BACKWARDS,
-    FORWARDS,
-    ALL;
-
-    /// The system property name used to set the compatibility mode when a given pickler is created.
-    /// Use [Pickler#compatibility()] to check the compatibility mode.
-    public static final String COMPATIBILITY_SYSTEM_PROPERTY = "no.framework.Pickler.Compatibility";
-
-    /// Given the [Pickler#compatibility()] this method validates the number of components unloaded from the ByteBuffer
-    /// against the count of components of the canonical constructor. The default compatibility mode is `NONE` so the
-    /// lengths must match.
-    /// It throws an IllegalArgumentException if the count of components in the buffer is not compatible.
-    static void validate(final Compatibility compatibility, final String recordClassName, final int componentCount, final int bufferLength) {
-      if (compatibility == Compatibility.ALL) {
-        return;
-      }
-      if (compatibility == Compatibility.NONE && bufferLength != componentCount) {
-        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.NONE yet buffer length %s != component count %s"
-            .formatted(recordClassName, bufferLength, componentCount));
-      } else if (compatibility == Compatibility.BACKWARDS && bufferLength > componentCount) {
-        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.BACKWARDS and count of components %s > buffer size %s"
-            .formatted(recordClassName, bufferLength, componentCount));
-      } else if (compatibility == Compatibility.FORWARDS && bufferLength < componentCount) {
-        throw new IllegalArgumentException("Failed to create instance for class %s with Compatibility.FORWARDS and count of components %s < buffer size %s"
-            .formatted(recordClassName, bufferLength, componentCount));
-      }
-    }
-  }
-
-
-  /// Returns the compatibility mode for this pickler. See [Compatibility] for details of how to set via a system property.
-  Compatibility compatibility();
-
-
-}
-
-abstract class SealedPickler<S> implements Pickler<S> {
-
-  abstract Class<? extends S> resolveCachedClassByPickedName(ByteBuffer buffer);
-}
-
-abstract class RecordPickler<R extends Record> implements Pickler<R> {
-  final MethodHandle[] componentAccessors;
-  final Class<R> recordClass;
-  final int componentCount;
-  final MethodHandle canonicalConstructorHandle;
-  final Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
-  final Compatibility compatibility = Pickler.Compatibility.valueOf(System.getProperty(
-      Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY,
-      Pickler.Compatibility.NONE.name()));
-
-  RecordPickler(final Class<R> recordClass) {
-    this.recordClass = recordClass;
-    final RecordComponent[] components = recordClass.getRecordComponents();
-    componentCount = components.length;
-    final MethodHandles.Lookup lookup = MethodHandles.lookup();
-    try {
-      // Get parameter types for the canonical constructor
-      Class<?>[] parameterTypes = Arrays.stream(components)
-          .map(RecordComponent::getType)
-          .toArray(Class<?>[]::new);
-
-      // Get the canonical constructor
-      Constructor<?> constructorHandle = recordClass.getDeclaredConstructor(parameterTypes);
-      canonicalConstructorHandle = lookup.unreflectConstructor(constructorHandle);
-
-      componentAccessors = new MethodHandle[components.length];
-      Arrays.setAll(componentAccessors, i -> {
-        try {
-          return lookup.unreflect(components[i].getAccessor());
-        } catch (IllegalAccessException e) {
-          final var msg = "Failed to access component accessor for " + components[i].getName() +
-              " in record class " + recordClass.getName() + ": " + e.getClass().getSimpleName();
-          LOGGER.severe(() -> msg);
-          throw new IllegalArgumentException(msg, e);
-        }
-      });
-    } catch (Exception e) {
-      Throwable inner = e;
-      while (inner.getCause() != null) {
-        inner = inner.getCause();
-      }
-      final var msg = "Failed to access record components for class '" +
-          recordClass.getName() + "' due to " + inner.getClass().getSimpleName() + " " + inner.getMessage();
-      LOGGER.severe(() -> msg);
-      throw new IllegalArgumentException(msg, inner);
-    }
-
-    // Get the canonical constructor and any fallback constructors for schema evolution
-    try {
-      // Get all public constructors
-      final Constructor<?>[] allConstructors = recordClass.getConstructors();
-
-      for (Constructor<?> constructor : allConstructors) {
-        int currentParamCount = constructor.getParameterCount();
-        MethodHandle handle;
-
-        try {
-          handle = lookup.unreflectConstructor(constructor);
-        } catch (IllegalAccessException e) {
-          LOGGER.warning("Cannot access constructor with " + currentParamCount +
-              " parameters for " + recordClass.getName() + ": " + e.getMessage());
-          continue;
-        }
-
-        // This is a potential fallback constructor for schema evolution
-        if (fallbackConstructorHandles.containsKey(currentParamCount)) {
-          LOGGER.warning("Multiple fallback constructors with " + currentParamCount +
-              " parameters found for " + recordClass.getName() +
-              ". Using the first one encountered.");
-          // We keep the first one we found
-        } else {
-          fallbackConstructorHandles.put(currentParamCount, handle);
-          LOGGER.fine("Found fallback constructor with " + currentParamCount +
-              " parameters for " + recordClass.getName());
-        }
-      }
-    } catch (Exception e) {
-      final var msg = "Failed to access constructors for record '" +
-          recordClass.getName() + "' due to " + e.getClass().getSimpleName() + " " + e.getMessage();
-      LOGGER.severe(() -> msg);
-      throw new IllegalArgumentException(msg, e);
-    }
-
-    final Pickler.Compatibility compatibility = Pickler.Compatibility.valueOf(
-        System.getProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, "NONE"));
-
-    final String recordClassName = recordClass.getName();
-    if (compatibility != Pickler.Compatibility.NONE) {
-      // We are secure by default this is opt-in and should not be left on forever so best to nag
-      LOGGER.warning(() -> "Pickler for " + recordClassName + " has Compatibility set to " + compatibility.name());
-    }
-
-    // we are security by default so if we are set to strict mode do not allow fallback constructors
-    final Map<Integer, MethodHandle> finalFallbackConstructorHandles =
-        (Pickler.Compatibility.BACKWARDS == compatibility || Pickler.Compatibility.ALL == compatibility) ?
-            Collections.unmodifiableMap(fallbackConstructorHandles) : Collections.emptyMap();
-  }
-
-  Object[] components(R record) {
-    Object[] result = new Object[componentAccessors.length];
-    Arrays.setAll(result, i -> {
-      try {
-        return componentAccessors[i].invokeWithArguments(record);
-      } catch (Throwable e) {
-        final var msg = "Failed to access component: " + i +
-            " in record class '" + recordClass.getName() + "' : " + e.getMessage();
-        LOGGER.severe(() -> msg);
-        throw new IllegalArgumentException(msg, e);
-      }
-    });
-    return result;
-  }
-
-  void serializeWithMap(CompactedBuffer buffer, R object) {
-    final var components = components(object);
-    // Write the number of components as an unsigned byte (max 255)
-    LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
-    buffer.write(components.length);
-    Arrays.stream(components).forEach(c -> {
-      buffer.writeComponent(c);
-    });
-  }
-
-  R deserializeWithMap(ByteBuffer buffer, Map<Integer, Class<?>> bufferOffset2Class) {
-    // Read the number of components as an unsigned byte
-    LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
-    final int length = buffer.getInt();
-    //Compatibility.validate(compatibility, recordClass.getName(), componentCount, length);
-    // This may unload from the stream things that we will ignore
-    final Object[] components = new Object[length];
-//    Arrays.setAll(components, ignored -> WriteOperations.deserializeValue(bufferOffset2Class, buffer));
-//    if (componentCount < length && (Compatibility.FORWARDS == compatibility || Compatibility.ALL == compatibility)) {
-//      return this.staticCreateFromComponents(Arrays.copyOfRange(components, 0, componentCount));
-//    }
-    return this.staticCreateFromComponents(components);
-  }
-
+  // In Pickler interface
   @SuppressWarnings("unchecked")
-  private R staticCreateFromComponents(Object[] components) {
-    try {
-      // Get the number of components from the serialized data
-      int numComponents = components.length;
-      MethodHandle constructorToUse;
+  static <T> Pickler<T> getOrCreate(Class<T> type) {
+    return (Pickler<T>) REGISTRY.computeIfAbsent(type, Pickler::manufactureRecordPickler);
+  }
 
-      if (numComponents == componentCount) {
-        // Number of components matches the canonical constructor - use it directly
-        constructorToUse = canonicalConstructorHandle;
-      } else {
-        // Number of components differs, look for a fallback constructor
-        constructorToUse = fallbackConstructorHandles.get(numComponents);
-        if (constructorToUse == null) {
-          final var msg = "Schema evolution error: Cannot deserialize data for " +
-              this.recordClass.getName() + ". Found " + numComponents +
-              " components, but no matching constructor (canonical or fallback) exists.";
-          LOGGER.severe(() -> msg);
-          // No fallback constructor matches the number of components found
-          throw new IllegalArgumentException(msg);
-        }
+  static <R extends Record> Pickler<R> manufactureRecordPickler(Class<?> recordClass) {
+    assert 0 < recordClass.getRecordComponents().length;
+    return new RecordPickler<>() {
+    };
+  }
+
+  static <S> Pickler<S> manufactureSealedPickler(Class<S> sealedClass) {
+    return new SealedPickler<>() {
+    };
+  }
+
+  class SealedPickler<S> implements Pickler<S> {
+
+
+    @Override
+    public S deserialize(ByteBuffer buffer) {
+      final var length = buffer.getInt();
+      byte[] bytes = new byte[length];
+      buffer.get(bytes);
+      try (ByteArrayInputStream bin = new ByteArrayInputStream(bytes);
+           ObjectInputStream in = new ObjectInputStream(bin)) {
+        //noinspection unchecked
+        return (S) in.readObject();
+      } catch (IOException | ClassNotFoundException e) {
+        throw new RuntimeException(e);
       }
+    }
 
-      // Invoke the selected constructor
-      return (R) constructorToUse.invokeWithArguments(components);
-    } catch (Throwable e) {
-      final var msg = "Failed to create instance of " + this.recordClass.getName() +
-          " with " + components.length + " components: " + e.getMessage();
-      LOGGER.severe(() -> msg);
-      throw new IllegalArgumentException(msg, e);
+    @Override
+    public void serialize(ByteBuffer buffer, S animal) {
+      manufactureRecordPickler(animal.getClass()).serialize(buffer, (Record) animal);
     }
   }
 
-  public record InternedName(String name) {
-  }
+  class RecordPickler<R extends Record> implements Pickler<R> {
 
-  public record InternedOffset(int offset) {
-  }
+    @Override
+    public void serialize(ByteBuffer buffer, R object) {
+      assert 0 < object.getClass().getRecordComponents().length;
+      try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+           ObjectOutputStream out = new ObjectOutputStream(baos)) {
+        out.writeObject(object);
+        out.flush();
+        byte[] bytes = baos.toByteArray();
+        buffer.putInt(bytes.length);
+        buffer.put(bytes);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to serialize record", e);
+      }
+    }
 
-  public record InternedPosition(int position) {
+    @Override
+    public R deserialize(ByteBuffer buffer) {
+      final var length = buffer.getInt();
+      byte[] bytes = new byte[length];
+      buffer.get(bytes);
+      try (ByteArrayInputStream bin = new ByteArrayInputStream(bytes);
+           ObjectInputStream in = new ObjectInputStream(bin)) {
+        //noinspection unchecked
+        return (R) in.readObject();
+      } catch (IOException | ClassNotFoundException e) {
+        throw new RuntimeException(e);
+      }
+    }
+  }
+}
+
+class Companion {
+
+  // @formatter:off
+  sealed interface Animal permits Mammal, Bird, Alicorn {}
+  sealed interface Mammal extends Animal permits Dog, Cat { }
+  sealed interface Bird extends Animal permits Eagle, Penguin {}
+  record Alicorn(String name, String[] magicPowers) implements Animal, Serializable {
+    @Override
+    public boolean equals(Object o) {
+      if (o == null || getClass() != o.getClass()) return false;
+      Alicorn alicorn = (Alicorn) o;
+      return Objects.equals(name, alicorn.name) && Objects.deepEquals(magicPowers, alicorn.magicPowers);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(name, Arrays.hashCode(magicPowers));
+    }
+  }
+  record Dog(String name, int age) implements Mammal, Serializable {}
+  record Cat(String name, boolean purrs) implements Mammal, Serializable {}
+  record Eagle(double wingspan) implements Bird, Serializable {}
+  record Penguin(boolean canSwim) implements Bird, Serializable {}
+  // @formatter:on
+
+
+  public static void main(String[] args) {
+    // Example usage
+//    ByteBuffer buffer = ByteBuffer.allocate(1024);
+//    MyRecord record = new MyRecord("Hello", 42);
+//    Pickler<MyRecord> pickler = Pickler.manufactureRecordPickler(MyRecord.class);
+//    pickler.serialize(buffer, record);
+//    buffer.flip(); // Prepare the buffer for reading
+//    MyRecord deserializedRecord = pickler.deserialize(buffer);
+//    System.out.println("Deserialized Record: " + deserializedRecord);
+
+    // Create instances
+    Dog dog = new Dog("Buddy", 3);
+    Dog dog2 = new Dog("Fido", 2);
+    Eagle eagle = new Eagle(2.1);
+    Penguin penguin = new Penguin(true);
+    Alicorn alicorn = new Alicorn("Twilight Sparkle",
+        new String[]{"elements of harmony", "wings of a pegasus"});
+
+    // Test 1: Round-trip dog2
+    ByteBuffer dogBuffer = ByteBuffer.allocate(1024);
+    Pickler<Dog> dogPickler = getOrCreate(Dog.class);
+    dogPickler.serialize(dogBuffer, dog2);
+    dogBuffer.flip();
+    Dog deserializedDog = dogPickler.deserialize(dogBuffer);
+    System.out.println("Dog2 round-trip: " + dog2.equals(deserializedDog));
+
+    ByteBuffer animalBuffer = ByteBuffer.allocate(4096);
+
+    // Test 2: Round-trip list of animals
+    List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
+
+    // Get pickler for sealed interface
+    Pickler<Animal> animalPickler =
+        Pickler.manufactureSealedPickler(Animal.class);
+
+    // Serialize
+    animalBuffer.putInt(animals.size());
+    for (Animal animal : animals) {
+      //animalPickler.forRecord(animal).serialize(animalBuffer, animal);
+      animalPickler.serialize(animalBuffer, animal);
+    }
+    animalBuffer.flip();
+
+    // Deserialize
+    int size = animalBuffer.getInt();
+    List<Animal> deserializedAnimals = new ArrayList<>(size);
+    IntStream.range(0, size).forEach(i -> {
+      Animal animal = animalPickler.deserialize(animalBuffer);
+      deserializedAnimals.add(animal);
+    });
+
+    // Verify
+    AtomicBoolean allMatch = new AtomicBoolean(true);
+    IntStream.range(0, animals.size()).forEach(i -> {
+      if (!animals.get(i).equals(deserializedAnimals.get(i))) {
+        allMatch.set(false);
+      }
+    });
+    System.out.println("Animal list round-trip: " + allMatch.get());
   }
 }

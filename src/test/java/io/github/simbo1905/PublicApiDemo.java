@@ -1,6 +1,6 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.Pickler0;
 import org.junit.jupiter.api.Assertions;
 
 import java.nio.ByteBuffer;
@@ -45,7 +45,7 @@ public class PublicApiDemo {
   static List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
   public static void main(String[] args) {
-    Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
+    Pickler0<Animal> pickler = Pickler0.forSealedInterface(Animal.class);
     final var buffer = ByteBuffer.allocate(1024);
 
     for (Animal animal : animals) {
@@ -71,43 +71,43 @@ public class PublicApiDemo {
         .map(Dog.class::cast)
         .toArray(Dog[]::new);
 
-    Pickler.serializeMany(dogs, buffer);
+    Pickler0.serializeMany(dogs, buffer);
 
     Cat[] cats = animals.stream()
         .filter(Cat.class::isInstance)
         .map(Cat.class::cast)
         .toArray(Cat[]::new);
 
-    Pickler.serializeMany(cats, buffer);
+    Pickler0.serializeMany(cats, buffer);
 
     Eagle[] eagles = animals.stream()
         .filter(Eagle.class::isInstance)
         .map(Eagle.class::cast)
         .toArray(Eagle[]::new);
 
-    Pickler.serializeMany(eagles, buffer);
+    Pickler0.serializeMany(eagles, buffer);
 
     Penguin[] penguins = animals.stream()
         .filter(Penguin.class::isInstance)
         .map(Penguin.class::cast)
         .toArray(Penguin[]::new);
 
-    Pickler.serializeMany(penguins, buffer);
+    Pickler0.serializeMany(penguins, buffer);
 
     Alicorn[] alicorns = animals.stream()
         .filter(Alicorn.class::isInstance)
         .map(Alicorn.class::cast)
         .toArray(Alicorn[]::new);
 
-    Pickler.serializeMany(alicorns, buffer);
+    Pickler0.serializeMany(alicorns, buffer);
 
     // Deserialize the data back into objects
     buffer.flip(); // Prepare for reading
-    Dog[] deserializedDogs = Pickler.deserializeMany(Dog.class, buffer).toArray(Dog[]::new);
-    Cat[] deserializedCats = Pickler.deserializeMany(Cat.class, buffer).toArray(Cat[]::new);
-    Eagle[] deserializedEagles = Pickler.deserializeMany(Eagle.class, buffer).toArray(Eagle[]::new);
-    Penguin[] deserializedPenguins = Pickler.deserializeMany(Penguin.class, buffer).toArray(Penguin[]::new);
-    Alicorn[] deserializedAlicorns = Pickler.deserializeMany(Alicorn.class, buffer).toArray(Alicorn[]::new);
+    Dog[] deserializedDogs = Pickler0.deserializeMany(Dog.class, buffer).toArray(Dog[]::new);
+    Cat[] deserializedCats = Pickler0.deserializeMany(Cat.class, buffer).toArray(Cat[]::new);
+    Eagle[] deserializedEagles = Pickler0.deserializeMany(Eagle.class, buffer).toArray(Eagle[]::new);
+    Penguin[] deserializedPenguins = Pickler0.deserializeMany(Penguin.class, buffer).toArray(Penguin[]::new);
+    Alicorn[] deserializedAlicorns = Pickler0.deserializeMany(Alicorn.class, buffer).toArray(Alicorn[]::new);
 
     IntStream.range(0, dogs.length)
         .forEach(i -> Assertions.assertEquals(dogs[i], deserializedDogs[i]));

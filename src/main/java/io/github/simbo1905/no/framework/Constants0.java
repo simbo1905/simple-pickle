@@ -4,10 +4,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
 
 /// Enum containing constants used throughout the Pickler implementation
-enum Constants {
+enum Constants0 {
   NULL((byte) 1, 0, null),
   BOOLEAN((byte) 2, 1, boolean.class),
   BYTE((byte) 3, Byte.BYTES, byte.class),
@@ -22,9 +22,9 @@ enum Constants {
   STRING((byte) 12, 0, String.class),
   OPTIONAL_EMPTY((byte) 13, 0, Optional.class),
   OPTIONAL_OF((byte) 14, 0, Optional.class),
-  INTERNED_NAME((byte) 15, 0, RecordPickler.InternedName.class),
-  INTERNED_OFFSET((byte) 16, 0, RecordPickler.InternedOffset.class),
-  INTERNED_OFFSET_VAR((byte) 17, 0, RecordPickler.InternedOffset.class),
+  INTERNED_NAME((byte) 15, 0, RecordPickler0.InternedName.class),
+  INTERNED_OFFSET((byte) 16, 0, RecordPickler0.InternedOffset.class),
+  INTERNED_OFFSET_VAR((byte) 17, 0, RecordPickler0.InternedOffset.class),
   ENUM((byte) 18, 0, Enum.class),
   ARRAY((byte) 19, 0, null),
   MAP((byte) 20, 0, Map.class),
@@ -34,7 +34,7 @@ enum Constants {
   private final int sizeInBytes;
   private final Class<?> clazz;
 
-  Constants(byte typeMarker, int sizeInBytes, Class<?> clazz) {
+  Constants0(byte typeMarker, int sizeInBytes, Class<?> clazz) {
     this.typeMarker = typeMarker;
     this.sizeInBytes = sizeInBytes;
     this.clazz = clazz;
@@ -52,8 +52,8 @@ enum Constants {
     return clazz;
   }
 
-  public static Constants fromMarker(byte marker) {
-    for (Constants c : values()) {
+  public static Constants0 fromMarker(byte marker) {
+    for (Constants0 c : values()) {
       if (c.typeMarker == marker) {
         return c;
       }

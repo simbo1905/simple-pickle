@@ -16,7 +16,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
-import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Test class for the Pickler functionality.
@@ -111,7 +111,7 @@ class PicklerTests {
     // Use the generic pickler
     final var original = new Person("Alice", 30);
 
-    Pickler<Person> generated = Pickler.forRecord(Person.class);
+    Pickler0<Person> generated = Pickler0.forRecord(Person.class);
 
     // Serialize the Person record to a byte buffer
     int size = generated.sizeOf(original);
@@ -136,7 +136,7 @@ class PicklerTests {
     // Use the manually created pickler
     final var original = new Simple(42);
 
-    Pickler<Simple> generated = Pickler.forRecord(Simple.class);
+    Pickler0<Simple> generated = Pickler0.forRecord(Simple.class);
     int size = generated.sizeOf(original);
     // Serialize the Simple record to a byte buffer
     final var buffer = ByteBuffer.allocate(size);
@@ -161,7 +161,7 @@ class PicklerTests {
         Optional.of("Hello, World!")   // Optional with String
     );
 
-    Pickler<OptionalExample> pickler = Pickler.forRecord(OptionalExample.class);
+    Pickler0<OptionalExample> pickler = Pickler0.forRecord(OptionalExample.class);
 
     // Serialize the record
     final var buffer = ByteBuffer.allocate(pickler.sizeOf(original));
@@ -185,7 +185,7 @@ class PicklerTests {
     final var original = new Empty();
 
     // Get a pickler for the empty record
-    Pickler<Empty> pickler = Pickler.forRecord(Empty.class);
+    Pickler0<Empty> pickler = Pickler0.forRecord(Empty.class);
 
     // Serialize the empty record
     final var buffer = ByteBuffer.allocate(pickler.sizeOf(original));
@@ -205,7 +205,7 @@ class PicklerTests {
     // Create a record with different null field combinations
     final var original = new NullableFieldsExample(null, 42, null, null);
 
-    Pickler<NullableFieldsExample> pickler = Pickler.forRecord(NullableFieldsExample.class);
+    Pickler0<NullableFieldsExample> pickler = Pickler0.forRecord(NullableFieldsExample.class);
 
     // Serialize the record
     final var buffer = ByteBuffer.allocate(pickler.sizeOf(original));
@@ -232,7 +232,7 @@ class PicklerTests {
     Employee employee = new Employee("E12345", person, address);
 
     // Get a pickler for the Employee record
-    Pickler<Employee> pickler = Pickler.forRecord(Employee.class);
+    Pickler0<Employee> pickler = Pickler0.forRecord(Employee.class);
 
     // Serialize the record with nested records
     final var buffer = ByteBuffer.allocate(pickler.sizeOf(employee));
@@ -271,7 +271,7 @@ class PicklerTests {
     Department department = new Department("Engineering", manager, employee);
 
     // Get a pickler for the Department record
-    Pickler<Department> pickler = Pickler.forRecord(Department.class);
+    Pickler0<Department> pickler = Pickler0.forRecord(Department.class);
 
     // Serialize the record with nested records
     final var buffer = ByteBuffer.allocate(pickler.sizeOf(department));
@@ -299,7 +299,7 @@ class PicklerTests {
     // Create a record with a simple array
     final var original = new SimpleArrayExample(new int[]{1, 2}, null);
 
-    Pickler<SimpleArrayExample> pickler = Pickler.forRecord(SimpleArrayExample.class);
+    Pickler0<SimpleArrayExample> pickler = Pickler0.forRecord(SimpleArrayExample.class);
 
     int size = pickler.sizeOf(original);
 
@@ -312,7 +312,7 @@ class PicklerTests {
     // Get the bytes from the buffer
     final var bytes = buffer.array();
     StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
-    Matcher matcher = Pattern.compile(Constants.INTEGER._class().getName()).matcher(escapedSearchString.toString());
+    Matcher matcher = Pattern.compile(Constants0.INTEGER._class().getName()).matcher(escapedSearchString.toString());
     int count = 0;
     while (matcher.find()) {
       count++;
@@ -342,7 +342,7 @@ class PicklerTests {
         new Object[]{}
     );
 
-    Pickler<ArrayExample> pickler = Pickler.forRecord(ArrayExample.class);
+    Pickler0<ArrayExample> pickler = Pickler0.forRecord(ArrayExample.class);
 
     // Serialize the record
     final var buffer = ByteBuffer.allocate(pickler.sizeOf(original));
@@ -377,7 +377,7 @@ class PicklerTests {
         }
     );
 
-    Pickler<NestedArrayExample> pickler = Pickler.forRecord(NestedArrayExample.class);
+    Pickler0<NestedArrayExample> pickler = Pickler0.forRecord(NestedArrayExample.class);
 
     // Serialize the record
     final var buffer = ByteBuffer.allocate(pickler.sizeOf(original));
@@ -400,7 +400,7 @@ class PicklerTests {
     Shape triangle = new Triangle(3.0, 4.0, 5.0);
 
     // Get a pickler for the Shape sealed interface
-    Pickler<Shape> pickler = Pickler.forSealedInterface(Shape.class);
+    Pickler0<Shape> pickler = Pickler0.forSealedInterface(Shape.class);
 
     int size = pickler.sizeOf(circle);
 
@@ -444,7 +444,7 @@ class PicklerTests {
   @Test
   void testNullSealedInterface() {
     // Get a pickler for the Shape sealed interface
-    Pickler<Shape> pickler = Pickler.forSealedInterface(Shape.class);
+    Pickler0<Shape> pickler = Pickler0.forSealedInterface(Shape.class);
 
     // Serialize null
     ByteBuffer buffer = ByteBuffer.allocate(1024);
@@ -467,7 +467,7 @@ class PicklerTests {
     Animal alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
 
     // Get a pickler for the top-level Animal sealed interface
-    Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
+    Pickler0<Animal> pickler = Pickler0.forSealedInterface(Animal.class);
 
     // Test dog serialization/deserialization
     ByteBuffer dogBuffer = ByteBuffer.allocate(1024);
@@ -534,7 +534,7 @@ class PicklerTests {
   void testProtocolExample() {
 
     // Get picklers for the protocol interfaces
-    Pickler<StackCommand> commandPickler = Pickler.forSealedInterface(StackCommand.class);
+    Pickler0<StackCommand> commandPickler = Pickler0.forSealedInterface(StackCommand.class);
 
     // Test Command serialization/deserialization
     StackCommand[] commands = {
@@ -560,7 +560,7 @@ class PicklerTests {
         new Failure("operation failed")
     };
 
-    Pickler<StackResponse> responsePickler = Pickler.forSealedInterface(StackResponse.class);
+    Pickler0<StackResponse> responsePickler = Pickler0.forSealedInterface(StackResponse.class);
 
     for (StackResponse response : responses) {
       int size = responsePickler.sizeOf(response);
@@ -615,15 +615,15 @@ class PicklerTests {
     Person[] emptyArray = new Person[0];
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(emptyArray);
+    int size = Pickler0.sizeOfMany(emptyArray);
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize the array
-    Pickler.serializeMany(emptyArray, buffer);
+    Pickler0.serializeMany(emptyArray, buffer);
     buffer.flip();
 
     // Deserialize the array
-    @SuppressWarnings("MismatchedReadAndWriteOfArray") Person[] deserialized = Pickler.deserializeMany(Person.class, buffer).toArray(Person[]::new);
+    @SuppressWarnings("MismatchedReadAndWriteOfArray") Person[] deserialized = Pickler0.deserializeMany(Person.class, buffer).toArray(Person[]::new);
 
     // Verify the array is empty
     assertEquals(0, deserialized.length);
@@ -645,15 +645,15 @@ class PicklerTests {
     Person[] people = personList.toArray(Person[]::new);
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(people);
+    int size = Pickler0.sizeOfMany(people);
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize the array
-    Pickler.serializeMany(people, buffer);
+    Pickler0.serializeMany(people, buffer);
     buffer.flip();
 
     // Deserialize the array
-    Person[] deserialized = Pickler.deserializeMany(Person.class, buffer).toArray(Person[]::new);
+    Person[] deserialized = Pickler0.deserializeMany(Person.class, buffer).toArray(Person[]::new);
 
     // Verify array length
     assertEquals(people.length, deserialized.length);
@@ -681,7 +681,7 @@ class PicklerTests {
     final var original = new OptionalOptionalInt(Optional.of(Optional.of(99)));
 
     // Get a pickler for the record
-    Pickler<OptionalOptionalInt> pickler = Pickler.forRecord(OptionalOptionalInt.class);
+    Pickler0<OptionalOptionalInt> pickler = Pickler0.forRecord(OptionalOptionalInt.class);
 
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
@@ -723,7 +723,7 @@ class PicklerTests {
     OptionalArraysRecord original = new OptionalArraysRecord(stringOptionals, intOptionals);
 
     // Get a pickler for the record
-    Pickler<OptionalArraysRecord> pickler = Pickler.forRecord(OptionalArraysRecord.class);
+    Pickler0<OptionalArraysRecord> pickler = Pickler0.forRecord(OptionalArraysRecord.class);
 
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
@@ -778,7 +778,7 @@ class PicklerTests {
         optionalIntArray, optionalStringArray, optionalPersonArray, emptyOptionalArray);
 
     // Get a pickler for the record
-    Pickler<ArrayOptionalsRecord> pickler = Pickler.forRecord(ArrayOptionalsRecord.class);
+    Pickler0<ArrayOptionalsRecord> pickler = Pickler0.forRecord(ArrayOptionalsRecord.class);
 
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
@@ -850,7 +850,7 @@ class PicklerTests {
         byteArray, shortArray, charArray, longArray, floatArray, doubleArray);
 
     // Get a pickler for the record
-    Pickler<PrimitiveArraysRecord> pickler = Pickler.forRecord(PrimitiveArraysRecord.class);
+    Pickler0<PrimitiveArraysRecord> pickler = Pickler0.forRecord(PrimitiveArraysRecord.class);
 
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
@@ -892,7 +892,7 @@ class PicklerTests {
         byteArray);
 
     // Get a pickler for the record
-    Pickler<PrimitiveArraysRecord> pickler = Pickler.forRecord(PrimitiveArraysRecord.class);
+    Pickler0<PrimitiveArraysRecord> pickler = Pickler0.forRecord(PrimitiveArraysRecord.class);
 
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
@@ -933,7 +933,7 @@ class PicklerTests {
     EnumRecord original = new EnumRecord(TestColor.BLUE, TestSize.LARGE);
 
     // Get a pickler for the record
-    Pickler<EnumRecord> pickler = Pickler.forRecord(EnumRecord.class);
+    Pickler0<EnumRecord> pickler = Pickler0.forRecord(EnumRecord.class);
 
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
@@ -967,7 +967,7 @@ class PicklerTests {
     );
 
     // Get a pickler for the record
-    Pickler<EnumArrayRecord> pickler = Pickler.forRecord(EnumArrayRecord.class);
+    Pickler0<EnumArrayRecord> pickler = Pickler0.forRecord(EnumArrayRecord.class);
 
     // Calculate size and allocate buffer
     //int size = pickler.sizeOf(original);
@@ -1011,7 +1011,7 @@ class PicklerTests {
     );
 
     // Get a pickler for the record
-    Pickler<OptionalEnumRecord> pickler = Pickler.forRecord(OptionalEnumRecord.class);
+    Pickler0<OptionalEnumRecord> pickler = Pickler0.forRecord(OptionalEnumRecord.class);
 
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
@@ -1070,7 +1070,7 @@ class PicklerTests {
     );
 
     // Get a pickler for the record
-    Pickler<MixedRecord> pickler = Pickler.forRecord(MixedRecord.class);
+    Pickler0<MixedRecord> pickler = Pickler0.forRecord(MixedRecord.class);
     ByteBuffer buffer = ByteBuffer.allocate(1024);
     LOGGER.info("Starting size calculation: ");
     int size2 = pickler.sizeOf(original);
@@ -1132,7 +1132,7 @@ class PicklerTests {
     // Create an instance
     ComplexEnumRecord original = new ComplexEnumRecord(ComplexEnum.TWO);
 
-    Pickler<ComplexEnumRecord> pickler = Pickler.forRecord(ComplexEnumRecord.class);
+    Pickler0<ComplexEnumRecord> pickler = Pickler0.forRecord(ComplexEnumRecord.class);
 
     // This should never execute, but if it does, try to serializeMany
     int size = pickler.sizeOf(original);
@@ -1186,7 +1186,7 @@ class PicklerTests {
         101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120,
         121, 122, 123, 124, 125, 126, 127, 128, 129
     );
-    final var pickler = Pickler.forRecord(LargeRecord.class);
+    final var pickler = Pickler0.forRecord(LargeRecord.class);
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
     ByteBuffer buffer = ByteBuffer.allocate(size);

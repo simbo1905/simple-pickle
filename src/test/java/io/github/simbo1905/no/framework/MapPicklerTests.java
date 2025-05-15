@@ -60,7 +60,7 @@ class MapPicklerTests {
   /// @return The deserialized record
   private <T extends Record> T serializeAndDeserialize(T original) {
     // Get a pickler for the record type
-    @SuppressWarnings("unchecked") final var pickler = Pickler.forRecord((Class<T>) original.getClass());
+    @SuppressWarnings("unchecked") final var pickler = Pickler0.forRecord((Class<T>) original.getClass());
 
     // Calculate size and allocate buffer
     final var size = pickler.sizeOf(original);

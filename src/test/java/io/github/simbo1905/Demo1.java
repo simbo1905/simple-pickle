@@ -1,6 +1,6 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.Pickler0;
 
 import java.nio.ByteBuffer;
 
@@ -33,7 +33,7 @@ public class Demo1 {
         new TreeNode.InternalNode("Branch2", new TreeNode.LeafNode(123), null));
 
 // And a type safe pickler for the sealed interface:
-    Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
+    Pickler0<TreeNode> treeNodePickler = Pickler0.forSealedInterface(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer:
     ByteBuffer buffer = ByteBuffer.allocate(1024);

@@ -61,7 +61,7 @@ public class SchemaEvolutionTest {
   @Test
   void testBasicSchemaEvolution() throws Exception {
     try {
-      System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
+      System.setProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler0.Compatibility.BACKWARDS.name());
       // Step 1: Compile and load the original schema
       Class<?> originalClass = BackwardsCompatibilityTests.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
       assertTrue(originalClass.isRecord(), "Compiled class should be a record");
@@ -84,7 +84,7 @@ public class SchemaEvolutionTest {
           "myNewInt", 42  // Should be the default value from the compatibility constructor
       ));
     } finally {
-      System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+      System.clearProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
     }
   }
 
@@ -302,7 +302,7 @@ public class SchemaEvolutionTest {
   public static byte[] serializeRecord(Object record) {
     // Get the pickler for the record class
     Class<? extends Record> recordClass = (Class<? extends Record>) record.getClass();
-    Pickler pickler = Pickler.forRecord(recordClass);
+    Pickler0 pickler = Pickler0.forRecord(recordClass);
 
     // Calculate buffer size and allocate buffer
     int size = pickler.sizeOf(record);
@@ -326,7 +326,7 @@ public class SchemaEvolutionTest {
   /// @return The deserialized record instance
   @SuppressWarnings({"unchecked"})
   public static Object deserializeRecord(Class<?> recordClass, byte[] bytes) {
-    return Pickler.forRecord((Class<? extends Record>) recordClass).deserialize(ByteBuffer.wrap(bytes));
+    return Pickler0.forRecord((Class<? extends Record>) recordClass).deserialize(ByteBuffer.wrap(bytes));
   }
 
   /// Verifies that a record instance has the expected component values.

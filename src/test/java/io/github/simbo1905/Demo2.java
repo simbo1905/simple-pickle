@@ -1,6 +1,6 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.Pickler0;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
@@ -19,7 +19,7 @@ public class Demo2 {
     final var originalRoot = new InternalNode("root", internal1, internal2);
 
 // Get a pickler for the TreeNode sealed interface
-    final var pickler = Pickler.forSealedInterface(TreeNode.class);
+    final var pickler = Pickler0.forSealedInterface(TreeNode.class);
 
 // Calculate buffer size needed for the whole graph reachable from the root node
     final var bufferSize = pickler.sizeOf(originalRoot);

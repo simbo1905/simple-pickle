@@ -49,7 +49,7 @@ class SecurityTests {
   @Test
   void testSealedTraitNotRecordAttack() {
     // 1. Get Pickler for the sealed trait
-    final Pickler<MyInterface> pickler = Pickler.forSealedInterface(MyInterface.class);
+    final Pickler0<MyInterface> pickler = Pickler0.forSealedInterface(MyInterface.class);
 
     // 2. Create an instance of a permitted subtype
     final var original = new Good("safe_value");
@@ -85,7 +85,7 @@ class SecurityTests {
   @Test
   void testSealedTraitWrongRecordAttack() {
     // 1. Get Pickler for the sealed trait
-    final Pickler<MyInterface> pickler = Pickler.forSealedInterface(MyInterface.class);
+    final Pickler0<MyInterface> pickler = Pickler0.forSealedInterface(MyInterface.class);
 
     // 2. Create an instance of a permitted subtype
     final var original = new Good("safe_value");

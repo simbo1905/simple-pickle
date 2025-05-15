@@ -8,23 +8,23 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.github.simbo1905.no.framework.Constants.*;
-import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+import static io.github.simbo1905.no.framework.Constants0.*;
+import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class Companion {
+public class Companion0 {
 
-  public static final ConcurrentHashMap<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
+  public static final ConcurrentHashMap<Class<?>, Pickler0<?>> REGISTRY = new ConcurrentHashMap<>();
 
   // In Pickler interface
   @SuppressWarnings("unchecked")
-  static <T> Pickler<T> getOrCreate(Class<T> type, Supplier<Pickler<T>> supplier) {
-    return (Pickler<T>) REGISTRY.computeIfAbsent(type, k -> supplier.get());
+  static <T> Pickler0<T> getOrCreate(Class<T> type, Supplier<Pickler0<T>> supplier) {
+    return (Pickler0<T>) REGISTRY.computeIfAbsent(type, k -> supplier.get());
   }
 
-  static <R extends Record> Pickler<R> manufactureRecordPickler(Class<R> recordClass) {
+  static <R extends Record> Pickler0<R> manufactureRecordPickler(Class<R> recordClass) {
 
-    return new RecordPickler<>(recordClass) {
+    return new RecordPickler0<>(recordClass) {
       @Override
       public Compatibility compatibility() {
         return compatibility;
@@ -33,8 +33,9 @@ public class Companion {
       @Override
       public void serialize(ByteBuffer buffer, R object) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        CompactedBuffer compactedBuffer = new CompactedBuffer(buffer);
-        serializeWithMap(compactedBuffer, object);
+        try (CompactedBuffer compactedBuffer = new CompactedBuffer(buffer)) {
+          serializeWithMap(compactedBuffer, object);
+        }
       }
 
       @Override
@@ -52,19 +53,19 @@ public class Companion {
 
       @Override
       public void serialize(CompactedBuffer compactedBuffer, R testRecord) {
-        compactedBuffer.buffer().order(java.nio.ByteOrder.BIG_ENDIAN);
+        compactedBuffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
         serializeWithMap(compactedBuffer, testRecord);
       }
     };
   }
 
-  static <S> Pickler<S> manufactureSealedPickler(Class<S> sealedClass) {
+  static <S> Pickler0<S> manufactureSealedPickler(Class<S> sealedClass) {
     // Get all permitted record subclasses
     final Class<?>[] subclasses = sealedInterfacePermittedRecords(sealedClass).toArray(Class<?>[]::new);
 
     // note that we cannot add these pickers to the cache map as we are inside a computeIfAbsent yet
     // practically speaking mix picklers into the same logical stream  is hard so preemptive caching wasteful
-    @SuppressWarnings("unchecked") Map<Class<? extends S>, Pickler<? extends S>> subPicklers = Arrays.stream(subclasses)
+    @SuppressWarnings("unchecked") Map<Class<? extends S>, Pickler0<? extends S>> subPicklers = Arrays.stream(subclasses)
         .filter(cls -> cls.isRecord() || cls.isSealed())
         .map(cls -> (Class<? extends S>) cls) // Safe due to sealed hierarchy
         .collect(Collectors.toMap(
@@ -74,7 +75,7 @@ public class Companion {
                 // Double cast required to satisfy compiler
                 @SuppressWarnings("unchecked")
                 Class<? extends Record> recordCls = (Class<? extends Record>) cls;
-                return (Pickler<S>) manufactureRecordPickler(recordCls);
+                return (Pickler0<S>) manufactureRecordPickler(recordCls);
               } else {
                 return manufactureSealedPickler(cls);
               }
@@ -106,11 +107,11 @@ public class Companion {
         ));
 
     final var compatibility =
-        Pickler.Compatibility.valueOf(System.getProperty(
-            Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY,
-            Pickler.Compatibility.NONE.name()));
+        Pickler0.Compatibility.valueOf(System.getProperty(
+            Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY,
+            Pickler0.Compatibility.NONE.name()));
 
-    return new SealedPickler<>() {
+    return new SealedPickler0<>() {
       @Override
       public Compatibility compatibility() {
         return compatibility;
@@ -133,9 +134,9 @@ public class Companion {
         writeDeduplicatedClassName(buffer, concreteType, classToOffset, shortNames.get(concreteType));
 
         // Delegate to subtype pickler
-        Pickler<? extends S> pickler = subPicklers.get(concreteType);
+        Pickler0<? extends S> pickler = subPicklers.get(concreteType);
         //noinspection unchecked
-        ((RecordPickler<Record>) pickler).serializeWithMap(compactedBuffer, (Record) object);
+        ((RecordPickler0<Record>) pickler).serializeWithMap(compactedBuffer, (Record) object);
       }
 
       @Override
@@ -151,7 +152,7 @@ public class Companion {
         // Read type identifier
         Class<? extends S> concreteType = resolveCachedClassByPickedName(buffer);
         // Get subtype pickler
-        RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(concreteType);
+        RecordPickler0<?> pickler = (RecordPickler0<?>) subPicklers.get(concreteType);
         //noinspection unchecked
         return (S) pickler.deserializeWithMap(buffer, new HashMap<>());
       }
@@ -205,7 +206,7 @@ public class Companion {
       case Boolean ignored -> BOOLEAN.marker();
       case String ignored -> STRING.marker();
       case Optional<?> ignored -> OPTIONAL_EMPTY.marker();
-      case RecordPickler.InternedName ignored -> INTERNED_NAME.marker();
+      case RecordPickler0.InternedName ignored -> INTERNED_NAME.marker();
 
       case Map<?, ?> ignored -> MAP.marker();
       case List<?> ignored -> LIST.marker();

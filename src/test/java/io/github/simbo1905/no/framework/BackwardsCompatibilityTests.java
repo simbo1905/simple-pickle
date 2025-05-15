@@ -86,18 +86,18 @@ public class BackwardsCompatibilityTests {
 
   @BeforeEach
   void setUp() {
-    System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+    System.clearProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
   }
 
   @AfterEach
   void tearDown() {
-    System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+    System.clearProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
   }
 
   @Test
   void testOriginalToEvolvedDeserializationStrict() throws Exception {
     // clear should force strict mode
-    System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+    System.clearProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
     // Compile and class load
     Class<?> originalClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_1);
     assertTrue(originalClass.isRecord(), "Compiled class should be a record");
@@ -130,7 +130,7 @@ public class BackwardsCompatibilityTests {
 
   @Test
   void testMultiGenerationEvolutionBackwards() throws Exception {
-    System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
+    System.setProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler0.Compatibility.BACKWARDS.name());
 
     multiGenerationalBackwardsTwice();
   }
@@ -181,13 +181,13 @@ public class BackwardsCompatibilityTests {
 
   @Test
   void testMultiGenerationEvolutionForwards() throws Exception {
-    System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.FORWARDS.name());
+    System.setProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler0.Compatibility.FORWARDS.name());
     runTwoGenerationsForward();
   }
 
   @Test
   void testMultiGenerationEvolutionForwardsALL() throws Exception {
-    System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.ALL.name());
+    System.setProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler0.Compatibility.ALL.name());
     runTwoGenerationsForward();
   }
 
@@ -236,7 +236,7 @@ public class BackwardsCompatibilityTests {
   @Test
   void testBackwardsCompatibilityDisabledFails() throws Exception {
     // Temporarily disable backwards compatibility
-    System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+    System.clearProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
 
     // Compile the source code
     // Get the Java compiler
@@ -276,7 +276,7 @@ public class BackwardsCompatibilityTests {
 
   @Test
   void testFieldRenamingWithBackwardsCompatibility() throws Exception {
-    System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
+    System.setProperty(Pickler0.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler0.Compatibility.BACKWARDS.name());
 
     // Define schema with renamed field but same structure
     final var renamedFieldSchema = """

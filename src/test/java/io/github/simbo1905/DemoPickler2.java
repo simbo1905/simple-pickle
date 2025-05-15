@@ -1,6 +1,6 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.Pickler0;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -45,7 +45,7 @@ public class DemoPickler2 {
 
     // Test 1: Round-trip dog2
     ByteBuffer dogBuffer = ByteBuffer.allocate(1024);
-    Pickler<Dog> dogPickler = Pickler.forRecord(Dog.class);
+    Pickler0<Dog> dogPickler = Pickler0.forRecord(Dog.class);
     dogPickler.serialize(dogBuffer, dog2);
     dogBuffer.flip();
     Dog deserializedDog = dogPickler.deserialize(dogBuffer);
@@ -57,7 +57,7 @@ public class DemoPickler2 {
     List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
     // Get pickler for sealed interface
-    Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
+    Pickler0<Animal> animalPickler = Pickler0.forSealedInterface(Animal.class);
 
     // Serialize
     animalBuffer.putInt(animals.size());

@@ -1,5 +1,7 @@
 package io.github.simbo1905.no.framework;
 
+import org.jetbrains.annotations.TestOnly;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -7,15 +9,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import static io.github.simbo1905.no.framework.Constants.*;
+import static io.github.simbo1905.no.framework.Constants0.*;
 
 /// This class tracks the written position of record class names so that they can be referenced by an offset.
 /// It also uses ZigZag encoding to reduce the size of whole numbers data written to the buffer.
-public record CompactedBuffer(ByteBuffer buffer,
-                              Map<RecordPickler.InternedName, RecordPickler.InternedPosition> offsetMap,
-                              int startPosition) {
+public class CompactedBuffer implements AutoCloseable {
+  final ByteBuffer buffer;
+  final Map<RecordPickler0.InternedName, RecordPickler0.InternedPosition> offsetMap = new HashMap<>();
+  boolean closed = false;
+
   CompactedBuffer(ByteBuffer buffer) {
-    this(buffer, new HashMap<>(), buffer.position());
+    this.buffer = buffer;
   }
 
   int position() {
@@ -24,10 +28,10 @@ public record CompactedBuffer(ByteBuffer buffer,
 
   public int write(int value) {
     if (ZigZagEncoding.sizeOf(value) < Integer.BYTES) {
-      buffer.put(Constants.INTEGER_VAR.marker());
+      buffer.put(Constants0.INTEGER_VAR.marker());
       return 1 + ZigZagEncoding.putInt(buffer, value);
     } else {
-      buffer.put(Constants.INTEGER.marker());
+      buffer.put(Constants0.INTEGER.marker());
       buffer.putInt(value);
       return 1 + Integer.BYTES;
     }
@@ -44,9 +48,10 @@ public record CompactedBuffer(ByteBuffer buffer,
     }
   }
 
-  public Object read() {
+  @TestOnly
+  Object read() {
     final byte marker = buffer.get();
-    return switch (Constants.fromMarker(marker)) {
+    return switch (Constants0.fromMarker(marker)) {
       case NULL -> null;
       case BOOLEAN -> buffer.get() != 0x0;
       case BYTE -> buffer.get();
@@ -70,7 +75,7 @@ public record CompactedBuffer(ByteBuffer buffer,
         int length = ZigZagEncoding.getInt(buffer);
         byte[] bytes = new byte[length];
         buffer.get(bytes);
-        yield new RecordPickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
+        yield new RecordPickler0.InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
       case INTERNED_OFFSET -> {
         final int offset = buffer.getInt();
@@ -81,7 +86,7 @@ public record CompactedBuffer(ByteBuffer buffer,
         byte[] bytes = new byte[length];
         buffer.get(bytes);
         buffer.position(highWaterMark);
-        yield new RecordPickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
+        yield new RecordPickler0.InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
       case INTERNED_OFFSET_VAR -> {
         final int highWaterMark = buffer.position();
@@ -91,7 +96,7 @@ public record CompactedBuffer(ByteBuffer buffer,
         byte[] bytes = new byte[length];
         buffer.get(bytes);
         buffer.position(highWaterMark);
-        yield new RecordPickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
+        yield new RecordPickler0.InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
       case ARRAY -> throw new AssertionError("not implemented 1");
       case MAP -> throw new AssertionError("not implemented 2");
@@ -148,7 +153,7 @@ public record CompactedBuffer(ByteBuffer buffer,
     return 1;
   }
 
-  public int write(RecordPickler.InternedName type) {
+  public int write(RecordPickler0.InternedName type) {
     Objects.requireNonNull(type);
     Objects.requireNonNull(type.name());
     buffer.put(INTERNED_NAME.marker());
@@ -170,19 +175,19 @@ public record CompactedBuffer(ByteBuffer buffer,
     final var className = e.getDeclaringClass().getName();
     final var shortName = className.substring(ignoredPrefix.length());
     final var dotName = shortName + "." + e.name();
-    final var internedName = new RecordPickler.InternedName(dotName);
+    final var internedName = new RecordPickler0.InternedName(dotName);
     if (!offsetMap.containsKey(internedName)) {
-      offsetMap.put(internedName, new RecordPickler.InternedPosition(buffer.position()));
+      offsetMap.put(internedName, new RecordPickler0.InternedPosition(buffer.position()));
       buffer.put(ENUM.marker());
       return 1 + intern(dotName);
     } else {
       final var internedPosition = offsetMap.get(internedName);
-      final var internedOffset = new RecordPickler.InternedOffset(internedPosition.position() - buffer().position());
+      final var internedOffset = new RecordPickler0.InternedOffset(internedPosition.position() - buffer.position());
       return write(internedOffset);
     }
   }
 
-  public int write(RecordPickler.InternedOffset typeOffset) {
+  public int write(RecordPickler0.InternedOffset typeOffset) {
     Objects.requireNonNull(typeOffset);
     final int offset = typeOffset.offset();
     final int size = ZigZagEncoding.sizeOf(offset);
@@ -211,8 +216,8 @@ public record CompactedBuffer(ByteBuffer buffer,
         case Boolean b -> write(b);
         case String s -> write(s);
         case Optional<?> o -> write(o);
-        case RecordPickler.InternedName t -> write(t);
-        case RecordPickler.InternedOffset t -> write(t);
+        case RecordPickler0.InternedName t -> write(t);
+        case RecordPickler0.InternedOffset t -> write(t);
         default -> throw new AssertionError("unknown optional value " + value);
       };
       return 1 + innerSize;
@@ -222,41 +227,36 @@ public record CompactedBuffer(ByteBuffer buffer,
     }
   }
 
-  // FIXME: ensure does not allow moe writes after flipped
-  public ByteBuffer flip() {
-    buffer.flip();
-    return buffer;
+  /// writes a record class name to the buffer
+  /// @param object the class of the record
+  /// @throws IllegalStateException if the buffer is closed
+  public void writeComponent(Object object) {
+    if (closed) throw new IllegalStateException("CompactedBuffer is closed");
+    switch (object) {
+      case null -> writeNull();
+      case Integer i -> write(i);
+      case Long l -> write(l);
+      case Short s -> write(s);
+      case Byte b -> write(b);
+      case Double d -> write(d);
+      case Float f -> write(f);
+      case Character ch -> write(ch);
+      case Boolean b -> write(b);
+      case String s -> write(s);
+      case RecordPickler0.InternedName t -> write(t);
+      case RecordPickler0.InternedOffset t -> write(t);
+      case Enum<?> e -> write("", e);
+      default -> throw new AssertionError("unknown component type " + object.getClass());
+    }
   }
 
-  public void writeComponent(Object c) {
-    if (c == null) {
-      writeNull();
-    } else if (c instanceof Integer i) {
-      write(i);
-    } else if (c instanceof Long l) {
-      write(l);
-    } else if (c instanceof Short s) {
-      write(s);
-    } else if (c instanceof Byte b) {
-      write(b);
-    } else if (c instanceof Double d) {
-      write(d);
-    } else if (c instanceof Float f) {
-      write(f);
-    } else if (c instanceof Character ch) {
-      write(ch);
-    } else if (c instanceof Boolean b) {
-      write(b);
-    } else if (c instanceof String s) {
-      write(s);
-    } else if (c instanceof RecordPickler.InternedName t) {
-      write(t);
-    } else if (c instanceof RecordPickler.InternedOffset t) {
-      write(t);
-    } else if (c instanceof Enum<?> e) {
-      write("", e);
-    } else {
-      throw new AssertionError("unknown component type " + c.getClass());
-    }
+  @Override
+  public void close() {
+    this.closed = true;
+  }
+
+  @TestOnly
+  void flip() {
+    buffer.flip();
   }
 }

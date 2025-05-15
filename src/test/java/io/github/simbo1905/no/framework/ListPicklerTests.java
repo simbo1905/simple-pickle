@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ListPicklerTests {
@@ -33,16 +33,16 @@ public class ListPicklerTests {
     final List<ListRecord> outerList = List.of(original, new ListRecord(List.of("X", "Y")));
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
+    int size = Pickler0.sizeOfMany(outerList.toArray(ListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
-    Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
+    Pickler0.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
 
     // Flip the buffer to prepare for reading
     buffer.flip();
     // Deserialize
-    final List<ListRecord> deserialized = Pickler.deserializeMany(ListRecord.class, buffer);
+    final List<ListRecord> deserialized = Pickler0.deserializeMany(ListRecord.class, buffer);
 
     // Verify the record counts
     assertEquals(original.list().size(), deserialized.size());
@@ -68,7 +68,7 @@ public class ListPicklerTests {
     NestedListRecord original = new NestedListRecord(nestedList);
 
     // Get a pickler for the record
-    Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
+    Pickler0<NestedListRecord> pickler = Pickler0.forRecord(NestedListRecord.class);
 
     // Calculate size and allocate buffer
     int size = pickler.sizeOf(original);
@@ -127,15 +127,15 @@ public class ListPicklerTests {
     }
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(original.toArray(NestedListRecord[]::new));
+    int size = Pickler0.sizeOfMany(original.toArray(NestedListRecord[]::new));
     ByteBuffer buffer = ByteBuffer.allocate(size);
 
     // Serialize
-    Pickler.serializeMany(original.toArray(NestedListRecord[]::new), buffer);
+    Pickler0.serializeMany(original.toArray(NestedListRecord[]::new), buffer);
     buffer.flip();
 
     // Deserialize
-    List<NestedListRecord> deserialized = Pickler.deserializeMany(NestedListRecord.class, buffer);
+    List<NestedListRecord> deserialized = Pickler0.deserializeMany(NestedListRecord.class, buffer);
 
     // Verify the nested list structure
     assertEquals(original.size(), deserialized.size());
@@ -159,7 +159,7 @@ public class ListPicklerTests {
     Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
 
     // Get a pickler for the sealed trait Animal
-    var animalPickler = Pickler.forSealedInterface(Animal.class);
+    var animalPickler = Pickler0.forSealedInterface(Animal.class);
 
     // preallocate a buffer for the Dog instance
     var buffer = ByteBuffer.allocate(animalPickler.sizeOf(dog));
@@ -193,14 +193,14 @@ public class ListPicklerTests {
     Alicorn[] alicorns = animals.stream().filter(i -> i instanceof Alicorn).toArray(Alicorn[]::new);
 
     int size = Stream.of(dogs, eagles, penguins, alicorns)
-        .mapToInt(Pickler::sizeOfMany)
+        .mapToInt(Pickler0::sizeOfMany)
         .sum();
 
     final var animalsBuffer = ByteBuffer.allocate(size);
 
     // Serialize the list of animals
     Stream.of(dogs, eagles, penguins, alicorns)
-        .forEach(i -> Pickler.serializeMany(i, animalsBuffer));
+        .forEach(i -> Pickler0.serializeMany(i, animalsBuffer));
 
     // Flip the buffer to prepare for reading
     animalsBuffer.flip();
@@ -211,7 +211,7 @@ public class ListPicklerTests {
         .forEach(i -> {
           // Deserialize the list of animals
           //var returnedAnimals = PicklerOld.deserializeArray(i, animalsBuffer);
-          var returnedAnimals = Pickler.deserializeMany(i, animalsBuffer);
+          var returnedAnimals = Pickler0.deserializeMany(i, animalsBuffer);
           // Check if the deserialized Dog instance is equal to the original
           if (animals.containsAll(returnedAnimals)) {
             LOGGER.info(i.getSimpleName() + " serialized and deserialized correctly");

@@ -112,14 +112,19 @@ if (!deserializedMonth.equals(december)) {
 ### Nested Record Tree
 
 ```java
-import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.Pickler0;
 
 /// The sealed interface and all permitted record subclasses must be public.
 /// The records can be static inner classes or top level classes.
 /// Nested sealed interfaces are supported see the Animal example below.
-public sealed interface TreeNode permits InternalNode, LeafNode {}
-public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {}
-public record LeafNode(int value) implements TreeNode {}
+public sealed interface TreeNode permits InternalNode, LeafNode {
+}
+
+public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {
+}
+
+public record LeafNode(int value) implements TreeNode {
+}
 
 final var leaf1 = new LeafNode(42);
 final var leaf2 = new LeafNode(99);
@@ -129,7 +134,7 @@ final var internal2 = new InternalNode("Branch2", leaf3, null);
 final var originalRoot = new InternalNode("Root", internal1, internal2);
 
 // Get a pickler for the TreeNode sealed interface
-final var pickler = Pickler.forSealedInterface(TreeNode.class);
+final var pickler = Pickler0.forSealedInterface(TreeNode.class);
 
 // Calculate buffer size needed for the whole graph reachable from the root node
 final var bufferSize = pickler.sizeOf(originalRoot);
@@ -138,10 +143,14 @@ final var bufferSize = pickler.sizeOf(originalRoot);
 final var buffer = ByteBuffer.allocate(bufferSize);
 
 // Serialize only the root node (which should include the entire graph)
-pickler.serialize(originalRoot, buffer);
+pickler.
+
+serialize(originalRoot, buffer);
 
 // Prepare buffer for reading
-buffer.flip();
+buffer.
+
+flip();
 
 // Deserialize the root node (which will reconstruct the entire graph depth first)
 final var deserializedRoot = pickler.deserialize(buffer);

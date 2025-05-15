@@ -7,7 +7,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SuppressWarnings("rawtypes")
+@SuppressWarnings({"resource"})
 public class WriteOperationsTests {
   @Test
   void testSmallInt() {
@@ -318,7 +318,7 @@ public class WriteOperationsTests {
         expectedSize
     );
     CompactedBuffer ops = new CompactedBuffer(buffer);
-    final var type = new RecordPickler.InternedName("Link");
+    final var type = new RecordPickler0.InternedName("Link");
     var written = ops.write(type);
     ops.flip();
     assertEquals(type, ops.read());
@@ -336,8 +336,8 @@ public class WriteOperationsTests {
     ops.write(ignoredPrefix, type);
     ops.write(ignoredPrefix, type2);
     ops.flip();
-    assertEquals(new RecordPickler.InternedName("EnumTest.ONE"), ops.read());
-    assertEquals(new RecordPickler.InternedName("EnumTest.TWO"), ops.read());
+    assertEquals(new RecordPickler0.InternedName("EnumTest.ONE"), ops.read());
+    assertEquals(new RecordPickler0.InternedName("EnumTest.TWO"), ops.read());
   }
 
   @Test
@@ -351,13 +351,13 @@ public class WriteOperationsTests {
     ops.write(ignoredPrefix, one);
     ops.flip();
     buffer.position(100);
-    assertEquals(new RecordPickler.InternedName("EnumTest.ONE"), ops.read());
-    assertEquals(new RecordPickler.InternedName("EnumTest.ONE"), ops.read());
+    assertEquals(new RecordPickler0.InternedName("EnumTest.ONE"), ops.read());
+    assertEquals(new RecordPickler0.InternedName("EnumTest.ONE"), ops.read());
   }
 
   @Test
   void testNewWorld() {
-    final var pickler = Pickler.forRecord(TestRecord.class);
+    final var pickler = Pickler0.forRecord(TestRecord.class);
     final var buffer = ByteBuffer.allocate(1024);
     final var serializationSession = new CompactedBuffer(buffer);
 
