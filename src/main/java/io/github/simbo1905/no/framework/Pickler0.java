@@ -332,13 +332,7 @@ abstract class RecordPickler0<R extends Record> implements Pickler0<R> {
     // Read the number of components as an unsigned byte
     LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
     final int length = buffer.getInt();
-    //Compatibility.validate(compatibility, recordClass.getName(), componentCount, length);
-    // This may unload from the stream things that we will ignore
     final Object[] components = new Object[length];
-//    Arrays.setAll(components, ignored -> WriteOperations.deserializeValue(bufferOffset2Class, buffer));
-//    if (componentCount < length && (Compatibility.FORWARDS == compatibility || Compatibility.ALL == compatibility)) {
-//      return this.staticCreateFromComponents(Arrays.copyOfRange(components, 0, componentCount));
-//    }
     return this.staticCreateFromComponents(components);
   }
 

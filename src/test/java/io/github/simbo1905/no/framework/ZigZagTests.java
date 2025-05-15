@@ -3,7 +3,6 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -81,6 +80,17 @@ public class ZigZagTests {
         assertEquals(value, result);
     }
 
+  @Test
+  void testIntMax() {
+    ByteBuffer buffer = ByteBuffer.allocate(5);
+
+    ZigZagEncoding.putInt(buffer, Integer.MAX_VALUE);
+    buffer.flip();
+
+    int result = ZigZagEncoding.getInt(buffer);
+    assertEquals(Integer.MAX_VALUE, result);
+  }
+
     @Test
     void testNegativeIntValues() {
         int value = -12345;
@@ -146,23 +156,4 @@ public class ZigZagTests {
     }
   }
 
-  static void testValue(ByteBuffer buffer, long value, boolean isLong, List<Record> results) {
-    buffer.clear();
-    if (isLong) {
-      ZigZagEncoding.putLong(buffer, value);
-    } else {
-      ZigZagEncoding.putInt(buffer, (int) value);
-    }
-
-    int bytesWritten = buffer.position();
-    buffer.flip();
-
-    long result = isLong ? ZigZagEncoding.getLong(buffer) : ZigZagEncoding.getInt(buffer);
-
-    assert result == value;
-    results.add(new Record(value, bytesWritten));
-  }
-
-  record Record(long value, int bytes) {
-  }
 }

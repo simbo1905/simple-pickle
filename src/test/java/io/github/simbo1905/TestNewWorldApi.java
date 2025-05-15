@@ -54,6 +54,9 @@ public class TestNewWorldApi {
     final var buf = buffer.flip(); // Prepare the buffer for reading
     MyRecord deserializedRecord = pickler.deserialize(buf);
     System.out.println("Deserialized Record: " + deserializedRecord);
+    if (!record.equals(deserializedRecord)) {
+      throw new RuntimeException("Deserialization failed");
+    }
 
     // Create instances
     Dog dog = new Dog("Buddy", 3);

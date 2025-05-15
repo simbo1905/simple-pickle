@@ -3,7 +3,6 @@ package io.github.simbo1905.no.framework;
 import org.jetbrains.annotations.TestOnly;
 
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,62 +23,6 @@ public class PackedBuffer implements AutoCloseable {
 
   int position() {
     return buffer.position();
-  }
-
-  @TestOnly
-  Object read() {
-    final byte marker = buffer.get();
-    return switch (Constants.fromMarker(marker)) {
-      case NULL -> null;
-      case BOOLEAN -> buffer.get() != 0x0;
-      case BYTE -> buffer.get();
-      case SHORT -> buffer.getShort();
-      case CHARACTER -> buffer.getChar();
-      case INTEGER -> buffer.getInt();
-      case INTEGER_VAR -> ZigZagEncoding.getInt(buffer);
-      case LONG -> buffer.getLong();
-      case LONG_VAR -> ZigZagEncoding.getLong(buffer);
-      case FLOAT -> buffer.getFloat();
-      case DOUBLE -> buffer.getDouble();
-      case STRING -> {
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        yield new String(bytes, StandardCharsets.UTF_8);
-      }
-      case OPTIONAL_EMPTY -> Optional.empty();
-      case OPTIONAL_OF -> Optional.ofNullable(read());
-      case INTERNED_NAME, ENUM -> {
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        yield new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
-      }
-      case INTERNED_OFFSET -> {
-        final int offset = buffer.getInt();
-        final int highWaterMark = buffer.position();
-        final int newPosition = buffer.position() + offset - 2;
-        buffer.position(newPosition);
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        buffer.position(highWaterMark);
-        yield new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
-      }
-      case INTERNED_OFFSET_VAR -> {
-        final int highWaterMark = buffer.position();
-        final int offset = ZigZagEncoding.getInt(buffer);
-        buffer.position(buffer.position() + offset - 1);
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        buffer.position(highWaterMark);
-        yield new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
-      }
-      case ARRAY -> throw new AssertionError("not implemented 1");
-      case MAP -> throw new AssertionError("not implemented 2");
-      case LIST -> throw new AssertionError("not implemented 4");
-    };
   }
 
   /// writes a record class name to the buffer

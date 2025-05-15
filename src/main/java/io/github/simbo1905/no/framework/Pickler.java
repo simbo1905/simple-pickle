@@ -1,6 +1,8 @@
 package io.github.simbo1905.no.framework;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
@@ -48,7 +50,7 @@ public interface Pickler<T> {
 
   static <R extends Record> Pickler<R> forRecord(Class<R> recordClass) {
     // FIXME change the default here to false
-    return Companion.getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass, true));
+    return Companion.getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass, recordClass.getSimpleName()));
   }
 
   static <S> Pickler<S> manufactureSealedPickler(Class<S> sealedClass) {
@@ -83,10 +85,10 @@ public interface Pickler<T> {
     final int componentCount;
     final MethodHandle canonicalConstructorHandle;
     final Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
-    private final boolean writeName;
+    final Pickler.InternedName internedName;
 
-    RecordPickler(final Class<R> recordClass, boolean writeName) {
-      this.writeName = writeName;
+    RecordPickler(final Class<R> recordClass, Pickler.InternedName internedName) {
+      this.internedName = internedName;
       this.recordClass = recordClass;
       final RecordComponent[] components = recordClass.getRecordComponents();
       componentCount = components.length;
@@ -155,34 +157,90 @@ public interface Pickler<T> {
       }
     }
 
+    void serializeWithMap(PackedBuffer buffer, R object) {
+      Object[] components = new Object[componentAccessors.length];
+      Arrays.setAll(components, i -> {
+        try {
+          return componentAccessors[i].invokeWithArguments(object);
+        } catch (Throwable e) {
+          final var msg = "Failed to access component: " + i +
+              " in record class '" + recordClass.getName() + "' : " + e.getMessage();
+          LOGGER.severe(() -> msg);
+          throw new IllegalArgumentException(msg, e);
+        }
+      });
+      // Write the number of components as an unsigned byte (max 255)
+      LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
+      ZigZagEncoding.putInt(buffer.buffer, components.length);
+      Arrays.stream(components).forEach(c -> {
+        buffer.writeComponent(buffer, c);
+      });
+    }
+
     @Override
     public void serialize(PackedBuffer buf, R object) {
+      // Null checks
+      Objects.requireNonNull(buf);
+      Objects.requireNonNull(object);
+      // Use java native endian for float and double writes
+      buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+      // The following `assert` requires jvm flag `-ea` to run. Here we check for a common problem where Java erasure
+      // can have you accidentally create arrays of records from collections that are the common supertype of all your records.
       assert 0 < object.getClass().getRecordComponents().length : object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.";
-      final var buffer = buf.buffer;
-      try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
-           ObjectOutputStream out = new ObjectOutputStream(baos)) {
-        out.writeObject(object);
-        out.flush();
-        byte[] bytes = baos.toByteArray();
-        buffer.putInt(bytes.length);
-        buffer.put(bytes);
-      } catch (Exception e) {
-        throw new RuntimeException("Failed to serialize record", e);
-      }
+      // If we are being asked to write out our record class name by a sealed pickler then we so now
+      Optional.ofNullable(internedName).ifPresent(name -> {
+        buf.offsetMap.put(internedName, new Pickler.InternedPosition(buf.buffer.position()));
+        Companion.write(buf.buffer, internedName);
+      });
+      // Write the all the components
+      serializeWithMap(buf, object);
     }
 
     @Override
     public R deserialize(ByteBuffer buffer) {
-      final var length = buffer.getInt();
-      byte[] bytes = new byte[length];
-      buffer.get(bytes);
-      try (ByteArrayInputStream bin = new ByteArrayInputStream(bytes);
-           ObjectInputStream in = new ObjectInputStream(bin)) {
-        //noinspection unchecked
-        return (R) in.readObject();
-      } catch (IOException | ClassNotFoundException e) {
-        throw new RuntimeException(e);
+      buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+      try {
+        return deserializeWithMap(new HashMap<>(), buffer);
+      } catch (RuntimeException e) {
+        throw e;
+      } catch (Throwable t) {
+        throw new RuntimeException("Failed to deserialize " + recordClass.getName() + " : " + t.getMessage(), t);
       }
+    }
+
+    R deserializeWithMap(Map<Integer, Class<?>> bufferOffset2Class, ByteBuffer buffer) throws Throwable {
+      Optional.ofNullable(internedName).ifPresent(name -> {
+        final byte marker = buffer.get();
+        if (marker != INTERNED_NAME.marker()) {
+          throw new IllegalStateException("Expected marker " + INTERNED_NAME.marker() + " but got " + marker);
+        }
+        // Read the interned name
+        final int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        final var internedName = new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
+        if (!internedName.equals(this.internedName)) {
+          throw new IllegalStateException("Interned name mismatch: expected " + this.internedName + " but got " + internedName);
+        }
+        LOGGER.finer(() -> "deserializeWithMap reading interned name " + internedName.name() + " position=" + buffer.position());
+      });
+      // Read the number of components as an unsigned byte
+      LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
+      final int length = ZigZagEncoding.getInt(buffer);
+      final Object[] components = new Object[length];
+      Arrays.setAll(components, i -> {
+        try {
+          // Read the component
+          return Companion.read(bufferOffset2Class, buffer);
+        } catch (Throwable e) {
+          final var msg = "Failed to access component: " + i +
+              " in record class '" + recordClass.getName() + "' : " + e.getMessage();
+          LOGGER.severe(() -> msg);
+          throw new IllegalArgumentException(msg, e);
+        }
+      });
+      //noinspection unchecked
+      return (R) canonicalConstructorHandle.invokeWithArguments(components);
     }
   }
 
@@ -207,8 +265,8 @@ class Companion {
   }
 
   ///  Here we are typing things as `Record` to avoid the need for a cast
-  static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass, final boolean writeName) {
-    return new Pickler.RecordPickler<>(recordClass, writeName);
+  static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass, final String name) {
+    return new Pickler.RecordPickler<>(recordClass, name != null ? new Pickler.InternedName(name) : null);
   }
 
   static int write(ByteBuffer buffer, int value) {
@@ -272,7 +330,7 @@ class Companion {
     buffer.put(STRING.marker());
     byte[] utf8 = s.getBytes(StandardCharsets.UTF_8);
     int length = utf8.length;
-    ZigZagEncoding.putInt(buffer, length); // TODO check max string size
+    ZigZagEncoding.putInt(buffer, length);
     buffer.put(utf8);
     return 1 + length;
   }
@@ -354,5 +412,60 @@ class Companion {
       buffer.put(OPTIONAL_EMPTY.marker());
       return 1;
     }
+  }
+
+  static Object read(Map<Integer, Class<?>> bufferOffset2Class, final ByteBuffer buffer) {
+    final byte marker = buffer.get();
+    return switch (fromMarker(marker)) {
+      case NULL -> null;
+      case BOOLEAN -> buffer.get() != 0x0;
+      case BYTE -> buffer.get();
+      case SHORT -> buffer.getShort();
+      case CHARACTER -> buffer.getChar();
+      case INTEGER -> buffer.getInt();
+      case INTEGER_VAR -> ZigZagEncoding.getInt(buffer);
+      case LONG -> buffer.getLong();
+      case LONG_VAR -> ZigZagEncoding.getLong(buffer);
+      case FLOAT -> buffer.getFloat();
+      case DOUBLE -> buffer.getDouble();
+      case STRING -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        yield new String(bytes, StandardCharsets.UTF_8);
+      }
+      case OPTIONAL_EMPTY -> Optional.empty();
+      case OPTIONAL_OF -> Optional.ofNullable(read(bufferOffset2Class, buffer));
+      case INTERNED_NAME, ENUM -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        yield new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
+      }
+      case INTERNED_OFFSET -> {
+        final int offset = buffer.getInt();
+        final int highWaterMark = buffer.position();
+        final int newPosition = buffer.position() + offset - 2;
+        buffer.position(newPosition);
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        buffer.position(highWaterMark);
+        yield new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
+      }
+      case INTERNED_OFFSET_VAR -> {
+        final int highWaterMark = buffer.position();
+        final int offset = ZigZagEncoding.getInt(buffer);
+        buffer.position(buffer.position() + offset - 1);
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        buffer.position(highWaterMark);
+        yield new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
+      }
+      case ARRAY -> throw new AssertionError("not implemented 1");
+      case MAP -> throw new AssertionError("not implemented 2");
+      case LIST -> throw new AssertionError("not implemented 4");
+    };
   }
 }
