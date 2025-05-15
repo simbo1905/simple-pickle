@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.github.simbo1905.no.framework.CompactedBuffer.Constants.*;
+import static io.github.simbo1905.no.framework.PackedBuffer.Constants.*;
 import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -33,8 +33,8 @@ public class Companion0 {
       @Override
       public void serialize(ByteBuffer buffer, R object) {
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        try (CompactedBuffer compactedBuffer = new CompactedBuffer(buffer)) {
-          serializeWithMap(compactedBuffer, object);
+        try (PackedBuffer packedBuffer = new PackedBuffer(buffer)) {
+          serializeWithMap(packedBuffer, object);
         }
       }
 
@@ -52,9 +52,9 @@ public class Companion0 {
       }
 
       @Override
-      public void serialize(CompactedBuffer compactedBuffer, R testRecord) {
-        compactedBuffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        serializeWithMap(compactedBuffer, testRecord);
+      public void serialize(PackedBuffer packedBuffer, R testRecord) {
+        packedBuffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+        serializeWithMap(packedBuffer, testRecord);
       }
     };
   }
@@ -124,7 +124,7 @@ public class Companion0 {
           return;
         }
         buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-        CompactedBuffer compactedBuffer = new CompactedBuffer(buffer);
+        PackedBuffer packedBuffer = new PackedBuffer(buffer);
         // Cast the sealed interface to the concrete type.
         @SuppressWarnings("unchecked") Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
 
@@ -136,7 +136,7 @@ public class Companion0 {
         // Delegate to subtype pickler
         Pickler0<? extends S> pickler = subPicklers.get(concreteType);
         //noinspection unchecked
-        ((RecordPickler0<Record>) pickler).serializeWithMap(compactedBuffer, (Record) object);
+        ((RecordPickler0<Record>) pickler).serializeWithMap(packedBuffer, (Record) object);
       }
 
       @Override
@@ -163,7 +163,7 @@ public class Companion0 {
       }
 
       @Override
-      public void serialize(CompactedBuffer serializationSession, S testRecord) {
+      public void serialize(PackedBuffer serializationSession, S testRecord) {
         throw new AssertionError("not possible to implement");
       }
 
@@ -206,7 +206,7 @@ public class Companion0 {
       case Boolean ignored -> BOOLEAN.marker();
       case String ignored -> STRING.marker();
       case Optional<?> ignored -> OPTIONAL_EMPTY.marker();
-      case RecordPickler0.InternedName ignored -> INTERNED_NAME.marker();
+//      case RecordPickler0.InternedName ignored -> INTERNED_NAME.marker();
 
       case Map<?, ?> ignored -> MAP.marker();
       case List<?> ignored -> LIST.marker();

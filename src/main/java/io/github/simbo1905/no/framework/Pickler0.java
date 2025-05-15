@@ -8,8 +8,8 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.stream.IntStream;
 
-import static io.github.simbo1905.no.framework.CompactedBuffer.Constants.ARRAY;
 import static io.github.simbo1905.no.framework.Companion0.*;
+import static io.github.simbo1905.no.framework.PackedBuffer.Constants.ARRAY;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 /// No Framework Pickler: A tiny, fast, type-safe, zero-dependency Java serialization library.
@@ -53,7 +53,7 @@ public interface Pickler0<T> {
   /// Throws IllegalArgumentException at runtime if:
   /// - The supplied class is not a record type.
   /// - Any components of the record are not types that are supported by this library.
-  /// See [CompactedBuffer.Constants] for details of supported value types.
+  /// See [PackedBuffer.Constants] for details of supported value types.
   static <R extends Record> Pickler0<R> forRecord(Class<R> recordClass) {
     return getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass));
   }
@@ -65,7 +65,7 @@ public interface Pickler0<T> {
   /// - The supplied class is not a sealed interface.
   /// - Any permitted subclasses are not record types that are supported by this library.
   /// - Any permitted subclasses of any nested sealed interfaces are not record types that are supported by this library.
-  /// See [CompactedBuffer.Constants] for details of supported value types.
+  /// See [PackedBuffer.Constants] for details of supported value types.
   static <S> Pickler0<S> forSealedInterface(Class<S> sealedClass) {
     return getOrCreate(sealedClass, () -> manufactureSealedPickler(sealedClass));
   }
@@ -144,7 +144,7 @@ public interface Pickler0<T> {
   }
 
 
-  void serialize(CompactedBuffer serializationSession, T testRecord);
+  void serialize(PackedBuffer serializationSession, T testRecord);
 
   /// Controls how records handle schema evolution during deserialization.
   /// The system property [Compatibility#COMPATIBILITY_SYSTEM_PROPERTY] may be set to the following behaviours.
@@ -318,13 +318,13 @@ abstract class RecordPickler0<R extends Record> implements Pickler0<R> {
     return result;
   }
 
-  void serializeWithMap(CompactedBuffer buffer, R object) {
+  void serializeWithMap(PackedBuffer buffer, R object) {
     final var components = components(object);
     // Write the number of components as an unsigned byte (max 255)
     LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
-    buffer.write(components.length);
+    Companion.write(buffer.buffer, components.length);
     Arrays.stream(components).forEach(c -> {
-      buffer.writeComponent(c);
+      buffer.writeComponent(buffer, c);
     });
   }
 
@@ -373,14 +373,5 @@ abstract class RecordPickler0<R extends Record> implements Pickler0<R> {
       LOGGER.severe(() -> msg);
       throw new IllegalArgumentException(msg, e);
     }
-  }
-
-  public record InternedName(String name) {
-  }
-
-  public record InternedOffset(int offset) {
-  }
-
-  public record InternedPosition(int position) {
   }
 }
