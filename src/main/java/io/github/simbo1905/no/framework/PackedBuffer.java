@@ -1,7 +1,5 @@
 package io.github.simbo1905.no.framework;
 
-import org.jetbrains.annotations.TestOnly;
-
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
@@ -12,7 +10,42 @@ import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
 
 /// This class tracks the written position of record class names so that they can be referenced by an offset.
 /// It also uses ZigZag encoding to reduce the size of whole numbers data written to the buffer.
+@SuppressWarnings("unused")
 public class PackedBuffer implements AutoCloseable {
+  public ByteBuffer put(byte b) {
+    if (closed)
+      throw new IllegalStateException("CompactedBuffer has been closed by flip() or close() and is now read-only");
+    return buffer.put(b);
+  }
+
+  public ByteBuffer putChar(char value) {
+    return buffer.putChar(value);
+  }
+
+  public ByteBuffer putShort(short value) {
+    return buffer.putShort(value);
+  }
+
+  public ByteBuffer putInt(int value) {
+    return buffer.putInt(value);
+  }
+
+  public ByteBuffer putLong(long value) {
+    return buffer.putLong(value);
+  }
+
+  public ByteBuffer putFloat(int index, float value) {
+    return buffer.putFloat(index, value);
+  }
+
+  public ByteBuffer putDouble(int index, double value) {
+    return buffer.putDouble(index, value);
+  }
+
+  public ByteBuffer put(byte[] src) {
+    return buffer.put(src);
+  }
+
   final ByteBuffer buffer;
   final Map<Pickler.InternedName, Pickler.InternedPosition> offsetMap = new HashMap<>();
   boolean closed = false;
@@ -49,14 +82,17 @@ public class PackedBuffer implements AutoCloseable {
     }
   }
 
+  /// Once a buffer has been closed all that can be done is flip to get the underlying buffer to read from it.
   @Override
   public void close() {
     this.closed = true;
   }
 
-  @TestOnly
+  /// Flips the buffer and closes this instance. The returned return buffer should be completely used not compacted.
+  /// FIXME: should we track the start and end possition of writes to the buffer and return a slice of it?
   public ByteBuffer flip() {
     buffer.flip();
+    close();
     return buffer;
   }
 
