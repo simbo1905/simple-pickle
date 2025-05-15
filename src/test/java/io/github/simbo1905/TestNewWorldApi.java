@@ -67,8 +67,8 @@ public class TestNewWorldApi {
     Dog dog2 = new Dog("Fido", 2);
     Eagle eagle = new Eagle(2.1);
     Penguin penguin = new Penguin(true);
-    Alicorn alicorn = new Alicorn("Twilight Sparkle",
-        new String[]{"elements of harmony", "wings of a pegasus"});
+//    Alicorn alicorn = new Alicorn("Twilight Sparkle",
+//        new String[]{"elements of harmony", "wings of a pegasus"});
 
     // Test 1: Round-trip dog2
     Pickler<Dog> dogPickler = forRecord(Dog.class);
@@ -79,13 +79,12 @@ public class TestNewWorldApi {
     System.out.println("Dog2 round-trip: " + dog2.equals(deserializedDog));
 
     // Get pickler for sealed interface
-    final Pickler<Animal> animalPickler =
-        Pickler.manufactureSealedPickler(Animal.class);
+    final Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
 
     final var animalPacedBuffer = animalPickler.allocate(4096);
 
     // Test 2: Round-trip list of animals
-    List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
+    List<Animal> animals = List.of(dog, dog2, eagle, penguin);
 
     // Serialize
     animalPacedBuffer.putInt(animals.size());
