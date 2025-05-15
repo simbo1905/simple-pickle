@@ -312,7 +312,7 @@ class PicklerTests {
     // Get the bytes from the buffer
     final var bytes = buffer.array();
     StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
-    Matcher matcher = Pattern.compile(Constants0.INTEGER._class().getName()).matcher(escapedSearchString.toString());
+    Matcher matcher = Pattern.compile(CompactedBuffer.Constants.INTEGER._class().getName()).matcher(escapedSearchString.toString());
     int count = 0;
     while (matcher.find()) {
       count++;

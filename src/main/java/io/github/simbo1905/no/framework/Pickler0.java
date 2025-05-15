@@ -8,8 +8,8 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.stream.IntStream;
 
+import static io.github.simbo1905.no.framework.CompactedBuffer.Constants.ARRAY;
 import static io.github.simbo1905.no.framework.Companion0.*;
-import static io.github.simbo1905.no.framework.Constants0.ARRAY;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 /// No Framework Pickler: A tiny, fast, type-safe, zero-dependency Java serialization library.
@@ -53,7 +53,7 @@ public interface Pickler0<T> {
   /// Throws IllegalArgumentException at runtime if:
   /// - The supplied class is not a record type.
   /// - Any components of the record are not types that are supported by this library.
-  /// See [Constants0] for details of supported value types.
+  /// See [CompactedBuffer.Constants] for details of supported value types.
   static <R extends Record> Pickler0<R> forRecord(Class<R> recordClass) {
     return getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass));
   }
@@ -65,7 +65,7 @@ public interface Pickler0<T> {
   /// - The supplied class is not a sealed interface.
   /// - Any permitted subclasses are not record types that are supported by this library.
   /// - Any permitted subclasses of any nested sealed interfaces are not record types that are supported by this library.
-  /// See [Constants0] for details of supported value types.
+  /// See [CompactedBuffer.Constants] for details of supported value types.
   static <S> Pickler0<S> forSealedInterface(Class<S> sealedClass) {
     return getOrCreate(sealedClass, () -> manufactureSealedPickler(sealedClass));
   }

@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.github.simbo1905.no.framework.Constants0.*;
+import static io.github.simbo1905.no.framework.CompactedBuffer.Constants.*;
 import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
 import static java.nio.charset.StandardCharsets.UTF_8;
 

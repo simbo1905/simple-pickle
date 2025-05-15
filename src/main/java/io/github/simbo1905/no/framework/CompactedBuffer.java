@@ -4,12 +4,10 @@ import org.jetbrains.annotations.TestOnly;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
-import static io.github.simbo1905.no.framework.Constants0.*;
+import static io.github.simbo1905.no.framework.CompactedBuffer.Constants.*;
+import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
 
 /// This class tracks the written position of record class names so that they can be referenced by an offset.
 /// It also uses ZigZag encoding to reduce the size of whole numbers data written to the buffer.
@@ -28,10 +26,10 @@ public class CompactedBuffer implements AutoCloseable {
 
   public int write(int value) {
     if (ZigZagEncoding.sizeOf(value) < Integer.BYTES) {
-      buffer.put(Constants0.INTEGER_VAR.marker());
+      buffer.put(Constants.INTEGER_VAR.marker());
       return 1 + ZigZagEncoding.putInt(buffer, value);
     } else {
-      buffer.put(Constants0.INTEGER.marker());
+      buffer.put(Constants.INTEGER.marker());
       buffer.putInt(value);
       return 1 + Integer.BYTES;
     }
@@ -51,7 +49,7 @@ public class CompactedBuffer implements AutoCloseable {
   @TestOnly
   Object read() {
     final byte marker = buffer.get();
-    return switch (Constants0.fromMarker(marker)) {
+    return switch (Constants.fromMarker(marker)) {
       case NULL -> null;
       case BOOLEAN -> buffer.get() != 0x0;
       case BYTE -> buffer.get();
@@ -256,7 +254,66 @@ public class CompactedBuffer implements AutoCloseable {
   }
 
   @TestOnly
-  void flip() {
+  ByteBuffer flip() {
     buffer.flip();
+    return buffer;
+  }
+
+  /// Enum containing constants used throughout the Pickler implementation
+  enum Constants {
+    NULL((byte) 1, 0, null),
+    BOOLEAN((byte) 2, 1, boolean.class),
+    BYTE((byte) 3, Byte.BYTES, byte.class),
+    SHORT((byte) 4, Short.BYTES, short.class),
+    CHARACTER((byte) 5, Character.BYTES, char.class),
+    INTEGER((byte) 6, Integer.BYTES, int.class),
+    INTEGER_VAR((byte) 7, Integer.BYTES, int.class),
+    LONG((byte) 8, Long.BYTES, long.class),
+    LONG_VAR((byte) 9, Long.BYTES, long.class),
+    FLOAT((byte) 10, Float.BYTES, float.class),
+    DOUBLE((byte) 11, Double.BYTES, double.class),
+    STRING((byte) 12, 0, String.class),
+    OPTIONAL_EMPTY((byte) 13, 0, Optional.class),
+    OPTIONAL_OF((byte) 14, 0, Optional.class),
+    INTERNED_NAME((byte) 15, 0, RecordPickler0.InternedName.class),
+    INTERNED_OFFSET((byte) 16, 0, RecordPickler0.InternedOffset.class),
+    INTERNED_OFFSET_VAR((byte) 17, 0, RecordPickler0.InternedOffset.class),
+    ENUM((byte) 18, 0, Enum.class),
+    ARRAY((byte) 19, 0, null),
+    MAP((byte) 20, 0, Map.class),
+    LIST((byte) 21, 0, List.class);
+
+    private final byte typeMarker;
+    private final int sizeInBytes;
+    private final Class<?> clazz;
+
+    Constants(byte typeMarker, int sizeInBytes, Class<?> clazz) {
+      this.typeMarker = typeMarker;
+      this.sizeInBytes = sizeInBytes;
+      this.clazz = clazz;
+    }
+
+    public byte marker() {
+      return typeMarker;
+    }
+
+    public int getSizeInBytes() {
+      return sizeInBytes;
+    }
+
+    public Class<?> _class() {
+      return clazz;
+    }
+
+    public static Constants fromMarker(byte marker) {
+      for (Constants c : values()) {
+        if (c.typeMarker == marker) {
+          return c;
+        }
+      }
+      final var msg = "Unknown type marker: " + marker;
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg);
+    }
   }
 }
