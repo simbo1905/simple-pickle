@@ -82,9 +82,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     // Write the number of components as an unsigned byte (max 255)
     LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
     ZigZagEncoding.putInt(buffer.buffer, components.length);
-    Arrays.stream(components).forEach(c -> {
-      buffer.writeComponent(buffer, c);
-    });
+    Arrays.stream(components).forEach(c -> buffer.writeComponent(buffer, c));
   }
 
   @Override

@@ -107,7 +107,6 @@ public class PackedBuffer implements AutoCloseable {
         }
         yield size;
       }
-      // TODO write fast packing for byte[]
       // TODO zigzag compress long[] and int[]
       case Object a when a.getClass().isArray() -> {
         buffer.put(Constants.ARRAY.typeMarker);

@@ -99,3 +99,11 @@ public interface Pickler<T> {
   int sizeOf(Object record);
 }
 
+record InternedName(String name) {
+}
+
+record InternedOffset(int offset) {
+}
+
+record InternedPosition(int position) {
+}
