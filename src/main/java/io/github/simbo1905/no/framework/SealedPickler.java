@@ -1,25 +1,27 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
 import static io.github.simbo1905.no.framework.Constants.*;
 
 class SealedPickler<S> implements Pickler<S> {
   final Map<Class<? extends S>, Pickler<? extends S>> subPicklers;
   final Map<String, Class<? extends S>> classesByShortName;
-  final Map<String, Class<?>> nameToRecordClass;
+  final Map<String, Class<?>> nameToRecordClass = new HashMap<>(nameToBasicClass);
 
   public SealedPickler(Map<Class<? extends S>, Pickler<? extends S>> subPicklers, Map<String, Class<? extends S>> classesByShortName) {
     this.subPicklers = subPicklers;
     this.classesByShortName = classesByShortName;
-    this.nameToRecordClass = classesByShortName.entrySet().stream()
+    this.nameToRecordClass.putAll(classesByShortName.entrySet().stream()
         .filter(e -> e.getValue().isRecord())
         .collect(Collectors.toMap(
             Map.Entry::getKey,
             Map.Entry::getValue
-        ));
+        )));
   }
 
   @Override

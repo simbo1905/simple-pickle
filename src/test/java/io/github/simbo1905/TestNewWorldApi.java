@@ -81,12 +81,12 @@ public class TestNewWorldApi {
     }
   }
 
-  public record ArrayRecord(int[] ints) {
+  public record ArrayRecord(String[] ints) {
   }
 
   public static void main(String[] args) {
 
-    ArrayRecord arrayRecord = new ArrayRecord(new int[]{1, 2, 3});
+    ArrayRecord arrayRecord = new ArrayRecord(new String[]{"a", "b"});
     Pickler<ArrayRecord> arrayPickler = forRecord(ArrayRecord.class);
     PackedBuffer arrayBuffer = Pickler.allocate(1024);
     arrayPickler.serialize(arrayBuffer, arrayRecord);

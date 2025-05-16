@@ -357,5 +357,7 @@ class Companion {
       "int", int.class,
       "long", long.class,
       "float", float.class,
-      "double", double.class);
+      "double", double.class,
+      "java.lang.String", String.class
+  );
 }
