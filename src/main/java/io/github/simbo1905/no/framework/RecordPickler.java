@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
 import static io.github.simbo1905.no.framework.Constants.INTERNED_NAME;
 
 final class RecordPickler<R extends Record> implements Pickler<R> {
@@ -146,7 +147,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
         }
         LOGGER.finer(() -> "deserializeWithMap reading interned name " + internedName.name() + " position=" + buffer.position());
       });
-      return deserializeWithMap(new HashMap<>(), buffer);
+      return deserializeWithMap(new HashMap<>(nameToBasicClass), buffer);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {

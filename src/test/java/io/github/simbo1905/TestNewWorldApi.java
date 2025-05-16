@@ -93,7 +93,7 @@ public class TestNewWorldApi {
     final var arrayBuf = arrayBuffer.flip(); // Prepare the buffer for reading
     ArrayRecord deserializedArrayRecord = arrayPickler.deserialize(arrayBuf);
     System.out.println("Deserialized ArrayRecord: " + deserializedArrayRecord);
-    if (!arrayRecord.equals(deserializedArrayRecord)) {
+    if (!Arrays.equals(arrayRecord.ints(), deserializedArrayRecord.ints())) {
       throw new RuntimeException("Deserialization failed");
     }
 

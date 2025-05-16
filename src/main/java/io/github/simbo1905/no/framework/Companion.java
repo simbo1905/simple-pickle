@@ -311,7 +311,7 @@ class Companion {
           IntStream.range(0, length)
               .forEach(i -> Array.set(array, i, read(classesByShortName, buffer)));
         }
-        yield null;
+        yield array;
       }
       case MAP -> throw new AssertionError("not implemented 2");
       case LIST -> throw new AssertionError("not implemented 4");
@@ -350,4 +350,12 @@ class Companion {
         });
   }
 
+  static Map<String, Class<?>> nameToBasicClass = Map.of(
+      "byte", byte.class,
+      "short", short.class,
+      "char", char.class,
+      "int", int.class,
+      "long", long.class,
+      "float", float.class,
+      "double", double.class);
 }
