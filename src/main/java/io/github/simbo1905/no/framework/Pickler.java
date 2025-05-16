@@ -551,6 +551,7 @@ buffer.put(Constants.ARRAY.typeMarker);
       * */
       case ARRAY -> {
         final var internedName = readInternedName(buffer);
+        LOGGER.finer(() -> "deserializeWithMap reading array interned name " + internedName.name() + " position=" + buffer.position());
         final Class<?> componentType = classesByShortName.get(internedName.name());
         final int length = ZigZagEncoding.getInt(buffer);
         final Object array = Array.newInstance(componentType, length);
