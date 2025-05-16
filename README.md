@@ -513,7 +513,7 @@ sequenceDiagram
 
 No Framework Pickler came about because I was doing Java Data Oriented programming over sealed traits using Java 221. I wanted to quickly transmit them as a simple message protocol. Including large framework for something so basic seemed like a world of future security issues and forced upgrades. Doing something quick and simple in a single Java file felt right. I wanted to avoid reflection and found out: 
 
-- The Java `record` types is specifically designed to be a safe data transfer object.
+- The Java `record` types is specifically designed to be a safe data transfer object. It has more [efficient and safe serialisation behaviour](https://blogs.oracle.com/javamagazine/post/simpler-object-and-data-serialization-using-java-records).
 - The JDK's `ByteBuffer` class correctly validates UTF8 bytes for Strings and safely handles all primitive types.
 - The JDK's `MethodHandle` class lets you `unreflect` them to get lower overhead [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh)
 - Nested `sealed interfaces` that only contain `records` can be exhaustively matched switch statements to deconstruct the records are exactly what you need to model message protocol on Java 21+.
