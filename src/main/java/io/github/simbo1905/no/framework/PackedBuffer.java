@@ -63,10 +63,10 @@ public class PackedBuffer implements AutoCloseable {
   /// writes a record class name to the buffer
   /// @param object the class of the record
   /// @throws IllegalStateException if the buffer is closed
-  void writeComponent(final PackedBuffer buf, Object object) {
+  int writeComponent(final PackedBuffer buf, Object object) {
     if (closed) throw new IllegalStateException("CompactedBuffer is closed");
     final var buffer = buf.buffer;
-    switch (object) {
+    return switch (object) {
       case null -> Companion.writeNull(buffer);
       case Integer i -> Companion.write(buffer, i);
       case Long l -> Companion.write(buffer, l);
@@ -81,44 +81,51 @@ public class PackedBuffer implements AutoCloseable {
       case InternedOffset t -> Companion.write(buffer, t);
       case Enum<?> e -> Companion.write(offsetMap, buffer, "", e);
       case Optional<?> o -> {
+        int size = 1;
         if (o.isEmpty()) {
           buffer.put(Constants.OPTIONAL_EMPTY.typeMarker);
         } else {
           buffer.put(Constants.OPTIONAL_OF.typeMarker);
-          writeComponent(buf, o.get());
+          size += writeComponent(buf, o.get());
         }
+        yield size;
       }
       case List<?> l -> {
         buffer.put(Constants.LIST.typeMarker);
-        ZigZagEncoding.putInt(buffer, l.size());
+        int size = 1 + ZigZagEncoding.putInt(buffer, l.size());
         for (Object item : l) {
-          writeComponent(buf, item);
+          size += writeComponent(buf, item);
         }
+        yield size;
       }
       case Map<?, ?> m -> {
         buffer.put(Constants.MAP.typeMarker);
-        ZigZagEncoding.putInt(buffer, m.size());
+        int size = 1 + ZigZagEncoding.putInt(buffer, m.size());
         for (Map.Entry<?, ?> entry : m.entrySet()) {
-          writeComponent(buf, entry.getKey());
-          writeComponent(buf, entry.getValue());
+          size += writeComponent(buf, entry.getKey());
+          size += writeComponent(buf, entry.getValue());
         }
+        yield size;
       }
       // TODO write fast packing for byte[]
       // TODO zigzag compress long[] and int[]
       case Object a when a.getClass().isArray() -> {
         buffer.put(Constants.ARRAY.typeMarker);
         final var InternedName = new InternedName(a.getClass().getComponentType().getName());
-        writeComponent(buf, InternedName);
+        int size = 1;
+        size += writeComponent(buf, InternedName);
         int length = Array.getLength(a);
-        ZigZagEncoding.putInt(buffer, length);
+        size += ZigZagEncoding.putInt(buffer, length);
         if (byte.class.equals(a.getClass().getComponentType())) {
           buffer.put((byte[]) a);
+          size += ((byte[]) a).length;
         } else {
-          IntStream.range(0, length).forEach(i -> writeComponent(buf, Array.get(a, i)));
+          size += IntStream.range(0, length).map(i -> writeComponent(buf, Array.get(a, i))).sum();
         }
+        yield size;
       }
       default -> throw new AssertionError("unknown component type " + object.getClass());
-    }
+    };
   }
 
   /// Once a buffer has been closed all that can be done is flip to get the underlying buffer to read from it.
@@ -128,7 +135,7 @@ public class PackedBuffer implements AutoCloseable {
   }
 
   /// Flips the buffer and closes this instance. The returned return buffer should be completely used not compacted.
-  /// FIXME: should we track the start and end possition of writes to the buffer and return a slice of it?
+  /// FIXME: should we track the start and end position of writes to the buffer and return a slice of it?
   public ByteBuffer flip() {
     buffer.flip();
     close();

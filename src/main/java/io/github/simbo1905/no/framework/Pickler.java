@@ -55,8 +55,7 @@ public interface Pickler<T> {
   T deserialize(ByteBuffer buffer);
 
   static <R extends Record> Pickler<R> forRecord(Class<R> recordClass) {
-    // FIXME change the default here to false
-    return Companion.getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass, recordClass.getSimpleName()));
+    return Companion.getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass));
   }
 
   static <S> Pickler<S> forSealedInterface(Class<S> sealedClass) {

@@ -16,7 +16,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   final Class<R> recordClass;
   final int componentCount;
   final MethodHandle canonicalConstructorHandle;
-  final Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
   final InternedName internedName;
   final Map<String, Class<?>> nameToClass = new HashMap<>(nameToBasicClass);
 
@@ -65,39 +64,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           recordClass.getName() + "' due to " + inner.getClass().getSimpleName() + " " + inner.getMessage();
       LOGGER.severe(() -> msg);
       throw new IllegalArgumentException(msg, inner);
-    }
-
-    // Get the canonical constructor and any fallback constructors for schema evolution
-    try {
-      // Get all public constructors
-      final Constructor<?>[] allConstructors = recordClass.getConstructors();
-      // Filter out the canonical constructor and keep the others as fallbacks
-      for (Constructor<?> constructor : allConstructors) {
-        int currentParamCount = constructor.getParameterCount();
-        MethodHandle handle;
-        try {
-          handle = lookup.unreflectConstructor(constructor);
-        } catch (IllegalAccessException e) {
-          LOGGER.warning("Cannot access constructor with " + currentParamCount +
-              " parameters for " + recordClass.getName() + ": " + e.getMessage());
-          continue;
-        }
-        // This is a potential fallback constructor for schema evolution
-        if (fallbackConstructorHandles.containsKey(currentParamCount)) {
-          LOGGER.warning("Multiple fallback constructors with " + currentParamCount +
-              " parameters found for " + recordClass.getName() +
-              ". Using the first one encountered.");
-        } else {
-          fallbackConstructorHandles.put(currentParamCount, handle);
-          LOGGER.fine("Found fallback constructor with " + currentParamCount +
-              " parameters for " + recordClass.getName());
-        }
-      }
-    } catch (Exception e) {
-      final var msg = "Failed to access constructors for record '" +
-          recordClass.getName() + "' due to " + e.getClass().getSimpleName() + " " + e.getMessage();
-      LOGGER.severe(() -> msg);
-      throw new IllegalArgumentException(msg, e);
     }
   }
 

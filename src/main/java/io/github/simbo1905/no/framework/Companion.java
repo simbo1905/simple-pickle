@@ -29,7 +29,14 @@ class Companion {
 
   ///  Here we are typing things as `Record` to avoid the need for a cast
   static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass, final String name) {
-    return new RecordPickler<>(recordClass, name != null ? new InternedName(name) : null);
+    Objects.requireNonNull(recordClass);
+    Objects.requireNonNull(name);
+    return new RecordPickler<>(recordClass, new InternedName(name));
+  }
+
+  static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass) {
+    Objects.requireNonNull(recordClass);
+    return new RecordPickler<>(recordClass, null);
   }
 
   static int write(ByteBuffer buffer, int value) {
@@ -155,32 +162,6 @@ class Companion {
       buffer.put(INTERNED_OFFSET.marker());
       buffer.putInt(offset);
       return 1 + Integer.BYTES;
-    }
-  }
-
-  static <T> int write(ByteBuffer buffer, @SuppressWarnings("OptionalUsedAsFieldOrParameterType") Optional<T> optional) {
-    if (optional.isPresent()) {
-      buffer.put(OPTIONAL_OF.marker());
-      final T value = optional.get();
-      final int innerSize = switch (value) {
-        case Integer i -> write(buffer, i);
-        case Long l -> write(buffer, l);
-        case Short s -> write(buffer, s);
-        case Byte b -> write(buffer, b);
-        case Double d -> write(buffer, d);
-        case Float f -> write(buffer, f);
-        case Character c -> write(buffer, c);
-        case Boolean b -> write(buffer, b);
-        case String s -> write(buffer, s);
-        case Optional<?> o -> write(buffer, o);
-        case InternedName t -> write(buffer, t);
-        case InternedOffset t -> write(buffer, t);
-        default -> throw new AssertionError("unknown optional value " + value);
-      };
-      return 1 + innerSize;
-    } else {
-      buffer.put(OPTIONAL_EMPTY.marker());
-      return 1;
     }
   }
 
@@ -323,8 +304,7 @@ class Companion {
     int length = ZigZagEncoding.getInt(buffer);
     byte[] bytes = new byte[length];
     buffer.get(bytes);
-    final var iname = new InternedName(new String(bytes, StandardCharsets.UTF_8));
-    return iname;
+    return new InternedName(new String(bytes, StandardCharsets.UTF_8));
   }
 
   /// Helper method to recursively find all permitted record classes
