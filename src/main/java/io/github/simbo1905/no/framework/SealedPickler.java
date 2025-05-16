@@ -62,7 +62,7 @@ class SealedPickler<S> implements Pickler<S> {
     }
     try {
       //noinspection unchecked
-      return (S) pickler.deserializeWithMap(nameToRecordClass, buffer);
+      return (S) pickler.deserializeWithMap(pickler.nameToClass, buffer);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {

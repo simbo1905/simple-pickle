@@ -18,6 +18,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   final MethodHandle canonicalConstructorHandle;
   final Map<Integer, MethodHandle> fallbackConstructorHandles = new HashMap<>();
   final InternedName internedName;
+  final Map<String, Class<?>> nameToClass = new HashMap<>(nameToBasicClass);
 
   RecordPickler(final Class<R> recordClass, InternedName internedName) {
     this.internedName = internedName;
@@ -30,6 +31,17 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       Class<?>[] parameterTypes = Arrays.stream(components)
           .map(RecordComponent::getType)
           .toArray(Class<?>[]::new);
+      // Record the types that we will write into the buffer
+      Arrays.stream(parameterTypes).forEach(c -> {
+        if (c.isArray()) {
+          // If the component is an array, we need to add the component type to the nameToClass map
+          Class<?> componentType = c.getComponentType();
+          nameToClass.putIfAbsent(componentType.getName(), componentType);
+        } else {
+          // If the component is a record, we need to add it to the nameToClass map
+          nameToClass.putIfAbsent(c.getName(), c);
+        }
+      });
       // Get the canonical constructor
       Constructor<?> constructorHandle = recordClass.getDeclaredConstructor(parameterTypes);
       canonicalConstructorHandle = lookup.unreflectConstructor(constructorHandle);
@@ -147,7 +159,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
         }
         LOGGER.finer(() -> "deserializeWithMap reading interned name " + internedName.name() + " position=" + buffer.position());
       });
-      return deserializeWithMap(new HashMap<>(nameToBasicClass), buffer);
+      return deserializeWithMap(nameToClass, buffer);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {

@@ -302,6 +302,7 @@ class Companion {
         final var internedName = (InternedName) read(classesByShortName, buffer);
         LOGGER.finer(() -> "read() - ARRAY internedName=" + Objects.requireNonNull(internedName).name() + " position=" + buffer.position());
         final Class<?> componentType = classesByShortName.get(Objects.requireNonNull(internedName).name());
+        assert componentType != null : "Component type not found for name: " + internedName.name();
         final int length = ZigZagEncoding.getInt(buffer);
         final Object array = Array.newInstance(componentType, length);
         if (componentType.equals(byte.class)) {
@@ -357,7 +358,6 @@ class Companion {
       "int", int.class,
       "long", long.class,
       "float", float.class,
-      "double", double.class,
-      "java.lang.String", String.class
+      "double", double.class
   );
 }
