@@ -1,7 +1,10 @@
 package io.github.simbo1905.no.framework;
 
+import org.jetbrains.annotations.NotNull;
+
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
@@ -95,10 +98,17 @@ public interface Pickler<T> {
   class SealedPickler<S> implements Pickler<S> {
     final Map<Class<? extends S>, Pickler<? extends S>> subPicklers;
     final Map<String, Class<? extends S>> classesByShortName;
+    final Map<String, Class<?>> nameToRecordClass;
 
     public SealedPickler(Map<Class<? extends S>, Pickler<? extends S>> subPicklers, Map<String, Class<? extends S>> classesByShortName) {
       this.subPicklers = subPicklers;
       this.classesByShortName = classesByShortName;
+      this.nameToRecordClass = classesByShortName.entrySet().stream()
+          .filter(e -> e.getValue().isRecord())
+          .collect(Collectors.toMap(
+              Map.Entry::getKey,
+              Map.Entry::getValue
+          ));
     }
 
     @Override
@@ -131,7 +141,7 @@ public interface Pickler<T> {
       }
       buffer.reset();
       // Read the interned name
-      final Pickler.InternedName name = (InternedName) Companion.read(new HashMap<>(), buffer);
+      final Pickler.InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
       assert name != null;
       final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(classesByShortName.get(name.name()));
       if (pickler == null) {
@@ -139,7 +149,7 @@ public interface Pickler<T> {
       }
       try {
         //noinspection unchecked
-        return (S) pickler.deserializeWithMap(new HashMap<>(), buffer);
+        return (S) pickler.deserializeWithMap(nameToRecordClass, buffer);
       } catch (RuntimeException e) {
         throw e;
       } catch (Throwable t) {
@@ -292,7 +302,7 @@ public interface Pickler<T> {
       }
     }
 
-    R deserializeWithMap(Map<Integer, Class<?>> bufferOffset2Class, ByteBuffer buffer) throws Throwable {
+    R deserializeWithMap(final Map<String, Class<?>> nameToRecordClass, ByteBuffer buffer) throws Throwable {
       // Read the number of components as an unsigned byte
       LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
       final int length = ZigZagEncoding.getInt(buffer);
@@ -300,7 +310,7 @@ public interface Pickler<T> {
       Arrays.setAll(components, i -> {
         try {
           // Read the component
-          return Companion.read(bufferOffset2Class, buffer);
+          return Companion.read(nameToRecordClass, buffer);
         } catch (Throwable e) {
           final var msg = "Failed to access component: " + i +
               " in record class '" + recordClass.getName() + "' : " + e.getMessage();
@@ -483,7 +493,7 @@ class Companion {
     }
   }
 
-  static Object read(Map<Integer, Class<?>> bufferOffset2Class, final ByteBuffer buffer) {
+  static Object read(final Map<String, Class<?>> classesByShortName, final ByteBuffer buffer) {
     final byte marker = buffer.get();
     return switch (fromMarker(marker)) {
       case NULL -> null;
@@ -504,13 +514,8 @@ class Companion {
         yield new String(bytes, StandardCharsets.UTF_8);
       }
       case OPTIONAL_EMPTY -> Optional.empty();
-      case OPTIONAL_OF -> Optional.ofNullable(read(bufferOffset2Class, buffer));
-      case INTERNED_NAME, ENUM -> {
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        yield new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
-      }
+      case OPTIONAL_OF -> Optional.ofNullable(read(classesByShortName, buffer));
+      case INTERNED_NAME, ENUM -> readInternedName(buffer);
       case INTERNED_OFFSET -> {
         final int offset = buffer.getInt();
         final int highWaterMark = buffer.position();
@@ -532,10 +537,43 @@ class Companion {
         buffer.position(highWaterMark);
         yield new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
       }
-      case ARRAY -> throw new AssertionError("not implemented 1");
+      /*
+buffer.put(Constants.ARRAY.typeMarker);
+        final var InternedName = new Pickler.InternedName(a.getClass().getComponentType().getName());
+        writeComponent(buf, InternedName);
+        int length = Array.getLength(a);
+        ZigZagEncoding.putInt(buffer, length);
+        if (byte.class.equals(a.getClass().getComponentType())) {
+          buffer.put((byte[]) a);
+        } else {
+          IntStream.range(0, length).forEach(i -> writeComponent(buf, Array.get(a, i)));
+        }
+      * */
+      case ARRAY -> {
+        final var internedName = readInternedName(buffer);
+        final Class<?> componentType = classesByShortName.get(internedName.name());
+        final int length = ZigZagEncoding.getInt(buffer);
+        final Object array = Array.newInstance(componentType, length);
+        if (componentType.equals(byte.class)) {
+          buffer.get((byte[]) array);
+        } else {
+          // Deserialize each element using IntStream instead of for loop
+          IntStream.range(0, length)
+              .forEach(i -> Array.set(array, i, read(classesByShortName, buffer)));
+        }
+        yield null;
+      }
       case MAP -> throw new AssertionError("not implemented 2");
       case LIST -> throw new AssertionError("not implemented 4");
     };
+  }
+
+  private static Pickler.@NotNull InternedName readInternedName(ByteBuffer buffer) {
+    int length = ZigZagEncoding.getInt(buffer);
+    byte[] bytes = new byte[length];
+    buffer.get(bytes);
+    final var iname = new Pickler.InternedName(new String(bytes, StandardCharsets.UTF_8));
+    return iname;
   }
 
   /// Helper method to recursively find all permitted record classes

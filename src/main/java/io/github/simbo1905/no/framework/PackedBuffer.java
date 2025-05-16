@@ -1,10 +1,12 @@
 package io.github.simbo1905.no.framework;
 
+import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
 
@@ -78,6 +80,43 @@ public class PackedBuffer implements AutoCloseable {
       case Pickler.InternedName t -> Companion.write(buffer, t);
       case Pickler.InternedOffset t -> Companion.write(buffer, t);
       case Enum<?> e -> Companion.write(offsetMap, buffer, "", e);
+      case Optional<?> o -> {
+        if (o.isEmpty()) {
+          buffer.put(Constants.OPTIONAL_EMPTY.typeMarker);
+        } else {
+          buffer.put(Constants.OPTIONAL_OF.typeMarker);
+          writeComponent(buf, o.get());
+        }
+      }
+      case List<?> l -> {
+        buffer.put(Constants.LIST.typeMarker);
+        ZigZagEncoding.putInt(buffer, l.size());
+        for (Object item : l) {
+          writeComponent(buf, item);
+        }
+      }
+      case Map<?, ?> m -> {
+        buffer.put(Constants.MAP.typeMarker);
+        ZigZagEncoding.putInt(buffer, m.size());
+        for (Map.Entry<?, ?> entry : m.entrySet()) {
+          writeComponent(buf, entry.getKey());
+          writeComponent(buf, entry.getValue());
+        }
+      }
+      // TODO write fast packing for byte[]
+      // TODO zigzag compress long[] and int[]
+      case Object a when a.getClass().isArray() -> {
+        buffer.put(Constants.ARRAY.typeMarker);
+        final var InternedName = new Pickler.InternedName(a.getClass().getComponentType().getName());
+        writeComponent(buf, InternedName);
+        int length = Array.getLength(a);
+        ZigZagEncoding.putInt(buffer, length);
+        if (byte.class.equals(a.getClass().getComponentType())) {
+          buffer.put((byte[]) a);
+        } else {
+          IntStream.range(0, length).forEach(i -> writeComponent(buf, Array.get(a, i)));
+        }
+      }
       default -> throw new AssertionError("unknown component type " + object.getClass());
     }
   }

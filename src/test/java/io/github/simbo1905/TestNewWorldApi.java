@@ -67,8 +67,8 @@ public class TestNewWorldApi {
     Dog dog2 = new Dog("Fido", 2);
     Eagle eagle = new Eagle(2.1);
     Penguin penguin = new Penguin(true);
-//    Alicorn alicorn = new Alicorn("Twilight Sparkle",
-//        new String[]{"elements of harmony", "wings of a pegasus"});
+    Alicorn alicorn = new Alicorn("Twilight Sparkle",
+        new String[]{"elements of harmony", "wings of a pegasus"});
 
     // Test 1: Round-trip dog2
     Pickler<Dog> dogPickler = forRecord(Dog.class);
@@ -84,12 +84,11 @@ public class TestNewWorldApi {
     final var animalPacedBuffer = animalPickler.allocate(4096);
 
     // Test 2: Round-trip list of animals
-    List<Animal> animals = List.of(dog, dog2, eagle, penguin);
+    List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
     // Serialize
     animalPacedBuffer.putInt(animals.size());
     for (Animal animal : animals) {
-      //animalPickler.forRecord(animal).serialize(animalBuffer, animal);
       animalPickler.serialize(animalPacedBuffer, animal);
     }
     final var animalBuffer = animalPacedBuffer.flip();
