@@ -1,8 +1,7 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.Pickler0;
 
-import java.nio.ByteBuffer;
+import io.github.simbo1905.no.framework.Pickler;
 
 public class Demo1 {
   sealed interface TreeNode permits TreeNode.InternalNode, TreeNode.LeafNode {
@@ -33,15 +32,15 @@ public class Demo1 {
         new TreeNode.InternalNode("Branch2", new TreeNode.LeafNode(123), null));
 
 // And a type safe pickler for the sealed interface:
-    Pickler0<TreeNode> treeNodePickler = Pickler0.forSealedInterface(TreeNode.class);
+    Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer:
-    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    final var buffer = Pickler.allocate(1024);
     treeNodePickler.serialize(buffer, originalRoot);
 
 // And deserialize it back:
-    buffer.flip();
-    TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
+    final var buf = buffer.flip();
+    TreeNode deserializedRoot = treeNodePickler.deserialize(buf);
 
 // Then it has elegantly and safely reconstructed the entire tree structure
     if (TreeNode.areTreesEqual(originalRoot, deserializedRoot)) {

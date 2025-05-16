@@ -1,8 +1,7 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.Pickler0;
+import io.github.simbo1905.no.framework.Pickler;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 
 public class Demo3 {
@@ -12,18 +11,18 @@ public class Demo3 {
     final List<ListRecord> outerList = List.of(new ListRecord(List.of("A", "B")), new ListRecord(List.of("X", "Y")));
 
 // Calculate size and allocate buffer. Limitations of generics means we have shallow copy into an array.
-    int size = Pickler0.sizeOfMany(outerList.toArray(ListRecord[]::new));
+    int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
 
-    ByteBuffer buffer = ByteBuffer.allocate(size);
+    final var buffer = Pickler.allocate(size);
 
 // Serialize. Limitations of generics means we have to pass the sealed interface class.
-    Pickler0.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
+    Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
 
 // Flip the buffer to prepare for reading
-    buffer.flip();
+    var buf = buffer.flip();
 
 // Deserialize. Limitations of generics means we have to pass the sealed interface class.
-    final List<ListRecord> deserialized = Pickler0.deserializeMany(ListRecord.class, buffer);
+    final List<Object> deserialized = Pickler.deserializeMany(ListRecord.class, buf);
 // will throw an exception if you try to modify the list of the deserialized record
     try {
       deserialized.removeFirst();
@@ -34,7 +33,7 @@ public class Demo3 {
     }
 // will throw an exception if you try to modify a list inside the deserialized record
     try {
-      deserialized.forEach(l -> l.list().removeFirst());
+      //deserialized.forEach(l -> l.list().removeFirst());
       throw new AssertionError("should not be reached");
     } catch (UnsupportedOperationException e) {
       // Expected exception, as the list is immutable

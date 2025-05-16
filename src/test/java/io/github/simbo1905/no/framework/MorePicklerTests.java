@@ -16,7 +16,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
-import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.PicklerTests.stripOutAsciiStrings;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -69,13 +69,13 @@ public class MorePicklerTests {
     final var originalAnimals = new Animal[]{dog, cat, eagle, penguin, alicorn};
 
     // Get a pickler for the Animal sealed interface
-    final var pickler = Pickler0.forSealedInterface(Animal.class);
+    final var pickler = Pickler.forSealedInterface(Animal.class);
 
     // Calculate total buffer size needed using streams
     final var totalSize = Arrays.stream(originalAnimals).mapToInt(pickler::sizeOf).sum();
 
     // Allocate a single buffer to hold all animals
-    final var buffer = ByteBuffer.allocate(totalSize);
+    final var buffer = Pickler.allocate(totalSize);
 
     // Serialize all animals into the buffer using streams
     Arrays.stream(originalAnimals).forEach(animal -> pickler.serialize(buffer, animal));
@@ -83,11 +83,11 @@ public class MorePicklerTests {
     assertFalse(buffer.hasRemaining());
 
     // Prepare buffer for reading
-    buffer.flip();
+    var buf = buffer.flip();
 
     // Deserialize all animals from the buffer
     final var deserializedAnimals = new Animal[originalAnimals.length];
-    Arrays.setAll(deserializedAnimals, ignored -> pickler.deserialize(buffer));
+    Arrays.setAll(deserializedAnimals, ignored -> pickler.deserialize(buf));
 
     // Verify all animals were correctly deserialized
     assertEquals(originalAnimals.length, deserializedAnimals.length);
@@ -157,7 +157,7 @@ public class MorePicklerTests {
     final var originalNodes = new TreeNode[]{root, internal1};
 
     // Get a pickler for the TreeNode sealed interface
-    final var pickler = Pickler0.forSealedInterface(TreeNode.class);
+    final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
     // Calculate total buffer size needed - handle each node individually to avoid NPE with null children
     final var totalSize = Arrays.stream(originalNodes)
@@ -177,7 +177,7 @@ public class MorePicklerTests {
     LOGGER.fine(() -> "Total size is " + totalSize);
     LOGGER.fine(() -> "Allocating buffer with size: " + totalSize);
     // Allocate a single buffer to hold all nodes
-    final var buffer = ByteBuffer.allocate(totalSize);
+    final var buffer = Pickler.allocate(totalSize);
 
     // Serialize all nodes into the buffer
     Arrays.stream(originalNodes).forEach(node -> {
@@ -188,11 +188,11 @@ public class MorePicklerTests {
     assertFalse(buffer.hasRemaining());
 
     // Prepare buffer for reading
-    buffer.flip();
+    var buf = buffer.flip();
 
     // Deserialize all nodes from the buffer
     final var deserializedNodes = new TreeNode[originalNodes.length];
-    Arrays.setAll(deserializedNodes, ignored -> pickler.deserialize(buffer));
+    Arrays.setAll(deserializedNodes, ignored -> pickler.deserialize(buf));
 
     // Verify all nodes were correctly deserialized
     assertEquals(originalNodes.length, deserializedNodes.length);
@@ -246,7 +246,7 @@ public class MorePicklerTests {
   @Test
   void testClassNameCompression() {
     // Get a pickler for the Chained sealed interface
-    final var pickler = Pickler0.forRecord(Link.class);
+    final var pickler = Pickler.forRecord(Link.class);
 
     // Create a chain of links
     final var link0 = new Link(null);
@@ -257,15 +257,15 @@ public class MorePicklerTests {
     final var bufferSize = pickler.sizeOf(link2);
 
     // Allocate a buffer to hold the entire chain
-    var buffer = ByteBuffer.allocate(bufferSize);
+    var buffer = Pickler.allocate(bufferSize);
     // Serialize the entire chain
     pickler.serialize(buffer, link2);
     assertFalse(buffer.hasRemaining());
     // Prepare buffer for reading
-    buffer.flip();
+    var buf = buffer.flip();
 
     // Get the bytes from the buffer
-    final var bytes = buffer.array();
+    final var bytes = buf.array();
     StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
     Matcher matcher = Pattern.compile(Link.class.getName().replace("$", "\\$")).matcher(escapedSearchString.toString());
     int count = 0;
@@ -273,9 +273,10 @@ public class MorePicklerTests {
       count++;
     }
     assertEquals(1, count);
-    buffer = ByteBuffer.wrap(bytes);
+    buffer = new PackedBuffer(ByteBuffer.wrap(bytes));
+    ;
     // Deserialize the entire chain
-    final var deserializedChain = pickler.deserialize(buffer);
+    final var deserializedChain = pickler.deserialize(buf);
     assertNotNull(deserializedChain);
     var next = deserializedChain.next();
     assertNotNull(next);
@@ -288,7 +289,7 @@ public class MorePicklerTests {
   @Test
   void testClassNameCompressionSealedTrait() {
     // Get a pickler for the Chained sealed interface
-    final var pickler = Pickler0.forSealedInterface(Chained.class);
+    final var pickler = Pickler.forSealedInterface(Chained.class);
 
     // Create a chain of links
     final Chained chained;
@@ -305,15 +306,15 @@ public class MorePicklerTests {
     final var bufferSize = pickler.sizeOf(chained);
 
     // Allocate a buffer to hold the entire chain
-    var buffer = ByteBuffer.allocate(bufferSize);
+    var buffer = Pickler.allocate(bufferSize);
     // Serialize the entire chain
     pickler.serialize(buffer, chained);
     assertFalse(buffer.hasRemaining());
     // Prepare buffer for reading
-    buffer.flip();
+    var buf = buffer.flip();
 
     // Get the bytes from the buffer
-    final var bytes = buffer.array();
+    final var bytes = buf.array();
     StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
     final String n1 = Chained.class.getName();
     final String n2 = Link.class.getName();
@@ -330,9 +331,10 @@ public class MorePicklerTests {
     // we expect 1 matches because the outer trait has to write out that the inner is a link
     assertEquals(1, count);
     // make a fresh buffer to check that all the links are deserialized
-    buffer = ByteBuffer.wrap(bytes);
+    buffer = new PackedBuffer(ByteBuffer.wrap(bytes));
+    ;
     // Deserialize the entire chain
-    final var deserializedChain = (Link) pickler.deserialize(buffer);
+    final var deserializedChain = (Link) pickler.deserialize(buf);
     assertNotNull(deserializedChain);
     var next = deserializedChain.next();
     assertNotNull(next);
@@ -364,13 +366,13 @@ public class MorePicklerTests {
     final var originalRoot = originalNodes[0];
     
     // Get a pickler for the TreeNode sealed interface
-    final var pickler = Pickler0.forSealedInterface(TreeNode.class);
+    final var pickler = Pickler.forSealedInterface(TreeNode.class);
     
     // Calculate buffer size needed for just the root node
     final var bufferSize = pickler.sizeOf(originalRoot);
     
     // Allocate a buffer to hold just the root node
-    var buffer = ByteBuffer.allocate(bufferSize);
+    var buffer = Pickler.allocate(bufferSize);
     
     // Serialize only the root node (which should include the entire graph)
     pickler.serialize(buffer, originalRoot);
@@ -378,9 +380,9 @@ public class MorePicklerTests {
     assertFalse(buffer.hasRemaining());
 
     // Prepare buffer for reading
-    buffer.flip();
+    var buf = buffer.flip();
 
-    final var bytes = buffer.array();
+    final var bytes = buf.array();
     StringBuilder escapedSearchString = stripOutAsciiStrings(bytes);
 
     Matcher matcher = Pattern.compile(LeafNode.class.getName()).matcher(escapedSearchString.toString());
@@ -392,10 +394,11 @@ public class MorePicklerTests {
 
     assertEquals(1, count);
 
-    buffer = ByteBuffer.wrap(bytes);
+    buffer = new PackedBuffer(ByteBuffer.wrap(bytes));
+    ;
 
     // Deserialize the root node (which should reconstruct the entire graph)
-    final var deserializedRoot = pickler.deserialize(buffer);
+    final var deserializedRoot = pickler.deserialize(buf);
     
     // Validate the entire tree structure was properly deserialized
     assertTrue(TreeNode.areTreesEqual(originalRoot, deserializedRoot), "Tree structure validation failed");
@@ -421,7 +424,7 @@ public class MorePicklerTests {
 
   @Test
   void testUnicodeContentRoundTrip() {
-    var pickler = Pickler0.forRecord(データ_αβγ_КПД.class);
+    var pickler = Pickler.forRecord(データ_αβγ_КПД.class);
 
     var original = new データ_αβγ_КПД(
         "Rainbow ✨",
@@ -429,12 +432,12 @@ public class MorePicklerTests {
         java.util.Optional.of("Magic 🦄")
     );
 
-    var buffer = ByteBuffer.allocate(pickler.sizeOf(original));
+    var buffer = Pickler.allocate(pickler.sizeOf(original));
     pickler.serialize(buffer, original);
     assertFalse(buffer.hasRemaining());
-    buffer.flip();
+    var buf = buffer.flip();
 
-    var deserialized = pickler.deserialize(buffer);
+    var deserialized = pickler.deserialize(buf);
 
     assertEquals(original.デ(), deserialized.デ());
     assertArrayEquals(original.タ(), deserialized.タ());

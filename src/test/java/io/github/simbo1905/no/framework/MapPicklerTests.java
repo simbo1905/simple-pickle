@@ -4,7 +4,6 @@ package io.github.simbo1905.no.framework;
 
 import org.junit.jupiter.api.Test;
 
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.ConsoleHandler;
@@ -60,22 +59,22 @@ class MapPicklerTests {
   /// @return The deserialized record
   private <T extends Record> T serializeAndDeserialize(T original) {
     // Get a pickler for the record type
-    @SuppressWarnings("unchecked") final var pickler = Pickler0.forRecord((Class<T>) original.getClass());
+    @SuppressWarnings("unchecked") final var pickler = Pickler.forRecord((Class<T>) original.getClass());
 
     // Calculate size and allocate buffer
     final var size = pickler.sizeOf(original);
-    final var buffer = ByteBuffer.allocate(size);
+    final var buffer = Pickler.allocate(size);
 
     // Serialize
     pickler.serialize(buffer, original);
     assertFalse(buffer.hasRemaining());
-    buffer.flip();
+    final var buf = buffer.flip();
 
     // Deserialize
-    final var deserialized = pickler.deserialize(buffer);
+    final var deserialized = pickler.deserialize(buf);
 
     // Verify buffer is fully consumed
-    assertEquals(buffer.limit(), buffer.position(), "Buffer not fully consumed");
+    assertFalse(buffer.hasRemaining(), "Buffer not fully consumed");
 
     return deserialized;
   }

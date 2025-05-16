@@ -1,8 +1,7 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.Pickler0;
+import io.github.simbo1905.no.framework.Pickler;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -19,15 +18,15 @@ public class Demo4 {
     };
 
 // Calculate size and allocate buffer
-    int size = Pickler0.sizeOfMany(people);
-    ByteBuffer buffer = ByteBuffer.allocate(size);
+    int size = Pickler.sizeOfMany(people);
+    final var buffer = Pickler.allocate(size);
 
 // Serialize the array
-    Pickler0.serializeMany(people, buffer);
-    buffer.flip();
+    Pickler.serializeMany(people, buffer);
+    var buf = buffer.flip();
 
 // Deserialize the array
-    List<Person> deserializedPeople = Pickler0.deserializeMany(Person.class, buffer);
+    List<Object> deserializedPeople = Pickler.deserializeMany(Person.class, buf);
 
 // Verify the array was properly deserialized
     assertEquals(people.length, deserializedPeople.size());

@@ -1,8 +1,8 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.Pickler0;
 
-import java.nio.ByteBuffer;
+import io.github.simbo1905.no.framework.Pickler;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -44,33 +44,35 @@ public class DemoPickler2 {
         new String[]{"elements of harmony", "wings of a pegasus"});
 
     // Test 1: Round-trip dog2
-    ByteBuffer dogBuffer = ByteBuffer.allocate(1024);
-    Pickler0<Dog> dogPickler = Pickler0.forRecord(Dog.class);
+    Pickler<Dog> dogPickler = Pickler.forRecord(Dog.class);
+    var dogBuffer = Pickler.allocate(1024);
     dogPickler.serialize(dogBuffer, dog2);
-    dogBuffer.flip();
-    Dog deserializedDog = dogPickler.deserialize(dogBuffer);
+    final var buf = dogBuffer.flip();
+    Dog deserializedDog = dogPickler.deserialize(buf);
     System.out.println("Dog2 round-trip: " + dog2.equals(deserializedDog));
 
-    ByteBuffer animalBuffer = ByteBuffer.allocate(4096);
 
     // Test 2: Round-trip list of animals
     List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
     // Get pickler for sealed interface
-    Pickler0<Animal> animalPickler = Pickler0.forSealedInterface(Animal.class);
+    Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
+
+    final var animalBuffer = Pickler.allocate(4096);
 
     // Serialize
     animalBuffer.putInt(animals.size());
+
     for (Animal animal : animals) {
       animalPickler.serialize(animalBuffer, animal);
     }
-    animalBuffer.flip();
+    final var buf2 = animalBuffer.flip();
 
     // Deserialize
-    int size = animalBuffer.getInt();
+    int size = buf2.getInt();
     List<Animal> deserializedAnimals = new ArrayList<>(size);
     IntStream.range(0, size).forEach(i -> {
-      Animal animal = animalPickler.deserialize(animalBuffer);
+      Animal animal = animalPickler.deserialize(buf2);
       deserializedAnimals.add(animal);
     });
 

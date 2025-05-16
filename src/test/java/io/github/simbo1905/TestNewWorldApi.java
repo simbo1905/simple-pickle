@@ -12,9 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.*;
 import java.util.stream.IntStream;
 
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.Pickler.forRecord;
-import static io.github.simbo1905.no.framework.Pickler0.LOGGER;
-
 
 public class TestNewWorldApi {
   static {
@@ -72,7 +71,7 @@ public class TestNewWorldApi {
   public record Penguin(boolean canSwim) implements Bird, Serializable {}
   // @formatter:on
 
-  public record MyRecord(String message, int number) implements Serializable {
+  public record MyRecord(String message, int number) {
     @Override
     public String toString() {
       return "MyRecord{" +
@@ -82,11 +81,26 @@ public class TestNewWorldApi {
     }
   }
 
+  public record ArrayRecord(int[] ints) {
+  }
+
   public static void main(String[] args) {
+
+    ArrayRecord arrayRecord = new ArrayRecord(new int[]{1, 2, 3});
+    Pickler<ArrayRecord> arrayPickler = forRecord(ArrayRecord.class);
+    PackedBuffer arrayBuffer = Pickler.allocate(1024);
+    arrayPickler.serialize(arrayBuffer, arrayRecord);
+    final var arrayBuf = arrayBuffer.flip(); // Prepare the buffer for reading
+    ArrayRecord deserializedArrayRecord = arrayPickler.deserialize(arrayBuf);
+    System.out.println("Deserialized ArrayRecord: " + deserializedArrayRecord);
+    if (!arrayRecord.equals(deserializedArrayRecord)) {
+      throw new RuntimeException("Deserialization failed");
+    }
+
     // Example usage
     MyRecord record = new MyRecord("Hello", 42);
     Pickler<MyRecord> pickler = forRecord(MyRecord.class);
-    PackedBuffer buffer = pickler.allocate(1024);
+    PackedBuffer buffer = Pickler.allocate(1024);
     pickler.serialize(buffer, record);
     final var buf = buffer.flip(); // Prepare the buffer for reading
     MyRecord deserializedRecord = pickler.deserialize(buf);
@@ -105,7 +119,7 @@ public class TestNewWorldApi {
 
     // Test 1: Round-trip dog2
     Pickler<Dog> dogPickler = forRecord(Dog.class);
-    PackedBuffer dogBuffer = dogPickler.allocate(1024);
+    PackedBuffer dogBuffer = Pickler.allocate(1024);
     dogPickler.serialize(dogBuffer, dog2);
     final var buf2 = dogBuffer.flip();
     Dog deserializedDog = dogPickler.deserialize(buf2);
@@ -114,7 +128,7 @@ public class TestNewWorldApi {
     // Get pickler for sealed interface
     final Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
 
-    final var animalPacedBuffer = animalPickler.allocate(4096);
+    final var animalPacedBuffer = Pickler.allocate(4096);
 
     // Test 2: Round-trip list of animals
     List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);

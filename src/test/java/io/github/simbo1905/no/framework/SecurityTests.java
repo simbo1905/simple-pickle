@@ -4,7 +4,6 @@ package io.github.simbo1905.no.framework;
 
 import org.junit.jupiter.api.Test;
 
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
@@ -49,16 +48,16 @@ class SecurityTests {
   @Test
   void testSealedTraitNotRecordAttack() {
     // 1. Get Pickler for the sealed trait
-    final Pickler0<MyInterface> pickler = Pickler0.forSealedInterface(MyInterface.class);
+    final Pickler<MyInterface> pickler = Pickler.forSealedInterface(MyInterface.class);
 
     // 2. Create an instance of a permitted subtype
     final var original = new Good("safe_value");
 
     // 3. Serialize the instance
     final int size = pickler.sizeOf(original);
-    final ByteBuffer buffer = ByteBuffer.allocate(size);
+    final var buffer = Pickler.allocate(size);
     pickler.serialize(buffer, original);
-    buffer.flip(); // Prepare for reading/manipulation
+    var buf = buffer.flip(); // Prepare for reading/manipulation
 
     // 4. Manipulate the byte buffer to replace the class name
     // The format for sealed trait is: [classNameLength (int)] [classNameBytes (utf8)] [actual object data...]
@@ -70,29 +69,29 @@ class SecurityTests {
 
     // Overwrite the class name bytes in the buffer
     for (int i = 0; i < maliciousBytes.length; i++) {
-      buffer.put(classNamePosition + i, maliciousBytes[i]);
+      buf.put(classNamePosition + i, maliciousBytes[i]);
     }
 
     // 5. Reset buffer position and attempt deserialization
-    buffer.position(0); // Reset position to the beginning for deserialization
+    buf.position(0); // Reset position to the beginning for deserialization
 
     // 6. Assert that deserialization fails because "Baad" is not a permitted subtype
     assertThrows(IllegalArgumentException.class, () -> {
-      pickler.deserialize(buffer);
+      pickler.deserialize(buf);
     }, "Deserialization should fail for non-record class");
   }
 
   @Test
   void testSealedTraitWrongRecordAttack() {
     // 1. Get Pickler for the sealed trait
-    final Pickler0<MyInterface> pickler = Pickler0.forSealedInterface(MyInterface.class);
+    final Pickler<MyInterface> pickler = Pickler.forSealedInterface(MyInterface.class);
 
     // 2. Create an instance of a permitted subtype
     final var original = new Good("safe_value");
 
     // 3. Serialize the instance
     final int size = pickler.sizeOf(original);
-    final ByteBuffer buffer = ByteBuffer.allocate(size);
+    final var buffer = Pickler.allocate(size);
     pickler.serialize(buffer, original);
     buffer.flip(); // Prepare for reading/manipulation
 
@@ -110,11 +109,11 @@ class SecurityTests {
     }
 
     // 5. Reset buffer position and attempt deserialization
-    buffer.position(0); // Reset position to the beginning for deserialization
+    final var buf = buffer.flip();
 
     // 6. Assert that deserialization fails because "Bad2" is not a permitted subtype
     assertThrows(IllegalArgumentException.class, () -> {
-      pickler.deserialize(buffer);
+      pickler.deserialize(buf);
     }, "Deserialization should fail for wrong record type");
   }
 }
