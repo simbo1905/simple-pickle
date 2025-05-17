@@ -3,13 +3,12 @@ package io.github.simbo1905.no.framework;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Array;
+import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -24,21 +23,23 @@ class Companion {
   static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass, final String name) {
     Objects.requireNonNull(recordClass);
     Objects.requireNonNull(name);
-    return new RecordPickler<>(recordClass, new InternedName(name));
+    final var nestedRecordPicklers = nestedRecordPicklers(recordClass);
+    return new RecordPickler<>(recordClass, new InternedName(name), nestedRecordPicklers);
   }
 
   static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass) {
     Objects.requireNonNull(recordClass);
-    return new RecordPickler<>(recordClass, null);
+    final var nestedRecordPicklers = nestedRecordPicklers(recordClass);
+    return new RecordPickler<>(recordClass, new InternedName(recordClass.getSimpleName()), nestedRecordPicklers);
   }
 
   static int write(ByteBuffer buffer, int value) {
     LOGGER.finer(() -> "write(int) - Enter: value=" + value + " position=" + buffer.position());
     if (ZigZagEncoding.sizeOf(value) < Integer.BYTES) {
-      buffer.put(Constants.INTEGER_VAR.marker());
+      buffer.put(INTEGER_VAR.marker());
       return 1 + ZigZagEncoding.putInt(buffer, value);
     } else {
-      buffer.put(Constants.INTEGER.marker());
+      buffer.put(INTEGER.marker());
       buffer.putInt(value);
       return 1 + Integer.BYTES;
     }
@@ -288,6 +289,8 @@ class Companion {
         }
         yield array;
       }
+      case SELF -> null;
+      case RECORD -> null;
       case MAP -> throw new AssertionError("not implemented 2");
       case LIST -> throw new AssertionError("not implemented 4");
     };
@@ -300,29 +303,42 @@ class Companion {
     return new InternedName(new String(bytes, StandardCharsets.UTF_8));
   }
 
-  /// Helper method to recursively find all permitted record classes
-  /// @throws IllegalArgumentException if the class is not sealed or if any of the subclasses are not records or sealed interfaces
-  static Stream<Class<?>> validateSealedRecordHierarchy(Class<?> sealedClass) {
-    if (!sealedClass.isSealed()) {
-      final var msg = "Class is not sealed: " + sealedClass.getName();
-      LOGGER.severe(() -> msg);
-      throw new IllegalArgumentException(msg);
+  static Stream<Class<?>> recordClassHierarchy(Class<?> clazz) {
+    return recordClassHierarchy(clazz, new IdentityHashMap<>());
+  }
+
+  private static Stream<Class<?>> recordClassHierarchy(
+      Class<?> current, Map<Class<?>, Boolean> visited
+  ) {
+    if (visited.putIfAbsent(current, Boolean.TRUE) != null) {
+      return Stream.empty();
     }
 
-    return Arrays.stream(sealedClass.getPermittedSubclasses())
-        .flatMap(subclass -> {
-          if (subclass.isRecord()) {
-            return Stream.of(subclass);
-          } else if (subclass.isSealed()) {
-            return validateSealedRecordHierarchy(subclass);
-          } else {
-            final var msg = "Permitted subclass must be either a record or sealed interface: " +
-                subclass.getName();
-            LOGGER.severe(() -> msg);
-            throw new IllegalArgumentException(msg);
-          }
-        });
+    Stream<Class<?>> self = current.isRecord()
+        ? Stream.of(current)
+        : Stream.empty();
+
+    Stream<Class<?>> children = Stream.empty();
+
+    // Handle sealed class hierarchy
+    if (current.isSealed()) {
+      children = Arrays.stream(current.getPermittedSubclasses())
+          .flatMap(sub -> recordClassHierarchy(sub, visited));
+    }
+
+    // Handle record components
+    if (current.isRecord()) {
+      Stream<Class<?>> components = Arrays.stream(current.getRecordComponents())
+          .map(RecordComponent::getType)
+          .filter(c -> c.isRecord() || c.isSealed())
+          .flatMap(c -> recordClassHierarchy(c, visited));
+
+      children = Stream.concat(children, components);
+    }
+
+    return Stream.concat(self, children).distinct();
   }
+
 
   static Map<String, Class<?>> nameToBasicClass = Map.of(
       "byte", byte.class,
@@ -333,4 +349,43 @@ class Companion {
       "float", float.class,
       "double", double.class
   );
+
+  static Map<Class<?>, Pickler<?>> nestedRecordPicklers(Class<?> recordClass) {
+    final Class<?>[] reachableClasses = recordClassHierarchy(recordClass).filter(c -> !recordClass.equals(c)).toArray(Class<?>[]::new);
+
+    LOGGER.fine(Stream.of(recordClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
+        Stream.of(reachableClasses).map(Object::toString).collect(Collectors.joining(",\n")));
+
+    final int commonPrefixLength = Stream.concat(Stream.of(recordClass), Arrays.stream(reachableClasses))
+        .map(Class::getName)
+        .reduce((a, b) -> IntStream.range(0, Math.min(a.length(), b.length()))
+            .filter(i -> a.charAt(i) != b.charAt(i))
+            .findFirst()
+            .stream()
+            .mapToObj(i -> a.substring(0, i))
+            .findFirst()
+            .orElse(a.substring(0, Math.min(a.length(), b.length())))
+        ).orElse("").length();
+
+    @SuppressWarnings("unchecked") final Map<String, Class<? extends Record>> classesByShortName =
+        Arrays.stream(reachableClasses)
+            .map(cls -> (Class<? extends Record>) cls) // Safe due to validateSealedRecordHierarchy
+            .collect(Collectors.toMap(
+                    cls -> cls.getName().substring(commonPrefixLength),
+                    cls -> cls
+                )
+            );
+
+    // Double cast required to satisfy compiler
+    return classesByShortName.entrySet().stream()
+        .filter(e -> e.getValue().isRecord())
+        .collect(Collectors.toMap(
+            Map.Entry::getValue,
+            e -> {
+              // Double cast required to satisfy compiler
+              Class<? extends Record> recordCls = e.getValue();
+              return manufactureRecordPickler(recordCls, e.getKey());
+            }
+        ));
+  }
 }

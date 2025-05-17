@@ -123,7 +123,7 @@ public class PackedBuffer implements AutoCloseable {
         }
         yield size;
       }
-      default -> throw new AssertionError("unknown component type " + object.getClass());
+      default -> throw new IllegalStateException("Unexpected value: " + object);
     };
   }
 

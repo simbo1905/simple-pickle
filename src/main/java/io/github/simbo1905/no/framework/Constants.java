@@ -28,7 +28,9 @@ enum Constants {
   ENUM((byte) 18, 0, Enum.class),
   ARRAY((byte) 19, 0, null),
   MAP((byte) 20, 0, Map.class),
-  LIST((byte) 21, 0, List.class);
+  LIST((byte) 21, 0, List.class),
+  RECORD((byte) 22, 0, Record.class),
+  SELF((byte) 23, 0, Record.class);
 
   final byte typeMarker;
   final int sizeInBytes;

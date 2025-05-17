@@ -63,8 +63,13 @@ public interface Pickler<T> {
   }
 
   static <S> Pickler<S> forSealedInterface(Class<S> sealedClass) {
+    if (!sealedClass.isSealed()) {
+      final var msg = "Class is not sealed: " + sealedClass.getName();
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg);
+    }
     // Get all permitted record subclasses. This will throw an exception if the class is not sealed or if any of the subclasses are not records or sealed interfaces.
-    final Class<?>[] subclasses = Companion.validateSealedRecordHierarchy(sealedClass).toArray(Class<?>[]::new);
+    final Class<?>[] subclasses = Companion.recordClassHierarchy(sealedClass).toArray(Class<?>[]::new);
 
     LOGGER.info(Stream.of(sealedClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
         Stream.of(subclasses).map(Object::toString).collect(Collectors.joining(",\n")));

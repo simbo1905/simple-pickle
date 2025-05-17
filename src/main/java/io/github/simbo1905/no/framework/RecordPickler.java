@@ -6,7 +6,10 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 
 import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
 import static io.github.simbo1905.no.framework.Constants.INTERNED_NAME;
@@ -18,13 +21,20 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   final MethodHandle canonicalConstructorHandle;
   final InternedName internedName;
   final Map<String, Class<?>> nameToClass = new HashMap<>(nameToBasicClass);
+  final Map<Class<?>, Pickler<?>> nestedRecordPicklers;
 
-  RecordPickler(final Class<R> recordClass, InternedName internedName) {
+  RecordPickler(final Class<R> recordClass, InternedName internedName, Map<Class<?>, Pickler<?>> nestedRecordPicklers) {
+    Objects.requireNonNull(recordClass);
+    Objects.requireNonNull(internedName);
+    Objects.requireNonNull(nestedRecordPicklers);
     this.internedName = internedName;
     this.recordClass = recordClass;
     final RecordComponent[] components = recordClass.getRecordComponents();
     componentCount = components.length;
     final MethodHandles.Lookup lookup = MethodHandles.lookup();
+
+    this.nestedRecordPicklers = nestedRecordPicklers;
+
     try {
       // Get parameter types for the canonical constructor
       Class<?>[] parameterTypes = Arrays.stream(components)
@@ -67,7 +77,12 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     }
   }
 
-  void serializeWithMap(PackedBuffer buffer, R object) {
+  void serializeWithMap(PackedBuffer buffer, R object, boolean writeName) {
+    if (writeName) {
+      // If we are being asked to write out our record class name by a sealed pickler then we so now
+      buffer.offsetMap.put(internedName, new InternedPosition(buffer.buffer.position()));
+      Companion.write(buffer.buffer, internedName);
+    }
     Object[] components = new Object[componentAccessors.length];
     Arrays.setAll(components, i -> {
       try {
@@ -82,7 +97,21 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     // Write the number of components as an unsigned byte (max 255)
     LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
     ZigZagEncoding.putInt(buffer.buffer, components.length);
-    Arrays.stream(components).forEach(c -> buffer.writeComponent(buffer, c));
+    Arrays.stream(components).forEach(c -> {
+      if (c instanceof Record record) {
+        if (recordClass.equals(record.getClass())) {
+          buffer.writeComponent(buffer, Constants.SELF.typeMarker);
+          //noinspection unchecked
+          serializeWithMap(buffer, (R) record, false);
+        } else {
+          @SuppressWarnings("unchecked")
+          RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
+          nestedPickler.serializeWithMap(buffer, record, false);
+        }
+      } else {
+        buffer.writeComponent(buffer, c);
+      }
+    });
   }
 
   @Override
@@ -92,40 +121,18 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     Objects.requireNonNull(object);
     // Use java native endian for float and double writes
     buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-    // The following `assert` requires jvm flag `-ea` to run. Here we check for a common problem where Java erasure
-    // can have you accidentally create arrays of records from collections that are the common supertype of all your records.
     if (0 == object.getClass().getRecordComponents().length) {
       throw new AssertionError(object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.");
     }
-    // If we are being asked to write out our record class name by a sealed pickler then we so now
-    Optional.ofNullable(internedName).ifPresent(name -> {
-      buf.offsetMap.put(internedName, new InternedPosition(buf.buffer.position()));
-      Companion.write(buf.buffer, internedName);
-    });
     // Write the all the components
-    serializeWithMap(buf, object);
+    serializeWithMap(buf, object, false);
   }
 
   @Override
   public R deserialize(ByteBuffer buffer) {
     buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     try {
-      Optional.ofNullable(internedName).ifPresent(name -> {
-        final byte marker = buffer.get();
-        if (marker != INTERNED_NAME.marker()) {
-          throw new IllegalStateException("Expected marker " + INTERNED_NAME.marker() + " but got " + marker);
-        }
-        // Read the interned name
-        final int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        final var internedName = new InternedName(new String(bytes, StandardCharsets.UTF_8));
-        if (!internedName.equals(this.internedName)) {
-          throw new IllegalStateException("Interned name mismatch: expected " + this.internedName + " but got " + internedName);
-        }
-        LOGGER.finer(() -> "deserializeWithMap reading interned name " + internedName.name() + " position=" + buffer.position());
-      });
-      return deserializeWithMap(nameToClass, buffer);
+      return deserializeWithMap(nameToClass, buffer, false);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {
@@ -138,7 +145,22 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     throw new AssertionError("not implemented");
   }
 
-  R deserializeWithMap(final Map<String, Class<?>> nameToRecordClass, ByteBuffer buffer) throws Throwable {
+  R deserializeWithMap(final Map<String, Class<?>> nameToRecordClass, ByteBuffer buffer, boolean readName) throws Throwable {
+    if (readName) {
+      final byte marker = buffer.get();
+      if (marker != INTERNED_NAME.marker()) {
+        throw new IllegalStateException("Expected marker " + INTERNED_NAME.marker() + " but got " + marker);
+      }
+      // Read the interned name
+      final int length = ZigZagEncoding.getInt(buffer);
+      byte[] bytes = new byte[length];
+      buffer.get(bytes);
+      final var internedName = new InternedName(new String(bytes, StandardCharsets.UTF_8));
+      if (!internedName.equals(this.internedName)) {
+        throw new IllegalStateException("Interned name mismatch: expected " + this.internedName + " but got " + internedName);
+      }
+      LOGGER.finer(() -> "deserializeWithMap reading interned name " + internedName.name() + " position=" + buffer.position());
+    }
     // Read the number of components as an unsigned byte
     LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
     final int length = ZigZagEncoding.getInt(buffer);

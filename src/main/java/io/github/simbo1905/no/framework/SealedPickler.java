@@ -33,9 +33,14 @@ class SealedPickler<S> implements Pickler<S> {
     // Here we simply delegate to the RecordPickler which is configured to first write out it's InternedName
     //noinspection unchecked
     Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
-    Pickler<? extends S> pickler = subPicklers.get(concreteType);
-    //noinspection unchecked
-    ((Pickler<Object>) pickler).serialize(buf, object);
+    Pickler<?> pickler = subPicklers.get(concreteType);
+    serializeWithPickler(buf, pickler, object);
+  }
+
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  void serializeWithPickler(PackedBuffer buf, Pickler<?> pickler, Object object) {
+    // Since we know at runtime that pickler is a RecordPickler and object is the right type
+    ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }
 
   @Override
@@ -62,7 +67,7 @@ class SealedPickler<S> implements Pickler<S> {
     }
     try {
       //noinspection unchecked
-      return (S) pickler.deserializeWithMap(pickler.nameToClass, buffer);
+      return (S) pickler.deserializeWithMap(pickler.nameToClass, buffer, false);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {
