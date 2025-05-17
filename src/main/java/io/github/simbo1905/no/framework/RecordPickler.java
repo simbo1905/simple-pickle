@@ -100,7 +100,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     Arrays.stream(components).forEach(c -> {
       if (c instanceof Record record) {
         if (recordClass.equals(record.getClass())) {
-          buffer.writeComponent(buffer, Constants.SELF.typeMarker);
+          buffer.writeComponent(buffer, Constants.SAME_TYPE.typeMarker);
           //noinspection unchecked
           serializeWithMap(buffer, (R) record, false);
         } else {
@@ -167,6 +167,13 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     final Object[] components = new Object[length];
     Arrays.setAll(components, i -> {
       try {
+        buffer.mark();
+        final var marker = buffer.get();
+        if (marker == Constants.SAME_TYPE.typeMarker) {
+          // The component is the same types such as linked list or tree node of other nodes
+          return deserializeWithMap(nameToRecordClass, buffer, readName);
+        }
+        buffer.reset();
         // Read the component
         return Companion.read(nameToRecordClass, buffer);
       } catch (Throwable e) {

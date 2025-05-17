@@ -78,6 +78,12 @@ class Companion {
     return 1 + Short.BYTES;
   }
 
+  static int write(ByteBuffer buffer, byte value) {
+    LOGGER.finer(() -> "write(byte) - Enter: value=" + value + " position=" + buffer.position());
+    buffer.put(value);
+    return 1;
+  }
+
   static int write(ByteBuffer buffer, char value) {
     LOGGER.finer(() -> "write(char) - Enter: value=" + value + " position=" + buffer.position());
     buffer.put(CHARACTER.marker());
@@ -289,8 +295,8 @@ class Companion {
         }
         yield array;
       }
-      case SELF -> null;
-      case RECORD -> null;
+      case SAME_TYPE, RECORD ->
+          throw new IllegalArgumentException("This should not be reached as caller should call self or delegate.");
       case MAP -> throw new AssertionError("not implemented 2");
       case LIST -> throw new AssertionError("not implemented 4");
     };
