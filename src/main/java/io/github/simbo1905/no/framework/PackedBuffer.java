@@ -79,7 +79,7 @@ public class PackedBuffer implements AutoCloseable {
       case String s -> Companion.write(buffer, s);
       case InternedName t -> Companion.write(buffer, t);
       case InternedOffset t -> Companion.write(buffer, t);
-      case Enum<?> e -> Companion.write(offsetMap, buffer, "", e);
+      case Enum<?> e -> Companion.write(offsetMap, buffer, e);
       case Optional<?> o -> {
         int size = 1;
         if (o.isEmpty()) {

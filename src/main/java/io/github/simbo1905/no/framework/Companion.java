@@ -133,11 +133,10 @@ class Companion {
     return size;
   }
 
-  static <T extends Enum<?>> int write(final Map<InternedName, InternedPosition> offsetMap, ByteBuffer buffer, String ignoredPrefix, T e) {
+  static <T extends Enum<?>> int write(final Map<InternedName, InternedPosition> offsetMap, ByteBuffer buffer, T e) {
     Objects.requireNonNull(e);
-    Objects.requireNonNull(ignoredPrefix);
     final var className = e.getDeclaringClass().getName();
-    final var shortName = className.substring(ignoredPrefix.length());
+    final var shortName = className.substring("".length()); // TODO shorten the enum class mame
     final var dotName = shortName + "." + e.name();
     final var internedName = new InternedName(dotName);
     if (!offsetMap.containsKey(internedName)) {

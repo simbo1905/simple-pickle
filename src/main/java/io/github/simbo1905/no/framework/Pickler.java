@@ -13,15 +13,15 @@ import static io.github.simbo1905.no.framework.Companion.manufactureRecordPickle
 public interface Pickler<T> {
   java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(Pickler.class.getName());
 
-  static void serializeMany(Object[] dogs, PackedBuffer buffer) {
+  static void serializeMany(Object[] a, PackedBuffer b) {
     throw new AssertionError("not implemented");
   }
 
-  static List<Object> deserializeMany(Class<?> dogClass, ByteBuffer buffer) {
+  static List<Object> deserializeMany(Class<?> a, ByteBuffer b) {
     throw new AssertionError("not implemented");
   }
 
-  static int sizeOfMany(Object[] array) {
+  static int sizeOfMany(Object[] a) {
     throw new AssertionError("not implemented");
   }
 
