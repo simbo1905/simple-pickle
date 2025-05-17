@@ -94,7 +94,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     // The following `assert` requires jvm flag `-ea` to run. Here we check for a common problem where Java erasure
     // can have you accidentally create arrays of records from collections that are the common supertype of all your records.
-    assert 0 == object.getClass().getRecordComponents().length : object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.";
+    if (0 == object.getClass().getRecordComponents().length) {
+      throw new AssertionError(object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.");
+    }
     // If we are being asked to write out our record class name by a sealed pickler then we so now
     Optional.ofNullable(internedName).ifPresent(name -> {
       buf.offsetMap.put(internedName, new InternedPosition(buf.buffer.position()));

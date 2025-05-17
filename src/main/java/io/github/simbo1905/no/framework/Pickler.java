@@ -55,28 +55,36 @@ public interface Pickler<T> {
   T deserialize(ByteBuffer buffer);
 
   static <R extends Record> Pickler<R> forRecord(Class<R> recordClass) {
-    return Companion.getOrCreate(recordClass, () -> manufactureRecordPickler(recordClass));
+    // If we do computeIfAbsent they cannot get picklers for nested classes.
+    final var pickler = manufactureRecordPickler(recordClass);
+    Companion.REGISTRY.putIfAbsent(recordClass, pickler);
+    //noinspection unchecked
+    return (Pickler<R>) Companion.REGISTRY.get(recordClass);
   }
 
   static <S> Pickler<S> forSealedInterface(Class<S> sealedClass) {
     // Get all permitted record subclasses. This will throw an exception if the class is not sealed or if any of the subclasses are not records or sealed interfaces.
     final Class<?>[] subclasses = Companion.validateSealedRecordHierarchy(sealedClass).toArray(Class<?>[]::new);
 
-    // The following computes the shortest set record names when all the common prefixes are removed when also including the name of the sealed interface itself
-    @SuppressWarnings("unchecked") final Map<String, Class<? extends S>> classesByShortName = Stream.concat(Stream.of(sealedClass), Arrays.stream(subclasses))
+    LOGGER.info(Stream.of(sealedClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
+        Stream.of(subclasses).map(Object::toString).collect(Collectors.joining(",\n")));
+
+    final int commonPrefixLength = Stream.concat(Stream.of(sealedClass), Arrays.stream(subclasses))
+        .map(Class::getName)
+        .reduce((a, b) -> IntStream.range(0, Math.min(a.length(), b.length()))
+            .filter(i -> a.charAt(i) != b.charAt(i))
+            .findFirst()
+            .stream()
+            .mapToObj(i -> a.substring(0, i))
+            .findFirst()
+            .orElse(a.substring(0, Math.min(a.length(), b.length())))
+        ).orElse("").length();
+
+    @SuppressWarnings("unchecked") final Map<String, Class<? extends S>> classesByShortName =
+        Arrays.stream(subclasses)
         .map(cls -> (Class<? extends S>) cls) // Safe due to validateSealedRecordHierarchy
         .collect(Collectors.toMap(
-                cls -> cls.getName().substring(
-                    Arrays.stream(subclasses)
-                        .map(Class::getName)
-                        .reduce((a, b) ->
-                            !a.isEmpty() && !b.isEmpty() ?
-                                a.substring(0,
-                                    IntStream.range(0, Math.min(a.length(), b.length()))
-                                        .filter(i -> a.charAt(i) != b.charAt(i))
-                                        .findFirst()
-                                        .orElse(Math.min(a.length(), b.length()))) : "")
-                        .orElse("").length()),
+            cls -> cls.getName().substring(commonPrefixLength),
                 cls -> cls
             )
         );
@@ -93,7 +101,10 @@ public interface Pickler<T> {
               return (Pickler<S>) manufactureRecordPickler(recordCls, e.getKey());
             }
         ));
-    return new SealedPickler<>(picklersByClass, classesByShortName);
+    final var sealedPickler = new SealedPickler<>(picklersByClass, classesByShortName);
+    Companion.REGISTRY.putIfAbsent(sealedClass, sealedPickler);
+    //noinspection unchecked
+    return (Pickler<S>) Companion.REGISTRY.get(sealedClass);
   }
 
   int sizeOf(Object record);

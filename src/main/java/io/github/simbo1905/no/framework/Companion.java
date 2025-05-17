@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -20,12 +19,6 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 class Companion {
   /// We cache the picklers for each class to avoid creating them multiple times
   static ConcurrentHashMap<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
-
-  /// Logic to create and cache picklers
-  @SuppressWarnings("unchecked")
-  static <T> Pickler<T> getOrCreate(Class<T> type, Supplier<Pickler<T>> supplier) {
-    return (Pickler<T>) REGISTRY.computeIfAbsent(type, k -> supplier.get());
-  }
 
   ///  Here we are typing things as `Record` to avoid the need for a cast
   static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass, final String name) {
