@@ -105,7 +105,7 @@ class SecurityTests {
 
     // Overwrite the class name bytes in the buffer
     for (int i = 0; i < maliciousBytes.length; i++) {
-      buffer.put(classNamePosition + i, maliciousBytes[i]);
+      ((PackedBuf) buffer).put(classNamePosition + i, maliciousBytes[i]);
     }
 
     // 5. Reset buffer position and attempt deserialization

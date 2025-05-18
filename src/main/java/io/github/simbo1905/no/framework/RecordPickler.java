@@ -78,11 +78,12 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     }
   }
 
-  void serializeWithMap(PackedBuffer buffer, R object, boolean writeName) {
+  void serializeWithMap(PackedBuffer buf, R object, boolean writeName) {
+    final var buffer = ((PackedBuf) buf);
     if (writeName) {
       // If we are being asked to write out our record class name by a sealed pickler then we so now
-      buffer.offsetMap.put(internedName, new InternedPosition(buffer.buffer.position()));
-      Companion.write(buffer.buffer, internedName);
+      buffer.offsetMap.put(internedName, new InternedPosition(buffer.position()));
+      PackedBuf.write(buffer.buffer, internedName);
     }
     Object[] components = new Object[componentAccessors.length];
     Arrays.setAll(components, i -> {
@@ -123,8 +124,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     // Null checks
     Objects.requireNonNull(buf);
     Objects.requireNonNull(object);
+    final var buffer = ((PackedBuf) buf);
     // Use java native endian for float and double writes
-    buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+    buffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     if (0 == object.getClass().getRecordComponents().length) {
       throw new AssertionError(object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.");
     }
@@ -145,7 +147,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   }
 
   @Override
-  public int sizeOf(Object record) {
+  public int sizeOf(R record) {
     throw new AssertionError("not implemented");
   }
 

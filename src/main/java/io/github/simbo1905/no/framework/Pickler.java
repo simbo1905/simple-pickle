@@ -32,7 +32,7 @@ public interface Pickler<T> {
   /// - flipped the buffer
   /// - read from the buffer
   default PackedBuffer wrap(ByteBuffer buf) {
-    return new PackedBuffer(buf);
+    return new PackedBuf(buf);
   }
 
   /// PackedBuffer is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
@@ -41,7 +41,7 @@ public interface Pickler<T> {
   /// - flipped the buffer
   /// - read from the buffer
   static PackedBuffer allocate(int size) {
-    return new PackedBuffer(ByteBuffer.allocate(size));
+    return new PackedBuf(ByteBuffer.allocate(size));
   }
 
   /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.
@@ -49,6 +49,9 @@ public interface Pickler<T> {
   /// @param buffer The buffer to write into
   /// @param record The record to serialize
   void serialize(PackedBuffer buffer, T record);
+
+  /// Computes the wire size of the record.
+  int sizeOf(T record);
 
   /// Recursively unloads components from the buffer and invokes a constructor following compatibility rules.
   /// @param buffer The buffer to read from
@@ -114,7 +117,6 @@ public interface Pickler<T> {
     return (Pickler<S>) Companion.REGISTRY.get(sealedClass);
   }
 
-  int sizeOf(Object record);
 }
 
 record InternedName(String name) {

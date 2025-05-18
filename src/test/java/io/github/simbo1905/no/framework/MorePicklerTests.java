@@ -273,7 +273,7 @@ public class MorePicklerTests {
       count++;
     }
     assertEquals(1, count);
-    buffer = new PackedBuffer(ByteBuffer.wrap(bytes));
+    buffer = new PackedBuf(ByteBuffer.wrap(bytes));
     ;
     // Deserialize the entire chain
     final var deserializedChain = pickler.deserialize(buf);
@@ -331,7 +331,7 @@ public class MorePicklerTests {
     // we expect 1 matches because the outer trait has to write out that the inner is a link
     assertEquals(1, count);
     // make a fresh buffer to check that all the links are deserialized
-    buffer = new PackedBuffer(ByteBuffer.wrap(bytes));
+    buffer = new PackedBuf(ByteBuffer.wrap(bytes));
     ;
     // Deserialize the entire chain
     final var deserializedChain = (Link) pickler.deserialize(buf);
@@ -394,7 +394,7 @@ public class MorePicklerTests {
 
     assertEquals(1, count);
 
-    buffer = new PackedBuffer(ByteBuffer.wrap(bytes));
+    buffer = new PackedBuf(ByteBuffer.wrap(bytes));
     ;
 
     // Deserialize the root node (which should reconstruct the entire graph)

@@ -77,92 +77,6 @@ class Companion {
     return 1 + Short.BYTES;
   }
 
-  static int write(ByteBuffer buffer, byte value) {
-    LOGGER.finer(() -> "write(byte) - Enter: value=" + value + " position=" + buffer.position());
-    buffer.put(value);
-    return 1;
-  }
-
-  static int write(ByteBuffer buffer, char value) {
-    LOGGER.finer(() -> "write(char) - Enter: value=" + value + " position=" + buffer.position());
-    buffer.put(CHARACTER.marker());
-    buffer.putChar(value);
-    return 1 + Character.BYTES;
-  }
-
-  static int write(ByteBuffer buffer, boolean value) {
-    LOGGER.finer(() -> "write(boolean) - Enter: value=" + value + " position=" + buffer.position());
-    buffer.put(BOOLEAN.marker());
-    if (value) {
-      buffer.put((byte) 1);
-    } else {
-      buffer.put((byte) 0);
-    }
-    return 1 + 1;
-  }
-
-  static int write(ByteBuffer buffer, String s) {
-    Objects.requireNonNull(s);
-    buffer.put(STRING.marker());
-    byte[] utf8 = s.getBytes(StandardCharsets.UTF_8);
-    int length = utf8.length;
-    ZigZagEncoding.putInt(buffer, length);
-    buffer.put(utf8);
-    return 1 + length;
-  }
-
-  static int writeNull(ByteBuffer buffer) {
-    buffer.put(NULL.marker());
-    return 1;
-  }
-
-  static int write(ByteBuffer buffer, InternedName type) {
-    Objects.requireNonNull(type);
-    Objects.requireNonNull(type.name());
-    buffer.put(INTERNED_NAME.marker());
-    return 1 + intern(buffer, type.name());
-  }
-
-  static int intern(ByteBuffer buffer, String string) {
-    final var nameBytes = string.getBytes(StandardCharsets.UTF_8);
-    final var nameLength = nameBytes.length;
-    var size = ZigZagEncoding.putInt(buffer, nameLength);
-    buffer.put(nameBytes);
-    size += nameLength;
-    return size;
-  }
-
-  static <T extends Enum<?>> int write(final Map<InternedName, InternedPosition> offsetMap, ByteBuffer buffer, T e) {
-    Objects.requireNonNull(e);
-    final var className = e.getDeclaringClass().getName();
-    final var shortName = className.substring("".length()); // TODO shorten the enum class mame
-    final var dotName = shortName + "." + e.name();
-    final var internedName = new InternedName(dotName);
-    if (!offsetMap.containsKey(internedName)) {
-      offsetMap.put(internedName, new InternedPosition(buffer.position()));
-      buffer.put(ENUM.marker());
-      return 1 + intern(buffer, dotName);
-    } else {
-      final var internedPosition = offsetMap.get(internedName);
-      final var internedOffset = new InternedOffset(internedPosition.position() - buffer.position());
-      return write(buffer, internedOffset);
-    }
-  }
-
-  static int write(ByteBuffer buffer, InternedOffset typeOffset) {
-    Objects.requireNonNull(typeOffset);
-    final int offset = typeOffset.offset();
-    final int size = ZigZagEncoding.sizeOf(offset);
-    if (size < Integer.BYTES) {
-      buffer.put(INTERNED_OFFSET_VAR.marker());
-      return 1 + ZigZagEncoding.putInt(buffer, offset);
-    } else {
-      buffer.put(INTERNED_OFFSET.marker());
-      buffer.putInt(offset);
-      return 1 + Integer.BYTES;
-    }
-  }
-
   static Object read(final Map<String, Class<?>> classesByShortName, final ByteBuffer buffer) {
     LOGGER.finer(() -> "read() - Enter: position=" + buffer.position());
     final byte marker = buffer.get();
@@ -348,8 +262,14 @@ class Companion {
 
   /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
   @SuppressWarnings({"unchecked", "rawtypes"})
-  static void serializeWithPickler(PackedBuffer buf, Pickler<?> pickler, Object object) {
+  static void serializeWithPickler(PackedBuf buf, Pickler<?> pickler, Object object) {
     // Since we know at runtime that pickler is a RecordPickler and object is the right type
     ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
+  }
+
+  /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
+  static int sizeOf(Pickler<?> pickler, Object object) {
+    //noinspection unchecked,rawtypes
+    return ((RecordPickler) pickler).sizeOf((Record) object);
   }
 }

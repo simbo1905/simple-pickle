@@ -28,7 +28,8 @@ class SealedPickler<S> implements Pickler<S> {
 
   /// Here we simply delegate to the RecordPickler which is configured to first write out its name.
   @Override
-  public void serialize(PackedBuffer buf, S object) {
+  public void serialize(PackedBuffer buffer, S object) {
+    final var buf = (PackedBuf) buffer;
     if (object == null) {
       buf.put(NULL.marker());
       return;
@@ -72,7 +73,10 @@ class SealedPickler<S> implements Pickler<S> {
   }
 
   @Override
-  public int sizeOf(Object record) {
-    throw new AssertionError("not implemented");
+  public int sizeOf(S record) {
+    //noinspection unchecked
+    Class<? extends S> concreteType = (Class<? extends S>) record.getClass();
+    Pickler<?> pickler = subPicklers.get(concreteType);
+    return Companion.sizeOf(pickler, record);
   }
 }

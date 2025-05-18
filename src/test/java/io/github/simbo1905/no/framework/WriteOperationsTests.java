@@ -358,7 +358,7 @@ public class WriteOperationsTests {
   void testNewWorld() {
     final var pickler = Pickler.forRecord(TestRecord.class);
     final var buffer = ByteBuffer.allocate(1024);
-    final var serializationSession = new PackedBuffer(buffer);
+    final var serializationSession = new PackedBuf(buffer);
 
     final var testRecord = new TestRecord("Simbo", 42, EnumTest.ONE);
     pickler.serialize(serializationSession, testRecord);
