@@ -190,6 +190,7 @@ public class RefactorTests {
 
   @Test
   void testLinkedNode(){
+    LOGGER.info("Starting testLinkedNode");
     final var linkedList = new LinkedListNode(1, new LinkedListNode(2, new LinkedListNode(3)));
     Pickler<LinkedListNode> linkedListPickler = Pickler.forRecord(LinkedListNode.class);
     final var buffer = Pickler.allocate(1024);
@@ -202,6 +203,7 @@ public class RefactorTests {
 
   @Test
   void testTreeNodeSerialization() {
+    LOGGER.info("Starting testTreeNodeSerialization");
     // Arrange
     final var originalRoot = new TreeNode.InternalNode("Root",
         new TreeNode.InternalNode("Branch1", new TreeNode.LeafNode(42), new TreeNode.LeafNode(99)),
