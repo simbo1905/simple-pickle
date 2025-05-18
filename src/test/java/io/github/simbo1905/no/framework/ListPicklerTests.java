@@ -76,7 +76,7 @@ public class ListPicklerTests {
     // Flip the buffer to prepare for reading
     final var buf = buffer.flip();
     // Deserialize
-    final List<Object> deserialized = Pickler.deserializeMany(ListRecord.class, buf);
+    final List<?> deserialized = Pickler.deserializeMany(ListRecord.class, buf);
 
     // Verify the record counts
     assertEquals(original.list().size(), deserialized.size());
@@ -169,7 +169,7 @@ public class ListPicklerTests {
     var buf = buffer.flip();
 
     // Deserialize
-    List<Object> deserialized = Pickler.deserializeMany(NestedListRecord.class, buf);
+    List<?> deserialized = Pickler.deserializeMany(NestedListRecord.class, buf);
 
     // Verify the nested list structure
     assertEquals(original.size(), deserialized.size());

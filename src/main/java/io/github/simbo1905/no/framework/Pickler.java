@@ -1,29 +1,69 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Companion.manufactureRecordPickler;
+import static io.github.simbo1905.no.framework.Constants.ARRAY;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 public interface Pickler<T> {
   java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(Pickler.class.getName());
 
-  static void serializeMany(Object[] a, PackedBuffer b) {
-    throw new AssertionError("not implemented");
+
+  /// A convenient helper to serializes an array of records. Due to Java's runtime type erasure you must use
+  /// explicitly declared arrays and not have any compiler warnings about possible misalignment of types. Use
+  /// [Pickler#deserializeMany(java.lang.Class, java.nio.ByteBuffer)] for deserialization.
+  ///
+  /// WARNING: Do not attempt to use helper methods on Java collections into convert Collections into arrays!
+  ///
+  /// The boring safe way to make an array from a list of records is to do an explicit shallow copy into an explicitly
+  /// instantiated array:
+  ///
+  /// ```
+  /// People[] people = new People[peopleList.size()]
+  /// Arrays.setAll(people, i -> peopleList.get(i));
+  ///```
+  ///
+  /// The shallow copy is the price to pay for a type safe way to serialization many things.
+  /// See the `README.md` for a discussion on how to void the shallow copy.
+  ///
+  /// @param array The array to serialize
+  /// @param buffer The buffer to write into
+  static <R extends Record> void serializeMany(R[] array, PackedBuffer buffer) {
+    buffer.put(ARRAY.marker());
+    buffer.putInt(array.length);
+
+    @SuppressWarnings("unchecked") Pickler<R> pickler = Pickler.forRecord((Class<R>) array.getClass().getComponentType());
+    Arrays.stream(array).forEach(element -> pickler.serialize(buffer, element));
   }
 
-  static List<Object> deserializeMany(Class<?> a, ByteBuffer b) {
-    throw new AssertionError("not implemented");
+  /// Unloads from the buffer a list of messages that were written using [#serializeMany].
+  /// By default, there must be an exact match between the class name of the record and the class name in the buffer.
+  static <R extends Record> List<R> deserializeMany(Class<R> componentType, ByteBuffer buffer) {
+    byte marker = buffer.get();
+    if (marker != ARRAY.marker()) throw new IllegalArgumentException("Invalid array marker");
+
+    return IntStream.range(0, buffer.getInt())
+        .mapToObj(i -> Pickler.forRecord(componentType).deserialize(buffer))
+        .toList();
   }
 
-  static int sizeOfMany(Object[] a) {
-    throw new AssertionError("not implemented");
+  /// Recursively sums the encoded byte size of many records.
+  /// @param array The array of records to measure
+  /// @return The total size in bytes
+  static <R extends Record> int sizeOfMany(R[] array) {
+    //noinspection unchecked
+    return Optional.ofNullable(array)
+        .map(arr -> 1 + 4 // 4 bytes for the length prefix (int)
+            + arr.getClass().getComponentType().getName().getBytes(UTF_8).length + 4 +
+            Arrays.stream(arr)
+                .mapToInt(Pickler.forRecord((Class<R>) arr.getClass().getComponentType())::sizeOf)
+                .sum())
+        .orElse(1);
   }
 
   /// PackedBuffer is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names

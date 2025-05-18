@@ -120,10 +120,9 @@ class PackedBuf implements PackedBuffer {
       throw new IllegalStateException("CompactedBuffer has been closed by flip() or close() and is now read-only");
   }
 
-  @SuppressWarnings("UnusedReturnValue")
-  ByteBuffer put(byte b) {
+  public void put(byte b) {
     validateNotClosed();
-    return buffer.put(b);
+    buffer.put(b);
   }
 
   public PackedBuffer putInt(int value) {
