@@ -30,8 +30,9 @@ class PackedBuf implements PackedBuffer {
 
   static int write(ByteBuffer buffer, byte value) {
     LOGGER.finer(() -> "write(byte) - Enter: value=" + value + " position=" + buffer.position());
+    buffer.put(BYTE.marker());
     buffer.put(value);
-    return 1;
+    return 1 + 1; // 1 byte for marker + 1 byte for value
   }
 
   static int write(ByteBuffer buffer, char value) {
