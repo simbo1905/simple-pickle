@@ -102,18 +102,18 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       if (c instanceof Record record) {
         if (recordClass.equals(record.getClass())) {
           // If the record is the same class as this pickler we simply mark it is the same pickler type as self and recurse
-          buffer.writeComponent(buffer, Constants.SAME_TYPE.marker());
+          buffer.recursiveWrite(buffer, Constants.SAME_TYPE.marker());
           //noinspection unchecked
           serializeWithMap(buffer, (R) record, false);
         } else {
           // if the record is a different class we need to write out the interned name
-          buffer.writeComponent(buffer, Constants.RECORD.marker());
+          buffer.recursiveWrite(buffer, Constants.RECORD.marker());
           @SuppressWarnings("unchecked")
           RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
           nestedPickler.serializeWithMap(buffer, record, true);
         }
       } else {
-        buffer.writeComponent(buffer, c);
+        buffer.recursiveWrite(buffer, c);
       }
     });
   }

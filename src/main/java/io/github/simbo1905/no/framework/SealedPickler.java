@@ -26,13 +26,13 @@ class SealedPickler<S> implements Pickler<S> {
         )));
   }
 
+  /// Here we simply delegate to the RecordPickler which is configured to first write out its name.
   @Override
   public void serialize(PackedBuffer buf, S object) {
     if (object == null) {
       buf.put(NULL.marker());
       return;
     }
-    // Here we simply delegate to the RecordPickler which is configured to first write out it's InternedName
     //noinspection unchecked
     Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
     Pickler<?> pickler = subPicklers.get(concreteType);

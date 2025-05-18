@@ -2,7 +2,7 @@ package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -70,7 +70,7 @@ public interface Pickler<T> {
       throw new IllegalArgumentException(msg);
     }
     // Get all permitted record subclasses. This will throw an exception if the class is not sealed or if any of the subclasses are not records or sealed interfaces.
-    final Class<?>[] subclasses = Companion.recordClassHierarchy(sealedClass, new HashMap<>()).toArray(Class<?>[]::new);
+    final Class<?>[] subclasses = Companion.recordClassHierarchy(sealedClass, new HashSet<>()).toArray(Class<?>[]::new);
 
     LOGGER.fine(Stream.of(sealedClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
         Stream.of(subclasses).map(Object::toString).collect(Collectors.joining(",\n")));

@@ -1,7 +1,5 @@
 package io.github.simbo1905.no.framework;
 
-import org.jetbrains.annotations.NotNull;
-
 import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
@@ -296,52 +294,46 @@ class Companion {
         yield array;
       }
       case SAME_TYPE, RECORD ->
-          throw new IllegalArgumentException("This should not be reached as caller should call self or delegate.");
+          throw new IllegalArgumentException("This should not be reached as caller should call self or delegate to another pickler.");
       case MAP -> throw new AssertionError("not implemented 2");
       case LIST -> throw new AssertionError("not implemented 4");
     };
   }
 
-  private static @NotNull InternedName readInternedName(ByteBuffer buffer) {
+  private static InternedName readInternedName(ByteBuffer buffer) {
     int length = ZigZagEncoding.getInt(buffer);
     byte[] bytes = new byte[length];
     buffer.get(bytes);
     return new InternedName(new String(bytes, StandardCharsets.UTF_8));
   }
 
-  // This looks to walk down a sealed interface hierarchy returning all the picklers of nested sealed interfaces of records
+  /// Implementation that traverses the hierarchy using a visited set to avoid cycles.
+  ///
+  /// @param current the current class being processed
+  /// @param visited set of already visited classes
+  /// @return stream of classes in the hierarchy
   static Stream<Class<?>> recordClassHierarchy(
-      Class<?> current,
-      Map<Class<?>, Boolean> visited
+      final Class<?> current,
+      final Set<Class<?>> visited
   ) {
-    if (visited.getOrDefault(current, false)) {
+    if (!visited.add(current)) {
       return Stream.empty();
-    } else {
-      visited.put(current, true);
     }
 
-    // This node is of interest so included in the list
-    Stream<Class<?>> self = Stream.of(current);
+    return Stream.concat(
+        Stream.of(current),
+        Stream.concat(
+            current.isSealed()
+                ? Arrays.stream(current.getPermittedSubclasses())
+                : Stream.empty(),
 
-    Stream<Class<?>> children = Stream.empty();
-
-    // Handle sealed class hierarchy
-    if (current.isSealed()) {
-      children = Arrays.stream(current.getPermittedSubclasses())
-          .flatMap(sub -> recordClassHierarchy(sub, visited));
-    }
-
-    // Handle record components
-    if (current.isRecord()) {
-      Stream<Class<?>> components = Arrays.stream(current.getRecordComponents())
-          .map(RecordComponent::getType)
-          .filter(c -> c.isRecord() || c.isSealed())
-          .flatMap(c -> recordClassHierarchy(c, visited));
-
-      children = Stream.concat(children, components);
-    }
-
-    return Stream.concat(self, children).distinct();
+            current.isRecord()
+                ? Arrays.stream(current.getRecordComponents())
+                .map(RecordComponent::getType)
+                .filter(t -> t.isRecord() || t.isSealed())
+                : Stream.empty()
+        ).flatMap(child -> recordClassHierarchy(child, visited))
+    );
   }
 
   static Map<String, Class<?>> nameToBasicClass = Map.of(
