@@ -1,11 +1,13 @@
 package io.github.simbo1905.no.framework;
 
 import io.github.simbo1905.no.framework.animal.*;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.logging.*;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -13,6 +15,39 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ListPicklerTests {
+
+  @BeforeAll
+  static void setupLogging() {
+    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
+    final Level level = Level.parse(logLevel);
+
+    // Configure the primary LOGGER instance
+    LOGGER.setLevel(level);
+    // Remove all existing handlers to prevent duplicates if this method is called multiple times
+    // or if there are handlers configured by default.
+    for (Handler handler : LOGGER.getHandlers()) {
+      LOGGER.removeHandler(handler);
+    }
+
+    ConsoleHandler consoleHandler = new ConsoleHandler();
+    consoleHandler.setLevel(level);
+
+    // Create and set a custom formatter
+    Formatter simpleFormatter = new Formatter() {
+      @Override
+      public String format(LogRecord record) {
+        return record.getMessage() + "\n";
+      }
+    };
+    consoleHandler.setFormatter(simpleFormatter);
+
+    LOGGER.addHandler(consoleHandler);
+
+    // Ensure parent handlers are not used to prevent duplicate logging from higher-level loggers
+    LOGGER.setUseParentHandlers(false);
+
+    LOGGER.info("Logging initialized at level: " + level);
+  }
 
   record ListRecord(List<String> list) {
     // Use the canonical constructor to make an immutable copy
