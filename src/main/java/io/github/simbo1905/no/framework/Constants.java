@@ -32,7 +32,7 @@ enum Constants {
   RECORD((byte) 22, 0, Record.class),
   SAME_TYPE((byte) 23, 0, Record.class);
 
-  final byte typeMarker;
+  private final byte typeMarker;
   final int sizeInBytes;
   final Class<?> clazz;
 

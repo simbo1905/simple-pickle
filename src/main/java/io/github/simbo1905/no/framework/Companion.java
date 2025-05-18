@@ -8,7 +8,6 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -20,17 +19,19 @@ class Companion {
   static ConcurrentHashMap<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
 
   ///  Here we are typing things as `Record` to avoid the need for a cast
-  static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass, final String name) {
+  static <R extends Record> Pickler<R> manufactureRecordPickler(
+      final Map<String, Class<?>> classesByShortName,
+      final Class<R> recordClass,
+      final String name) {
     Objects.requireNonNull(recordClass);
     Objects.requireNonNull(name);
-    final var nestedRecordPicklers = nestedRecordPicklers(recordClass);
-    return new RecordPickler<>(recordClass, new InternedName(name), nestedRecordPicklers);
+    final var result = new RecordPickler<>(recordClass, new InternedName(name), classesByShortName);
+    REGISTRY.putIfAbsent(recordClass, result);
+    return result;
   }
 
   static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass) {
-    Objects.requireNonNull(recordClass);
-    final var nestedRecordPicklers = nestedRecordPicklers(recordClass);
-    return new RecordPickler<>(recordClass, new InternedName(recordClass.getSimpleName()), nestedRecordPicklers);
+    return manufactureRecordPickler(new HashMap<>(), recordClass, recordClass.getName());
   }
 
   static int write(ByteBuffer buffer, int value) {
@@ -308,20 +309,19 @@ class Companion {
     return new InternedName(new String(bytes, StandardCharsets.UTF_8));
   }
 
-  static Stream<Class<?>> recordClassHierarchy(Class<?> clazz) {
-    return recordClassHierarchy(clazz, new IdentityHashMap<>());
-  }
-
-  private static Stream<Class<?>> recordClassHierarchy(
-      Class<?> current, Map<Class<?>, Boolean> visited
+  // This looks to walk down a sealed interface hierarchy returning all the picklers of nested sealed interfaces of records
+  static Stream<Class<?>> recordClassHierarchy(
+      Class<?> current,
+      Map<Class<?>, Boolean> visited
   ) {
-    if (visited.putIfAbsent(current, Boolean.TRUE) != null) {
+    if (visited.getOrDefault(current, false)) {
       return Stream.empty();
+    } else {
+      visited.put(current, true);
     }
 
-    Stream<Class<?>> self = current.isRecord()
-        ? Stream.of(current)
-        : Stream.empty();
+    // This node is of interest so included in the list
+    Stream<Class<?>> self = Stream.of(current);
 
     Stream<Class<?>> children = Stream.empty();
 
@@ -344,7 +344,6 @@ class Companion {
     return Stream.concat(self, children).distinct();
   }
 
-
   static Map<String, Class<?>> nameToBasicClass = Map.of(
       "byte", byte.class,
       "short", short.class,
@@ -355,42 +354,10 @@ class Companion {
       "double", double.class
   );
 
-  static Map<Class<?>, Pickler<?>> nestedRecordPicklers(Class<?> recordClass) {
-    final Class<?>[] reachableClasses = recordClassHierarchy(recordClass).filter(c -> !recordClass.equals(c)).toArray(Class<?>[]::new);
-
-    LOGGER.fine(Stream.of(recordClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
-        Stream.of(reachableClasses).map(Object::toString).collect(Collectors.joining(",\n")));
-
-    final int commonPrefixLength = Stream.concat(Stream.of(recordClass), Arrays.stream(reachableClasses))
-        .map(Class::getName)
-        .reduce((a, b) -> IntStream.range(0, Math.min(a.length(), b.length()))
-            .filter(i -> a.charAt(i) != b.charAt(i))
-            .findFirst()
-            .stream()
-            .mapToObj(i -> a.substring(0, i))
-            .findFirst()
-            .orElse(a.substring(0, Math.min(a.length(), b.length())))
-        ).orElse("").length();
-
-    @SuppressWarnings("unchecked") final Map<String, Class<? extends Record>> classesByShortName =
-        Arrays.stream(reachableClasses)
-            .map(cls -> (Class<? extends Record>) cls) // Safe due to validateSealedRecordHierarchy
-            .collect(Collectors.toMap(
-                    cls -> cls.getName().substring(commonPrefixLength),
-                    cls -> cls
-                )
-            );
-
-    // Double cast required to satisfy compiler
-    return classesByShortName.entrySet().stream()
-        .filter(e -> e.getValue().isRecord())
-        .collect(Collectors.toMap(
-            Map.Entry::getValue,
-            e -> {
-              // Double cast required to satisfy compiler
-              Class<? extends Record> recordCls = e.getValue();
-              return manufactureRecordPickler(recordCls, e.getKey());
-            }
-        ));
+  /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  static void serializeWithPickler(PackedBuffer buf, Pickler<?> pickler, Object object) {
+    // Since we know at runtime that pickler is a RecordPickler and object is the right type
+    ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }
 }

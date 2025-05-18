@@ -206,7 +206,7 @@ public class RefactorTests {
     final var originalRoot = new TreeNode.InternalNode("Root",
         new TreeNode.InternalNode("Branch1", new TreeNode.LeafNode(42), new TreeNode.LeafNode(99)),
         new TreeNode.InternalNode("Branch2", new TreeNode.LeafNode(123), null));
-
+    
     Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
 
     // Act - Serialize

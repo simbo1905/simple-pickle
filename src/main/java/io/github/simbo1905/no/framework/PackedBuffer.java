@@ -83,15 +83,15 @@ public class PackedBuffer implements AutoCloseable {
       case Optional<?> o -> {
         int size = 1;
         if (o.isEmpty()) {
-          buffer.put(Constants.OPTIONAL_EMPTY.typeMarker);
+          buffer.put(Constants.OPTIONAL_EMPTY.marker());
         } else {
-          buffer.put(Constants.OPTIONAL_OF.typeMarker);
+          buffer.put(Constants.OPTIONAL_OF.marker());
           size += writeComponent(buf, o.get());
         }
         yield size;
       }
       case List<?> l -> {
-        buffer.put(Constants.LIST.typeMarker);
+        buffer.put(Constants.LIST.marker());
         int size = 1 + ZigZagEncoding.putInt(buffer, l.size());
         for (Object item : l) {
           size += writeComponent(buf, item);
@@ -99,7 +99,7 @@ public class PackedBuffer implements AutoCloseable {
         yield size;
       }
       case Map<?, ?> m -> {
-        buffer.put(Constants.MAP.typeMarker);
+        buffer.put(Constants.MAP.marker());
         int size = 1 + ZigZagEncoding.putInt(buffer, m.size());
         for (Map.Entry<?, ?> entry : m.entrySet()) {
           size += writeComponent(buf, entry.getKey());
@@ -109,7 +109,7 @@ public class PackedBuffer implements AutoCloseable {
       }
       // TODO zigzag compress long[] and int[]
       case Object a when a.getClass().isArray() -> {
-        buffer.put(Constants.ARRAY.typeMarker);
+        buffer.put(Constants.ARRAY.marker());
         final var InternedName = new InternedName(a.getClass().getComponentType().getName());
         int size = 1;
         size += writeComponent(buf, InternedName);

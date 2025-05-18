@@ -21,19 +21,20 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   final MethodHandle canonicalConstructorHandle;
   final InternedName internedName;
   final Map<String, Class<?>> nameToClass = new HashMap<>(nameToBasicClass);
-  final Map<Class<?>, Pickler<?>> nestedRecordPicklers;
 
-  RecordPickler(final Class<R> recordClass, InternedName internedName, Map<Class<?>, Pickler<?>> nestedRecordPicklers) {
+  RecordPickler(final Class<R> recordClass,
+                InternedName internedName,
+                final Map<String, Class<?>> classesByShortName
+  ) {
     Objects.requireNonNull(recordClass);
     Objects.requireNonNull(internedName);
-    Objects.requireNonNull(nestedRecordPicklers);
+    Objects.requireNonNull(classesByShortName);
+    nameToClass.putAll(classesByShortName);
     this.internedName = internedName;
     this.recordClass = recordClass;
     final RecordComponent[] components = recordClass.getRecordComponents();
     componentCount = components.length;
     final MethodHandles.Lookup lookup = MethodHandles.lookup();
-
-    this.nestedRecordPicklers = nestedRecordPicklers;
 
     try {
       // Get parameter types for the canonical constructor
@@ -100,13 +101,16 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     Arrays.stream(components).forEach(c -> {
       if (c instanceof Record record) {
         if (recordClass.equals(record.getClass())) {
-          buffer.writeComponent(buffer, Constants.SAME_TYPE.typeMarker);
+          // If the record is the same class as this pickler we simply mark it is the same pickler type as self and recurse
+          buffer.writeComponent(buffer, Constants.SAME_TYPE.marker());
           //noinspection unchecked
           serializeWithMap(buffer, (R) record, false);
         } else {
+          // if the record is a different class we need to write out the interned name
+          buffer.writeComponent(buffer, Constants.RECORD.marker());
           @SuppressWarnings("unchecked")
           RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-          nestedPickler.serializeWithMap(buffer, record, false);
+          nestedPickler.serializeWithMap(buffer, record, true);
         }
       } else {
         buffer.writeComponent(buffer, c);
@@ -169,9 +173,15 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       try {
         buffer.mark();
         final var marker = buffer.get();
-        if (marker == Constants.SAME_TYPE.typeMarker) {
+        if (marker == Constants.SAME_TYPE.marker()) {
           // The component is the same types such as linked list or tree node of other nodes
           return deserializeWithMap(nameToRecordClass, buffer, readName);
+        } else if (marker == Constants.RECORD.marker()) {
+          final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
+          //noinspection unchecked
+          Class<? extends Record> concreteType = (Class<? extends Record>) nameToRecordClass.get(name.name());
+          Pickler<?> pickler = Pickler.forRecord(concreteType);
+          return pickler.deserialize(buffer);
         }
         buffer.reset();
         // Read the component

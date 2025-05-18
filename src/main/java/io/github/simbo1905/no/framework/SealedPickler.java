@@ -10,10 +10,12 @@ import static io.github.simbo1905.no.framework.Constants.*;
 
 class SealedPickler<S> implements Pickler<S> {
   final Map<Class<? extends S>, Pickler<? extends S>> subPicklers;
-  final Map<String, Class<? extends S>> classesByShortName;
+  final Map<String, Class<?>> classesByShortName;
   final Map<String, Class<?>> nameToRecordClass = new HashMap<>(nameToBasicClass);
 
-  public SealedPickler(Map<Class<? extends S>, Pickler<? extends S>> subPicklers, Map<String, Class<? extends S>> classesByShortName) {
+  public SealedPickler(
+      Map<Class<? extends S>, Pickler<? extends S>> subPicklers,
+      Map<String, Class<?>> classesByShortName) {
     this.subPicklers = subPicklers;
     this.classesByShortName = classesByShortName;
     this.nameToRecordClass.putAll(classesByShortName.entrySet().stream()
@@ -34,13 +36,7 @@ class SealedPickler<S> implements Pickler<S> {
     //noinspection unchecked
     Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
     Pickler<?> pickler = subPicklers.get(concreteType);
-    serializeWithPickler(buf, pickler, object);
-  }
-
-  @SuppressWarnings({"unchecked", "rawtypes"})
-  void serializeWithPickler(PackedBuffer buf, Pickler<?> pickler, Object object) {
-    // Since we know at runtime that pickler is a RecordPickler and object is the right type
-    ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
+    Companion.serializeWithPickler(buf, pickler, object);
   }
 
   @Override

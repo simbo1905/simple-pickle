@@ -2,6 +2,7 @@ package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -69,9 +70,9 @@ public interface Pickler<T> {
       throw new IllegalArgumentException(msg);
     }
     // Get all permitted record subclasses. This will throw an exception if the class is not sealed or if any of the subclasses are not records or sealed interfaces.
-    final Class<?>[] subclasses = Companion.recordClassHierarchy(sealedClass).toArray(Class<?>[]::new);
+    final Class<?>[] subclasses = Companion.recordClassHierarchy(sealedClass, new HashMap<>()).toArray(Class<?>[]::new);
 
-    LOGGER.info(Stream.of(sealedClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
+    LOGGER.fine(Stream.of(sealedClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
         Stream.of(subclasses).map(Object::toString).collect(Collectors.joining(",\n")));
 
     final int commonPrefixLength = Stream.concat(Stream.of(sealedClass), Arrays.stream(subclasses))
@@ -85,9 +86,9 @@ public interface Pickler<T> {
             .orElse(a.substring(0, Math.min(a.length(), b.length())))
         ).orElse("").length();
 
-    @SuppressWarnings("unchecked") final Map<String, Class<? extends S>> classesByShortName =
+    @SuppressWarnings("unchecked") final Map<String, Class<?>> classesByShortName =
         Arrays.stream(subclasses)
-        .map(cls -> (Class<? extends S>) cls) // Safe due to validateSealedRecordHierarchy
+            .map(cls -> (Class<? extends Record>) cls) // Safe due to validateSealedRecordHierarchy
         .collect(Collectors.toMap(
             cls -> cls.getName().substring(commonPrefixLength),
                 cls -> cls
@@ -98,14 +99,15 @@ public interface Pickler<T> {
     Map<Class<? extends S>, Pickler<? extends S>> picklersByClass = classesByShortName.entrySet().stream()
         .filter(e -> e.getValue().isRecord())
         .collect(Collectors.toMap(
-            Map.Entry::getValue,
+            e -> (Class<? extends S>) e.getValue(),
             e -> {
               // Double cast required to satisfy compiler
               @SuppressWarnings("unchecked")
               Class<? extends Record> recordCls = (Class<? extends Record>) e.getValue();
-              return (Pickler<S>) manufactureRecordPickler(recordCls, e.getKey());
+              return (Pickler<S>) manufactureRecordPickler(classesByShortName, recordCls, e.getKey());
             }
         ));
+
     final var sealedPickler = new SealedPickler<>(picklersByClass, classesByShortName);
     Companion.REGISTRY.putIfAbsent(sealedClass, sealedPickler);
     //noinspection unchecked
