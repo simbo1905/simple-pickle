@@ -135,11 +135,9 @@ public class RefactorTests {
     // Assert
     assertEquals(animals.size(), deserializedAnimals.size(),
         "Deserialized list should have the same number of elements");
-        
-    IntStream.range(0, animals.size()).forEach(i -> {
-      assertEquals(animals.get(i), deserializedAnimals.get(i),
-          "Element at index " + i + " should match after deserialization");
-    });
+
+    IntStream.range(0, animals.size()).forEach(i -> assertEquals(animals.get(i), deserializedAnimals.get(i),
+        "Element at index " + i + " should match after deserialization"));
   }
   
   @Test

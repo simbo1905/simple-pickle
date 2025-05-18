@@ -71,9 +71,11 @@ class Companion {
   }
 
   static int write(ByteBuffer buffer, short value) {
-    LOGGER.finer(() -> "write(short) - Enter: value=" + value + " position=" + buffer.position());
-    buffer.put(SHORT.marker());
-    buffer.putShort(value);
+    Optional.ofNullable(buffer).ifPresent(b -> {
+      LOGGER.finer(() -> "write(short) - Enter: value=" + value + " position=" + buffer.position());
+      buffer.put(SHORT.marker());
+      buffer.putShort(value);
+    });
     return 1 + Short.BYTES;
   }
 
