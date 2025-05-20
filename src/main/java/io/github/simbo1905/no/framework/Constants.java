@@ -4,8 +4,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static io.github.simbo1905.no.framework.Pickler.LOGGER;
-
 /// Enum containing constants used throughout the Pickler implementation
 enum Constants {
   NULL((byte) 1, 0, null),
@@ -55,13 +53,12 @@ enum Constants {
   }
 
   public static Constants fromMarker(byte marker) {
+    Constants result = null;
     for (Constants c : values()) {
       if (c.typeMarker == marker) {
-        return c;
+        result = c;
       }
     }
-    final var msg = "Unknown type marker: " + marker;
-    LOGGER.severe(() -> msg);
-    throw new IllegalArgumentException(msg);
+    return result;
   }
 }

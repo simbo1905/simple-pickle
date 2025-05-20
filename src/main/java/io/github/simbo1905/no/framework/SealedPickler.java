@@ -56,7 +56,7 @@ class SealedPickler<S> implements Pickler<S> {
     }
     buffer.reset();
     // Read the interned name
-    final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
+    final InternedName name = (InternedName) Companion.read(nameToRecordClass, new HashMap<>(), buffer);
     assert name != null;
     final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(classesByShortName.get(name.name()));
     if (pickler == null) {

@@ -92,8 +92,9 @@ class PackedBuf implements PackedBuffer {
     final var dotName = shortName + "." + e.name();
     final var internedName = new InternedName(dotName);
     if (!offsetMap.containsKey(internedName)) {
-      offsetMap.put(internedName, new InternedPosition(buffer.position()));
+      LOGGER.finer(() -> "write(enum) - Enter: value=" + e + " position=" + buffer.position());
       buffer.put(ENUM.marker());
+      offsetMap.put(internedName, new InternedPosition(buffer.position()));
       return 1 + intern(buffer, dotName);
     } else {
       final var internedPosition = offsetMap.get(internedName);

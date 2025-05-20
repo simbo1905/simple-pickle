@@ -81,9 +81,14 @@ class Companion {
     return 1 + Short.BYTES;
   }
 
-  static Object read(final Map<String, Class<?>> classesByShortName, final ByteBuffer buffer) {
+  static Object read(final Map<String, Class<?>> classesByShortName, Map<String, Object> shortNameToEnum, final ByteBuffer buffer) {
+    final int position = buffer.position();
     final byte marker = buffer.get();
-    return switch (fromMarker(marker)) {
+    final Constants type = fromMarker(marker);
+    if (type == null) {
+      throw new IllegalArgumentException("Unknown marker: " + marker + " at position: " + position);
+    }
+    return switch (type) {
       case NULL -> {
         LOGGER.finer(() -> "read(NULL) - position=" + buffer.position());
         yield null;
@@ -151,17 +156,10 @@ class Companion {
       }
       case OPTIONAL_OF -> {
         LOGGER.finer(() -> "read(of) - position=" + buffer.position());
-        yield Optional.ofNullable(read(classesByShortName, buffer));
+        yield Optional.ofNullable(read(classesByShortName, new HashMap<>(), buffer));
       }
       case INTERNED_NAME -> {
         LOGGER.finer(() -> "read(name) - position=" + buffer.position());
-        yield readInternedName(buffer);
-      }
-      case ENUM -> {
-        LOGGER.finer(() -> "read(enum) - position=" + buffer.position());
-        final var internedName = (InternedName) read(classesByShortName, buffer);
-        final Class<?> componentType = classesByShortName.get(Objects.requireNonNull(internedName).name());
-        assert componentType != null : "Component type not found for name: " + internedName.name();
         yield readInternedName(buffer);
       }
       case INTERNED_OFFSET -> {
@@ -191,7 +189,7 @@ class Companion {
       }
       case ARRAY -> {
         LOGGER.finer(() -> "read() - ARRAY start position=" + buffer.position());
-        final var internedName = (InternedName) read(classesByShortName, buffer);
+        final var internedName = (InternedName) read(classesByShortName, new HashMap<>(), buffer);
         final Class<?> componentType = classesByShortName.get(Objects.requireNonNull(internedName).name());
         assert componentType != null : "Component type not found for name: " + internedName.name();
         final int length = ZigZagEncoding.getInt(buffer);
@@ -201,12 +199,13 @@ class Companion {
         } else {
           // Deserialize each element using IntStream instead of for loop
           IntStream.range(0, length)
-              .forEach(i -> Array.set(array, i, read(classesByShortName, buffer)));
+              .forEach(i -> Array.set(array, i, read(classesByShortName, new HashMap<>(), buffer)));
         }
         yield array;
       }
       case SAME_TYPE, RECORD ->
           throw new IllegalArgumentException("This should not be reached as caller should call self or delegate to another pickler.");
+      case ENUM -> throw new AssertionError("This should not be reached as caller should resolve enum");
       case MAP -> throw new AssertionError("not implemented MAP");
       case LIST -> throw new AssertionError("not implemented LIST");
     };

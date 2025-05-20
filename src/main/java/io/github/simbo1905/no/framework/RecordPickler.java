@@ -182,15 +182,21 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           // The component is the same types such as linked list or tree node of other nodes
           return deserializeWithMap(nameToRecordClass, buffer, readName);
         } else if (marker == Constants.RECORD.marker()) {
-          final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
+          final InternedName name = (InternedName) Companion.read(nameToRecordClass, new HashMap<>(), buffer);
           //noinspection unchecked
           Class<? extends Record> concreteType = (Class<? extends Record>) nameToRecordClass.get(name.name());
           Pickler<?> pickler = Pickler.forRecord(concreteType);
           return pickler.deserialize(buffer);
+        } else if (marker == Constants.ENUM.marker()) {
+          final InternedName name = (InternedName) Companion.read(nameToRecordClass, new HashMap<>(), buffer);
+          LOGGER.finer(() -> "read(enum) - position=" + buffer.position());
+          final Object componentType = null; //shortNameToEnum.get(Objects.requireNonNull(internedName).name());
+          assert componentType != null : " enum not found for name: " + internedName.name();
+          return componentType;
         }
         buffer.reset();
         // Read the component
-        return Companion.read(nameToRecordClass, buffer);
+        return Companion.read(nameToRecordClass, new HashMap<>(), buffer);
       } catch (Throwable e) {
         final var msg = "Failed to access component: " + i +
             " in record class '" + recordClass.getName() + "' : " + e.getMessage();

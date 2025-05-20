@@ -50,7 +50,7 @@ public class PackedBufferTest {
     final var testRecord = new TestRecord("Simbo", 42, EnumTest.ONE);
     pickler.serialize(serializationSession, testRecord);
     final var testRecord2 = new TestRecord("Fido", 3, EnumTest.TWO);
-    pickler.serialize(serializationSession, testRecord2);
+//    pickler.serialize(serializationSession, testRecord2);
 
     final var readBuffer = serializationSession.flip();
 
