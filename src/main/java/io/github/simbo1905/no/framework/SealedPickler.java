@@ -29,7 +29,7 @@ class SealedPickler<S> implements Pickler<S> {
   /// Here we simply delegate to the RecordPickler which is configured to first write out its name.
   @Override
   public void serialize(PackedBuffer buffer, S object) {
-    final var buf = (PackedBuf) buffer;
+    final var buf = (PackedBufferImpl) buffer;
     if (object == null) {
       buf.put(NULL.marker());
       return;
@@ -56,7 +56,7 @@ class SealedPickler<S> implements Pickler<S> {
     }
     buffer.reset();
     // Read the interned name
-    final InternedName name = (InternedName) Companion.read(nameToRecordClass, new HashMap<>(), buffer);
+    final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
     assert name != null;
     final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(classesByShortName.get(name.name()));
     if (pickler == null) {

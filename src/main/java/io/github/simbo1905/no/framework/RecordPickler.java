@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
 import static io.github.simbo1905.no.framework.Constants.INTERNED_NAME;
@@ -21,6 +22,8 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   final MethodHandle canonicalConstructorHandle;
   final InternedName internedName;
   final Map<String, Class<?>> nameToClass = new HashMap<>(nameToBasicClass);
+  final Map<Enum<?>, InternedName> enumToName = new HashMap<>();
+  final Map<InternedName, Enum<?>> nameToEnum;
 
   RecordPickler(final Class<R> recordClass,
                 InternedName internedName,
@@ -41,15 +44,28 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       Class<?>[] parameterTypes = Arrays.stream(components)
           .map(RecordComponent::getType)
           .toArray(Class<?>[]::new);
-      // Record the types that we will write into the buffer
+      // Record the regular types, the array types, and the enums that we will write into the buffer
       Arrays.stream(parameterTypes).forEach(c -> {
-        if (c.isArray()) {
-          // If the component is an array, we need to add the component type to the nameToClass map
-          Class<?> componentType = c.getComponentType();
-          nameToClass.putIfAbsent(componentType.getName(), componentType);
-        } else {
-          // If the component is a record, we need to add it to the nameToClass map
-          nameToClass.putIfAbsent(c.getName(), c);
+        switch (c) {
+          case Class<?> arrayType when arrayType.isArray() -> {
+            Class<?> componentType = arrayType.getComponentType();
+            nameToClass.putIfAbsent(componentType.getName(), componentType);
+          }
+          case Class<?> enumType when enumType.isEnum() -> {
+            for (Object e : enumType.getEnumConstants()) {
+              if (e instanceof Enum<?> enumConst) {
+                final var shortName = IntStream.range(0, Math.min(enumType.getName().length(), recordClass.getName().length()))
+                    .takeWhile(i -> enumType.getName().charAt(i) == recordClass.getName().charAt(i))
+                    .reduce((a, b) -> b)
+                    .stream()
+                    .mapToObj(i -> enumType.getName().substring(i + 1) + "." + enumConst.name())
+                    .findFirst()
+                    .orElse(enumType.getName() + "." + enumConst.name());
+                enumToName.put(enumConst, new InternedName(shortName));
+              }
+            }
+          }
+          default -> nameToClass.putIfAbsent(c.getName(), c);
         }
       });
       // Get the canonical constructor
@@ -76,14 +92,19 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       LOGGER.severe(() -> msg);
       throw new IllegalArgumentException(msg, inner);
     }
+    // flip the map for the deserialization
+    nameToEnum = enumToName.entrySet().stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
   }
 
   void serializeWithMap(PackedBuffer buf, R object, boolean writeName) {
-    final var buffer = ((PackedBuf) buf);
+    if (buf.isClosed()) {
+      throw new IllegalStateException("PackedBuffer is closed");
+    }
+    final var buffer = ((PackedBufferImpl) buf);
     if (writeName) {
       // If we are being asked to write out our record class name by a sealed pickler then we so now
       buffer.offsetMap.put(internedName, new InternedPosition(buffer.position()));
-      PackedBuf.write(buffer.buffer, internedName);
+      PackedBufferImpl.write(buffer.buffer, internedName);
     }
     Object[] components = new Object[componentAccessors.length];
     Arrays.setAll(components, i -> {
@@ -116,6 +137,12 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
           nestedPickler.serializeWithMap(buffer, record, true);
         }
+      } else if (c instanceof Enum<?> e) {
+        // If the component is an enum we need to write out the interned name
+        buffer.buffer.put(Constants.ENUM.marker());
+        InternedName name = enumToName.get(e);
+        buffer.offsetMap.put(internedName, new InternedPosition(buffer.position()));
+        PackedBufferImpl.write(buffer.buffer, name);
       } else {
         buffer.recursiveWrite(buffer, c);
       }
@@ -127,7 +154,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     // Null checks
     Objects.requireNonNull(buf);
     Objects.requireNonNull(object);
-    final var buffer = ((PackedBuf) buf);
+    final var buffer = ((PackedBufferImpl) buf);
     // Use java native endian for float and double writes
     buffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     if (0 == object.getClass().getRecordComponents().length) {
@@ -182,21 +209,21 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           // The component is the same types such as linked list or tree node of other nodes
           return deserializeWithMap(nameToRecordClass, buffer, readName);
         } else if (marker == Constants.RECORD.marker()) {
-          final InternedName name = (InternedName) Companion.read(nameToRecordClass, new HashMap<>(), buffer);
+          final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
           //noinspection unchecked
           Class<? extends Record> concreteType = (Class<? extends Record>) nameToRecordClass.get(name.name());
           Pickler<?> pickler = Pickler.forRecord(concreteType);
           return pickler.deserialize(buffer);
         } else if (marker == Constants.ENUM.marker()) {
-          final InternedName name = (InternedName) Companion.read(nameToRecordClass, new HashMap<>(), buffer);
-          LOGGER.finer(() -> "read(enum) - position=" + buffer.position());
-          final Object componentType = null; //shortNameToEnum.get(Objects.requireNonNull(internedName).name());
-          assert componentType != null : " enum not found for name: " + internedName.name();
-          return componentType;
+          final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
+          LOGGER.finer(() -> "read(enum) - name=" + name.name() + " - position=" + buffer.position());
+          final Object enumValue = nameToEnum.get(name);
+          assert enumValue != null : " enum not found for name: " + internedName.name();
+          return enumValue;
         }
         buffer.reset();
         // Read the component
-        return Companion.read(nameToRecordClass, new HashMap<>(), buffer);
+        return Companion.read(nameToRecordClass, buffer);
       } catch (Throwable e) {
         final var msg = "Failed to access component: " + i +
             " in record class '" + recordClass.getName() + "' : " + e.getMessage();

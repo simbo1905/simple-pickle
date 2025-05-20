@@ -318,7 +318,7 @@ class PicklerTests {
       count++;
     }
     assertEquals(1, count);
-    buffer = new PackedBuf(ByteBuffer.wrap(bytes));
+    buffer = new PackedBufferImpl(ByteBuffer.wrap(bytes));
 
     // Deserialize from the byte buffer
     final var deserialized = pickler.deserialize(buf);

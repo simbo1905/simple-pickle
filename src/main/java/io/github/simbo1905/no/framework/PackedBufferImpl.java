@@ -17,13 +17,13 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 /// a class name it will write the offset of the first and only occurrence of that class name. This means that this
 /// resource is not thread safe and may only be used once. The wrapped buffer must not be flipped. Call flip on this
 /// class to flip the underlying buffer and mark this instance as closed.
-class PackedBuf implements PackedBuffer {
+class PackedBufferImpl implements PackedBuffer {
 
   final ByteBuffer buffer;
   final Map<InternedName, InternedPosition> offsetMap = new HashMap<>();
   boolean closed = false;
 
-  PackedBuf(ByteBuffer buffer) {
+  PackedBufferImpl(ByteBuffer buffer) {
     buffer.order(ByteOrder.BIG_ENDIAN);
     this.buffer = buffer;
   }
@@ -85,24 +85,6 @@ class PackedBuf implements PackedBuffer {
     return size;
   }
 
-  static <T extends Enum<?>> int write(final Map<InternedName, InternedPosition> offsetMap, ByteBuffer buffer, T e) {
-    Objects.requireNonNull(e);
-    final var className = e.getDeclaringClass().getName();
-    final var shortName = className.substring("".length()); // TODO shorten the enum class mame
-    final var dotName = shortName + "." + e.name();
-    final var internedName = new InternedName(dotName);
-    if (!offsetMap.containsKey(internedName)) {
-      LOGGER.finer(() -> "write(enum) - Enter: value=" + e + " position=" + buffer.position());
-      buffer.put(ENUM.marker());
-      offsetMap.put(internedName, new InternedPosition(buffer.position()));
-      return 1 + intern(buffer, dotName);
-    } else {
-      final var internedPosition = offsetMap.get(internedName);
-      final var internedOffset = new InternedOffset(internedPosition.position() - buffer.position());
-      return write(buffer, internedOffset);
-    }
-  }
-
   static int write(ByteBuffer buffer, InternedOffset typeOffset) {
     Objects.requireNonNull(typeOffset);
     final int offset = typeOffset.offset();
@@ -144,8 +126,7 @@ class PackedBuf implements PackedBuffer {
   /// to write out a record that is not the specific type of the pickler.
   /// @param object the class of the record
   /// @throws IllegalStateException if the buffer is closed
-  int recursiveWrite(final PackedBuf buf, Object object) {
-    if (closed) throw new IllegalStateException("CompactedBuffer is closed");
+  static int recursiveWrite(final PackedBufferImpl buf, Object object) {
     final var buffer = buf.buffer;
     return switch (object) {
       case null -> writeNull(buffer);
@@ -160,7 +141,6 @@ class PackedBuf implements PackedBuffer {
       case String s -> write(buffer, s);
       case InternedName t -> write(buffer, t);
       case InternedOffset t -> write(buffer, t);
-      case Enum<?> e -> write(offsetMap, buffer, e);
       case Optional<?> o -> {
         int size = 1;
         if (o.isEmpty()) {
@@ -209,6 +189,7 @@ class PackedBuf implements PackedBuffer {
         }
         yield size;
       }
+      case Enum<?> e -> throw new AssertionError("Enum should be handled in the calling pickler method");
       default -> throw new IllegalStateException("Unexpected value: " + object);
     };
   }
@@ -235,6 +216,11 @@ class PackedBuf implements PackedBuffer {
   public int remaining() {
     validateNotClosed();
     return buffer.remaining();
+  }
+
+  @Override
+  public boolean isClosed() {
+    return closed;
   }
 
   @TestOnly

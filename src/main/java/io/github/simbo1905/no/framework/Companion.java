@@ -81,7 +81,7 @@ class Companion {
     return 1 + Short.BYTES;
   }
 
-  static Object read(final Map<String, Class<?>> classesByShortName, Map<String, Object> shortNameToEnum, final ByteBuffer buffer) {
+  static Object read(final Map<String, Class<?>> classesByShortName, final ByteBuffer buffer) {
     final int position = buffer.position();
     final byte marker = buffer.get();
     final Constants type = fromMarker(marker);
@@ -156,7 +156,7 @@ class Companion {
       }
       case OPTIONAL_OF -> {
         LOGGER.finer(() -> "read(of) - position=" + buffer.position());
-        yield Optional.ofNullable(read(classesByShortName, new HashMap<>(), buffer));
+        yield Optional.ofNullable(read(classesByShortName, buffer));
       }
       case INTERNED_NAME -> {
         LOGGER.finer(() -> "read(name) - position=" + buffer.position());
@@ -189,7 +189,7 @@ class Companion {
       }
       case ARRAY -> {
         LOGGER.finer(() -> "read() - ARRAY start position=" + buffer.position());
-        final var internedName = (InternedName) read(classesByShortName, new HashMap<>(), buffer);
+        final var internedName = (InternedName) read(classesByShortName, buffer);
         final Class<?> componentType = classesByShortName.get(Objects.requireNonNull(internedName).name());
         assert componentType != null : "Component type not found for name: " + internedName.name();
         final int length = ZigZagEncoding.getInt(buffer);
@@ -199,7 +199,7 @@ class Companion {
         } else {
           // Deserialize each element using IntStream instead of for loop
           IntStream.range(0, length)
-              .forEach(i -> Array.set(array, i, read(classesByShortName, new HashMap<>(), buffer)));
+              .forEach(i -> Array.set(array, i, read(classesByShortName, buffer)));
         }
         yield array;
       }
@@ -259,7 +259,7 @@ class Companion {
 
   /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
   @SuppressWarnings({"unchecked", "rawtypes"})
-  static void serializeWithPickler(PackedBuf buf, Pickler<?> pickler, Object object) {
+  static void serializeWithPickler(PackedBufferImpl buf, Pickler<?> pickler, Object object) {
     // Since we know at runtime that pickler is a RecordPickler and object is the right type
     ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }

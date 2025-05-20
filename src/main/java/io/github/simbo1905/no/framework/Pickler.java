@@ -72,7 +72,7 @@ public interface Pickler<T> {
   /// - flipped the buffer
   /// - read from the buffer
   default PackedBuffer wrap(ByteBuffer buf) {
-    return new PackedBuf(buf);
+    return new PackedBufferImpl(buf);
   }
 
   /// PackedBuffer is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
@@ -81,7 +81,7 @@ public interface Pickler<T> {
   /// - flipped the buffer
   /// - read from the buffer
   static PackedBuffer allocate(int size) {
-    return new PackedBuf(ByteBuffer.allocate(size));
+    return new PackedBufferImpl(ByteBuffer.allocate(size));
   }
 
   /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.

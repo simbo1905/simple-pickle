@@ -14,4 +14,6 @@ public interface PackedBuffer extends AutoCloseable {
   PackedBuffer putInt(int size);
 
   void put(byte marker);
+
+  boolean isClosed();
 }
