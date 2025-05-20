@@ -158,9 +158,9 @@ class Companion {
         LOGGER.finer(() -> "read(of) - position=" + buffer.position());
         yield Optional.ofNullable(read(classesByShortName, buffer));
       }
-      case INTERNED_NAME -> {
+      case INTERNED_NAME -> { // TODO likely that we inline this into the record
         LOGGER.finer(() -> "read(name) - position=" + buffer.position());
-        yield readInternedName(buffer);
+        yield unintern(buffer);
       }
       case INTERNED_OFFSET -> {
         final int oldPosition = buffer.position();
@@ -211,7 +211,7 @@ class Companion {
     };
   }
 
-  private static InternedName readInternedName(ByteBuffer buffer) {
+  static InternedName unintern(ByteBuffer buffer) {
     int length = ZigZagEncoding.getInt(buffer);
     byte[] bytes = new byte[length];
     buffer.get(bytes);

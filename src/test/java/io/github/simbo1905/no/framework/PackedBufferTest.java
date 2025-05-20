@@ -43,14 +43,25 @@ public class PackedBufferTest {
   }
 
   @Test
-  void testNewWorld() {
+  void testEnum() {
+    final var testEnum = new TestEnum(EnumTest.ONE);
+    final var pickler = Pickler.forRecord(TestEnum.class);
+    final var serializationSession = Pickler.allocate(128);
+    pickler.serialize(serializationSession, testEnum);
+    final var readBuffer = serializationSession.flip();
+    final var deserialized = pickler.deserialize(readBuffer);
+    assertEquals(testEnum, deserialized);
+  }
+
+  @Test
+  void testEnumWithOthers() {
     final var pickler = Pickler.forRecord(TestRecord.class);
     final var serializationSession = Pickler.allocate(1024);
 
     final var testRecord = new TestRecord("Simbo", 42, EnumTest.ONE);
     pickler.serialize(serializationSession, testRecord);
     final var testRecord2 = new TestRecord("Fido", 3, EnumTest.TWO);
-//    pickler.serialize(serializationSession, testRecord2);
+    pickler.serialize(serializationSession, testRecord2);
 
     final var readBuffer = serializationSession.flip();
 
@@ -61,6 +72,9 @@ public class PackedBufferTest {
 }
 
 record TestRecord(String name, int age, EnumTest testEnum) {
+}
+
+record TestEnum(EnumTest enumTest) {
 }
 
 enum EnumTest {

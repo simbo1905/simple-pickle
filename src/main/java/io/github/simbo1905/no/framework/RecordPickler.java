@@ -142,7 +142,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
         buffer.buffer.put(Constants.ENUM.marker());
         InternedName name = enumToName.get(e);
         buffer.offsetMap.put(internedName, new InternedPosition(buffer.position()));
-        PackedBufferImpl.write(buffer.buffer, name);
+        PackedBufferImpl.intern(buffer.buffer, name.name());
       } else {
         buffer.recursiveWrite(buffer, c);
       }
@@ -215,7 +215,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           Pickler<?> pickler = Pickler.forRecord(concreteType);
           return pickler.deserialize(buffer);
         } else if (marker == Constants.ENUM.marker()) {
-          final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
+          final InternedName name = Companion.unintern(buffer);
           LOGGER.finer(() -> "read(enum) - name=" + name.name() + " - position=" + buffer.position());
           final Object enumValue = nameToEnum.get(name);
           assert enumValue != null : " enum not found for name: " + internedName.name();
