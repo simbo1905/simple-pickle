@@ -54,6 +54,7 @@ class PackedBuf implements PackedBuffer {
   }
 
   static int write(ByteBuffer buffer, String s) {
+    LOGGER.finer(() -> "write(String) - Enter: value=" + s + " position=" + buffer.position());
     Objects.requireNonNull(s);
     buffer.put(STRING.marker());
     byte[] utf8 = s.getBytes(StandardCharsets.UTF_8);
@@ -162,14 +163,17 @@ class PackedBuf implements PackedBuffer {
       case Optional<?> o -> {
         int size = 1;
         if (o.isEmpty()) {
+          LOGGER.finer(() -> "write(empty) - position=" + buffer.position());
           buffer.put(Constants.OPTIONAL_EMPTY.marker());
         } else {
+          LOGGER.finer(() -> "write(optional) - position=" + buffer.position());
           buffer.put(Constants.OPTIONAL_OF.marker());
           size += recursiveWrite(buf, o.get());
         }
         yield size;
       }
       case List<?> l -> {
+        LOGGER.finer(() -> "write(list) - size=" + ZigZagEncoding.sizeOf(l.size()) + " position=" + buffer.position());
         buffer.put(Constants.LIST.marker());
         int size = 1 + ZigZagEncoding.putInt(buffer, l.size());
         for (Object item : l) {
@@ -178,6 +182,7 @@ class PackedBuf implements PackedBuffer {
         yield size;
       }
       case Map<?, ?> m -> {
+        LOGGER.finer(() -> "write(map) - size=" + ZigZagEncoding.sizeOf(m.size()) + " position=" + buffer.position());
         buffer.put(Constants.MAP.marker());
         int size = 1 + ZigZagEncoding.putInt(buffer, m.size());
         for (Map.Entry<?, ?> entry : m.entrySet()) {
@@ -188,6 +193,7 @@ class PackedBuf implements PackedBuffer {
       }
       // TODO zigzag compress long[] and int[]
       case Object a when a.getClass().isArray() -> {
+        LOGGER.finer(() -> "write(array) - size=" + ZigZagEncoding.sizeOf(Array.getLength(a)) + " position=" + buffer.position());
         buffer.put(Constants.ARRAY.marker());
         final var InternedName = new InternedName(a.getClass().getComponentType().getName());
         int size = 1;

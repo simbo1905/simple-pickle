@@ -97,16 +97,18 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       }
     });
     // Write the number of components as an unsigned byte (max 255)
-    LOGGER.finer(() -> "serializeWithMap Writing component length length=" + components.length + " position=" + buffer.position());
+    LOGGER.finer(() -> "serializeWithMap object=" + object.hashCode() + " writing component length length=" + components.length + " position=" + buffer.position() + " writing length as zigzag size " + ZigZagEncoding.sizeOf(components.length));
     ZigZagEncoding.putInt(buffer.buffer, components.length);
     Arrays.stream(components).forEach(c -> {
       if (c instanceof Record record) {
         if (recordClass.equals(record.getClass())) {
+          LOGGER.fine(() -> "serializeWithMap writing SAME_TYPE type record " + record.getClass().getName() + " position=" + buffer.position());
           // If the record is the same class as this pickler we simply mark it is the same pickler type as self and recurse
           buffer.buffer.put(Constants.SAME_TYPE.marker());
           //noinspection unchecked
           serializeWithMap(buffer, (R) record, false);
         } else {
+          LOGGER.fine(() -> "serializeWithMap writing RECORD type record " + record.getClass().getName() + " position=" + buffer.position());
           // we need to write that this is a different record type we need to resolve the pickler for
           buffer.buffer.put(Constants.RECORD.marker());
           // if the record is a different class we need to write out the interned name
