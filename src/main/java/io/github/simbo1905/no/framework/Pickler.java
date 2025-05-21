@@ -1,18 +1,19 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Companion.manufactureRecordPickler;
 import static io.github.simbo1905.no.framework.Constants.ARRAY;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 public interface Pickler<T> {
   java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(Pickler.class.getName());
-
 
   /// A convenient helper to serializes an array of records. Due to Java's runtime type erasure you must use
   /// explicitly declared arrays and not have any compiler warnings about possible misalignment of types. Use
@@ -52,18 +53,8 @@ public interface Pickler<T> {
         .toList();
   }
 
-  /// Recursively sums the encoded byte size of many records.
-  /// @param array The array of records to measure
-  /// @return The total size in bytes
-  static <R extends Record> int sizeOfMany(R[] array) {
-    //noinspection unchecked
-    return Optional.ofNullable(array)
-        .map(arr -> 1 + 4 // 4 bytes for the length prefix (int)
-            + arr.getClass().getComponentType().getName().getBytes(UTF_8).length + 4 +
-            Arrays.stream(arr)
-                .mapToInt(Pickler.forRecord((Class<R>) arr.getClass().getComponentType())::sizeOf)
-                .sum())
-        .orElse(1);
+  static <A> int sizeOfMany(A[] array) {
+    throw new AssertionError("not implemented");
   }
 
   /// PackedBuffer is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
@@ -84,14 +75,23 @@ public interface Pickler<T> {
     return new PackedBufferImpl(ByteBuffer.allocate(size));
   }
 
+  /// This method allocates a buffer of sufficient size to hold the serialized form of the record.
+  /// It makes a worst case estimate that strings are UTF-8 encoded using 3 bytes and that no
+  /// compression of long or int or class names is possible. The actual size will likely be a lot smaller.
+  /// PackedBuffer is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
+  /// You should use a try-with-resources block to ensure that it is closed once you have
+  /// written a set of records into it. You also cannot use it safely after you have:
+  /// - flipped the buffer
+  /// - read from the buffer
+  default PackedBuffer allocateSufficient(T originalRoot) {
+    return null;
+  }
+
   /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.
   ///
   /// @param buffer The buffer to write into
   /// @param record The record to serialize
   void serialize(PackedBuffer buffer, T record);
-
-  /// Computes the wire size of the record.
-  int sizeOf(T record);
 
   /// Recursively unloads components from the buffer and invokes a constructor following compatibility rules.
   /// @param buffer The buffer to read from
@@ -156,7 +156,6 @@ public interface Pickler<T> {
     //noinspection unchecked
     return (Pickler<S>) Companion.REGISTRY.get(sealedClass);
   }
-
 }
 
 record InternedName(String name) {

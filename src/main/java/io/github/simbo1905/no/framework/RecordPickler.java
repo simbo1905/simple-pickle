@@ -182,11 +182,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     }
   }
 
-  @Override
-  public int sizeOf(R record) {
-    throw new AssertionError("not implemented");
-  }
-
   R deserializeWithMap(final Map<String, Class<?>> nameToRecordClass, ByteBuffer buffer, boolean readName) throws Throwable {
     if (readName) {
       final byte marker = buffer.get();

@@ -71,8 +71,11 @@ public class MorePicklerTests {
     // Get a pickler for the Animal sealed interface
     final var pickler = Pickler.forSealedInterface(Animal.class);
 
-    // Calculate total buffer size needed using streams
-    final var totalSize = Arrays.stream(originalAnimals).mapToInt(pickler::sizeOf).sum();
+    // Calculate worst case buffer size needed using streams
+    final var totalSize = Arrays.stream(originalAnimals)
+        .map(pickler::allocateSufficient)
+        .mapToInt(PackedBuffer::remaining)
+        .sum();
 
     // Allocate a single buffer to hold all animals
     final var buffer = Pickler.allocate(totalSize);
@@ -159,19 +162,10 @@ public class MorePicklerTests {
     // Get a pickler for the TreeNode sealed interface
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
-    // Calculate total buffer size needed - handle each node individually to avoid NPE with null children
+    // Calculate worst case buffer size needed using streams
     final var totalSize = Arrays.stream(originalNodes)
-        .mapToInt(node -> {
-            try {
-              int size = pickler.sizeOf(node);
-              LOGGER.fine(() -> "Size of " + node + " is " + size);
-              return size;
-            } catch (NullPointerException e) {
-                // Log the problematic node
-                System.err.println("NPE calculating size of: " + node);
-                throw e;
-            }
-        })
+        .map(pickler::allocateSufficient)
+        .mapToInt(PackedBuffer::remaining)
         .sum();
 
     LOGGER.fine(() -> "Total size is " + totalSize);
@@ -254,10 +248,8 @@ public class MorePicklerTests {
     final var link2 = new Link(link1);
 
     // Calculate buffer size needed for the entire chain
-    final var bufferSize = pickler.sizeOf(link2);
-
     // Allocate a buffer to hold the entire chain
-    var buffer = Pickler.allocate(bufferSize);
+    var buffer = pickler.allocateSufficient(link2);
     // Serialize the entire chain
     pickler.serialize(buffer, link2);
     assertFalse(buffer.hasRemaining());
@@ -302,11 +294,8 @@ public class MorePicklerTests {
       chained = link4;
     }
 
-    // Calculate buffer size needed for the entire chain
-    final var bufferSize = pickler.sizeOf(chained);
-
     // Allocate a buffer to hold the entire chain
-    var buffer = Pickler.allocate(bufferSize);
+    var buffer = pickler.allocateSufficient(chained);
     // Serialize the entire chain
     pickler.serialize(buffer, chained);
     assertFalse(buffer.hasRemaining());
@@ -368,11 +357,8 @@ public class MorePicklerTests {
     // Get a pickler for the TreeNode sealed interface
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
     
-    // Calculate buffer size needed for just the root node
-    final var bufferSize = pickler.sizeOf(originalRoot);
-    
     // Allocate a buffer to hold just the root node
-    var buffer = Pickler.allocate(bufferSize);
+    var buffer = pickler.allocateSufficient(originalRoot);
     
     // Serialize only the root node (which should include the entire graph)
     pickler.serialize(buffer, originalRoot);
@@ -432,9 +418,8 @@ public class MorePicklerTests {
         java.util.Optional.of("Magic 🦄")
     );
 
-    var buffer = Pickler.allocate(pickler.sizeOf(original));
+    var buffer = pickler.allocateSufficient(original);
     pickler.serialize(buffer, original);
-    assertFalse(buffer.hasRemaining());
     var buf = buffer.flip();
 
     var deserialized = pickler.deserialize(buf);

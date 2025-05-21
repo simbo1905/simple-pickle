@@ -105,8 +105,7 @@ public class ListPicklerTests {
     Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
 
     // Calculate size and allocate buffer
-    int size = pickler.sizeOf(original);
-    var buffer = Pickler.allocate(size);
+    var buffer = pickler.allocateSufficient(original);
 
     // Serialize
     pickler.serialize(buffer, original);
@@ -196,7 +195,7 @@ public class ListPicklerTests {
     var animalPickler = Pickler.forSealedInterface(Animal.class);
 
     // preallocate a buffer for the Dog instance
-    var buffer = Pickler.allocate(animalPickler.sizeOf(dog));
+    var buffer = animalPickler.allocateSufficient(dog);
 
     // Serialize and deserialize the Dog instance
     animalPickler.serialize(buffer, dog);
@@ -213,10 +212,6 @@ public class ListPicklerTests {
       throw new AssertionError("""
           ¯\\_(ツ)_/¯
           """);
-    }
-    // Check if the number of bytes written is correct
-    if (bytesWritten != animalPickler.sizeOf(dog)) {
-      throw new AssertionError("wrong number of bytes written");
     }
 
     List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);

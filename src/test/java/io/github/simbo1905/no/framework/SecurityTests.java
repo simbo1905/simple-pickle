@@ -54,8 +54,7 @@ class SecurityTests {
     final var original = new Good("safe_value");
 
     // 3. Serialize the instance
-    final int size = pickler.sizeOf(original);
-    final var buffer = Pickler.allocate(size);
+    final var buffer = pickler.allocateSufficient(original);
     pickler.serialize(buffer, original);
     var buf = buffer.flip(); // Prepare for reading/manipulation
 
@@ -90,8 +89,7 @@ class SecurityTests {
     final var original = new Good("safe_value");
 
     // 3. Serialize the instance
-    final int size = pickler.sizeOf(original);
-    final var buffer = Pickler.allocate(size);
+    final var buffer = pickler.allocateSufficient(original);
     pickler.serialize(buffer, original);
     buffer.flip(); // Prepare for reading/manipulation
 

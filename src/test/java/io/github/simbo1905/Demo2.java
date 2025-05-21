@@ -19,11 +19,8 @@ public class Demo2 {
 // Get a pickler for the TreeNode sealed interface
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
-// Calculate buffer size needed for the whole graph reachable from the root node
-    final var bufferSize = pickler.sizeOf(originalRoot);
-
 // Allocate a buffer to hold just the root node
-    final var buffer = Pickler.allocate(bufferSize);
+    final var buffer = pickler.allocateSufficient(originalRoot);
 
 // Serialize only the root node (which should include the entire graph)
     pickler.serialize(buffer, originalRoot);

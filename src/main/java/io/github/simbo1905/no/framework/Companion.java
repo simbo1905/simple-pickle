@@ -259,12 +259,6 @@ class Companion {
     ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }
 
-  /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
-  static int sizeOf(Pickler<?> pickler, Object object) {
-    //noinspection unchecked,rawtypes
-    return ((RecordPickler) pickler).sizeOf((Record) object);
-  }
-
   /// Writes types into a buffer recursively. This is used to write out the components of a record.
   /// In order to prevent infinite loops the caller of the method must look up the pickler of any
   /// inner records and delegate to that pickler. This method will throw an exception if it is called
@@ -334,7 +328,7 @@ class Companion {
         }
         yield size;
       }
-      case Enum<?> e -> throw new AssertionError("Enum should be handled in the calling pickler method");
+      case Enum<?> ignored -> throw new AssertionError("Enum should be handled in the calling pickler method");
       default -> throw new IllegalStateException("Unexpected value: " + object);
     };
   }
