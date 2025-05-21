@@ -166,4 +166,7 @@ record InternedOffset(int offset) {
 }
 
 record InternedPosition(int position) {
+  public Object offset(int position) {
+    return new InternedOffset(position() - position);
+  }
 }

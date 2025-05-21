@@ -2,12 +2,12 @@ package io.github.simbo1905.no.framework;
 
 import org.jetbrains.annotations.TestOnly;
 
-import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.stream.IntStream;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 
 import static io.github.simbo1905.no.framework.Constants.*;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -120,80 +120,6 @@ class PackedBufferImpl implements PackedBuffer {
     return buffer.position();
   }
 
-  /// Writes types into a buffer recursively. This is used to write out the components of a record.
-  /// In order to prevent infinite loops the caller of the method must look up the pickler of any
-  /// inner records and delegate to that pickler. This method will throw an exception if it is called
-  /// to write out a record that is not the specific type of the pickler.
-  /// @param object the class of the record
-  /// @throws IllegalStateException if the buffer is closed
-  static int recursiveWrite(final PackedBufferImpl buf, Object object) {
-    final var buffer = buf.buffer;
-    return switch (object) {
-      case null -> writeNull(buffer);
-      case Integer i -> Companion.write(buffer, i);
-      case Long l -> Companion.write(buffer, l);
-      case Short s -> Companion.write(buffer, s);
-      case Byte b -> write(buffer, b);
-      case Double d -> Companion.write(buffer, d);
-      case Float f -> Companion.write(buffer, f);
-      case Character ch -> write(buffer, ch);
-      case Boolean b -> write(buffer, b);
-      case String s -> write(buffer, s);
-      case InternedName t -> write(buffer, t);
-      case InternedOffset t -> write(buffer, t);
-      case Optional<?> o -> {
-        int size = 1;
-        if (o.isEmpty()) {
-          LOGGER.finer(() -> "write(empty) - position=" + buffer.position());
-          buffer.put(Constants.OPTIONAL_EMPTY.marker());
-        } else {
-          LOGGER.finer(() -> "write(optional) - position=" + buffer.position());
-          buffer.put(Constants.OPTIONAL_OF.marker());
-          size += recursiveWrite(buf, o.get());
-        }
-        yield size;
-      }
-      case List<?> l -> {
-        LOGGER.finer(() -> "write(list) - size=" + ZigZagEncoding.sizeOf(l.size()) + " position=" + buffer.position());
-        buffer.put(Constants.LIST.marker());
-        int size = 1 + ZigZagEncoding.putInt(buffer, l.size());
-        for (Object item : l) {
-          size += recursiveWrite(buf, item);
-        }
-        yield size;
-      }
-      case Map<?, ?> m -> {
-        LOGGER.finer(() -> "write(map) - size=" + ZigZagEncoding.sizeOf(m.size()) + " position=" + buffer.position());
-        buffer.put(Constants.MAP.marker());
-        int size = 1 + ZigZagEncoding.putInt(buffer, m.size());
-        for (Map.Entry<?, ?> entry : m.entrySet()) {
-          size += recursiveWrite(buf, entry.getKey());
-          size += recursiveWrite(buf, entry.getValue());
-        }
-        yield size;
-      }
-      // TODO zigzag compress long[] and int[]
-      case Object a when a.getClass().isArray() -> {
-        LOGGER.finer(() -> "write(array) - size=" + ZigZagEncoding.sizeOf(Array.getLength(a)) + " position=" + buffer.position());
-        buffer.put(Constants.ARRAY.marker());
-        final var InternedName = new InternedName(a.getClass().getComponentType().getName());
-        int size = 1;
-        size += recursiveWrite(buf, InternedName);
-        int length = Array.getLength(a);
-        size += ZigZagEncoding.putInt(buffer, length);
-        if (byte.class.equals(a.getClass().getComponentType())) {
-          buffer.put((byte[]) a);
-          size += ((byte[]) a).length;
-        } else {
-          size += IntStream.range(0, length).map(i -> recursiveWrite(buf, Array.get(a, i))).sum();
-        }
-        yield size;
-      }
-      case Enum<?> e -> throw new AssertionError("Enum should be handled in the calling pickler method");
-      default -> throw new IllegalStateException("Unexpected value: " + object);
-    };
-  }
-
   /// Once a buffer has been closed all that can be done is flip to get the underlying buffer to read from it.
   @Override
   public void close() {
@@ -227,5 +153,13 @@ class PackedBufferImpl implements PackedBuffer {
   public void put(int i, byte maliciousByte) {
     validateNotClosed();
     buffer.put(i, maliciousByte);
+  }
+
+  @Override
+  public String toString() {
+    return "PackedBufferImpl{" +
+        "buffer=" + buffer +
+        ", offsetMap.keys()=" + offsetMap.keySet() +
+        '}';
   }
 }

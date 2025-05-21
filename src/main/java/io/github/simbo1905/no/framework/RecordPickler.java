@@ -141,10 +141,16 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
         // If the component is an enum we need to write out the interned name
         buffer.buffer.put(Constants.ENUM.marker());
         InternedName name = enumToName.get(e);
-        buffer.offsetMap.put(internedName, new InternedPosition(buffer.position()));
-        PackedBufferImpl.intern(buffer.buffer, name.name());
+        if (buffer.offsetMap.containsKey(name)) {
+          final var internedPosition = buffer.offsetMap.get(name);
+          final var internedOffset = internedPosition.offset(buffer.position());
+          Companion.recursiveWrite(buffer, internedOffset);
+        } else {
+          buffer.offsetMap.computeIfAbsent(name, (x) -> new InternedPosition(buffer.position()));
+          Companion.recursiveWrite(buffer, name);
+        }
       } else {
-        buffer.recursiveWrite(buffer, c);
+        Companion.recursiveWrite(buffer, c);
       }
     });
   }
@@ -215,11 +221,19 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           Pickler<?> pickler = Pickler.forRecord(concreteType);
           return pickler.deserialize(buffer);
         } else if (marker == Constants.ENUM.marker()) {
-          final InternedName name = Companion.unintern(buffer);
-          LOGGER.finer(() -> "read(enum) - name=" + name.name() + " - position=" + buffer.position());
-          final Object enumValue = nameToEnum.get(name);
-          assert enumValue != null : " enum not found for name: " + internedName.name();
-          return enumValue;
+          final var locator = Companion.read(nameToRecordClass, buffer);
+          LOGGER.finer(() -> "read(enum) - locator=" + locator + " - position=" + buffer.position());
+          if (locator instanceof InternedName name) {
+            return nameToEnum.get(name);
+          } else if (locator instanceof InternedOffset(int offset)) {
+            final var currentPosition = buffer.position();
+            final var namePosition = offset + buffer.position();
+            buffer.position(namePosition);
+            final var name = Companion.read(nameToRecordClass, buffer);
+            final var returned = nameToEnum.get(name);
+            buffer.position(currentPosition);
+            return returned;
+          }
         }
         buffer.reset();
         // Read the component

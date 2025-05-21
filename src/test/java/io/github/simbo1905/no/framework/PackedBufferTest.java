@@ -1,5 +1,6 @@
 package io.github.simbo1905.no.framework;
 
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -51,6 +52,33 @@ public class PackedBufferTest {
     final var readBuffer = serializationSession.flip();
     final var deserialized = pickler.deserialize(readBuffer);
     assertEquals(testEnum, deserialized);
+  }
+
+  @Test
+  void repeatedEnum() {
+    final var testEnumOne = new TestEnum(EnumTest.ONE);
+
+    final var pickler = Pickler.forRecord(TestEnum.class);
+    final var serializationSession = Pickler.allocate(128);
+
+    final var pos1 = serializationSession.position();
+    pickler.serialize(serializationSession, testEnumOne);
+
+    final var pos2 = serializationSession.position();
+    pickler.serialize(serializationSession, testEnumOne);
+
+    final var pos3 = serializationSession.position();
+
+    final var sizeOne = pos2 - pos1;
+    final var sizeTwo = pos3 - pos2;
+    Assertions.assertThat(sizeTwo).isLessThan(sizeOne);
+
+    final var readBuffer = serializationSession.flip();
+
+    final var deserializeOne = pickler.deserialize(readBuffer);
+    assertEquals(testEnumOne, deserializeOne);
+    final var deserializeTwo = pickler.deserialize(readBuffer);
+    assertEquals(testEnumOne, deserializeTwo);
   }
 
   @Test
