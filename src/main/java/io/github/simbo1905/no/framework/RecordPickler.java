@@ -225,14 +225,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           LOGGER.finer(() -> "read(enum) - locator=" + locator + " - position=" + buffer.position());
           if (locator instanceof InternedName name) {
             return nameToEnum.get(name);
-          } else if (locator instanceof InternedOffset(int offset)) {
-            final var currentPosition = buffer.position();
-            final var namePosition = offset + buffer.position();
-            buffer.position(namePosition);
-            final var name = Companion.read(nameToRecordClass, buffer);
-            final var returned = nameToEnum.get(name);
-            buffer.position(currentPosition);
-            return returned;
           }
         }
         buffer.reset();

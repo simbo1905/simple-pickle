@@ -4,6 +4,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.nio.ByteBuffer;
 import java.util.logging.*;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -52,6 +53,33 @@ public class PackedBufferTest {
     final var readBuffer = serializationSession.flip();
     final var deserialized = pickler.deserialize(readBuffer);
     assertEquals(testEnum, deserialized);
+  }
+  //8388608
+
+  @Test
+  void repeatedEnumLargeOffset() {
+    final var testEnumOne = new TestEnum(EnumTest.ONE);
+
+    final var pickler = Pickler.forRecord(TestEnum.class);
+    final var buf = ByteBuffer.allocate(8388608 + 128);
+    final var serializationSession = (PackedBuffer) new PackedBufferImpl(buf);
+
+    pickler.serialize(serializationSession, testEnumOne);
+    buf.position(buf.position() + 8388608 + 2);
+
+    pickler.serialize(serializationSession, testEnumOne);
+    pickler.serialize(serializationSession, testEnumOne);
+
+    final var readBuffer = serializationSession.flip();
+    final var deserializeOne = pickler.deserialize(readBuffer);
+    assertEquals(testEnumOne, deserializeOne);
+
+    buf.position(buf.position() + 8388608 + 2);
+
+    final var deserializeTwo = pickler.deserialize(readBuffer);
+    assertEquals(testEnumOne, deserializeTwo);
+
+    assertEquals(testEnumOne, pickler.deserialize(readBuffer));
   }
 
   @Test

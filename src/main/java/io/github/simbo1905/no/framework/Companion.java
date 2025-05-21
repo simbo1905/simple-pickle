@@ -158,37 +158,32 @@ class Companion {
         LOGGER.finer(() -> "read(of) - position=" + buffer.position());
         yield Optional.ofNullable(read(classesByShortName, buffer));
       }
-      case INTERNED_NAME -> { // TODO likely that we inline this into the record
+      case INTERNED_NAME -> {
         LOGGER.finer(() -> "read(name) - position=" + buffer.position());
         yield unintern(buffer);
       }
       case INTERNED_OFFSET -> {
-        final int oldPosition = buffer.position();
         final int offset = buffer.getInt();
         final int highWaterMark = buffer.position();
-        final int newPosition = buffer.position() + offset - 2;
-        buffer.position(newPosition);
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
+        final int lowWaterMark = buffer.position() + offset - 4;
+        buffer.position(lowWaterMark);
+        final var uninterned = unintern(buffer);
         buffer.position(highWaterMark);
-        LOGGER.finer(() -> "read(offset) - location=" + highWaterMark + " position=" + oldPosition);
-        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
+        LOGGER.finer(() -> "read(offset) - lowWaterMark=" + lowWaterMark + " position=" + highWaterMark);
+        yield uninterned;
       }
       case INTERNED_OFFSET_VAR -> {
         final int highWaterMark = buffer.position();
         final int offset = ZigZagEncoding.getInt(buffer);
         final int lowWaterMark = buffer.position() + offset - 1;
         buffer.position(lowWaterMark);
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
+        final var uninterned = unintern(buffer);
         buffer.position(highWaterMark);
-        LOGGER.finer(() -> "read(offset) - lowWaterMark=" + lowWaterMark + " position=" + highWaterMark);
-        yield new InternedName(new String(bytes, StandardCharsets.UTF_8));
+        LOGGER.finer(() -> "read(offset_var) - lowWaterMark=" + lowWaterMark + " position=" + highWaterMark);
+        yield uninterned;
       }
       case ARRAY -> {
-        LOGGER.finer(() -> "read() - ARRAY start position=" + buffer.position());
+        LOGGER.finer(() -> "read(ARRAY) start position=" + buffer.position());
         final var internedName = (InternedName) read(classesByShortName, buffer);
         final Class<?> componentType = classesByShortName.get(Objects.requireNonNull(internedName).name());
         assert componentType != null : "Component type not found for name: " + internedName.name();

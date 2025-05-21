@@ -112,6 +112,10 @@ public class ZigZagTests {
     assertEquals(1, ZigZagEncoding.sizeOf(-64));
     assertEquals(2, ZigZagEncoding.sizeOf(64));
     assertEquals(2, ZigZagEncoding.sizeOf(-65));
+    assertEquals(3, ZigZagEncoding.sizeOf(16384));
+    assertEquals(3, ZigZagEncoding.sizeOf(-16385));
+    assertEquals(4, ZigZagEncoding.sizeOf(8388608));
+    assertEquals(4, ZigZagEncoding.sizeOf(-8388609));
     assertEquals(5, ZigZagEncoding.sizeOf(Integer.MAX_VALUE));
     assertEquals(5, ZigZagEncoding.sizeOf(Integer.MIN_VALUE));
   }
