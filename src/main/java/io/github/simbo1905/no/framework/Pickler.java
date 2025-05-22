@@ -53,9 +53,7 @@ public interface Pickler<T> {
         .toList();
   }
 
-  static <A> int sizeOfMany(A[] array) {
-    throw new AssertionError("not implemented");
-  }
+  PackedBuffer allocateSufficient(T[] record);
 
   /// PackedBuffer is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
   /// You should use a try-with-resources block to ensure that it is closed once you have
@@ -66,26 +64,16 @@ public interface Pickler<T> {
     return new PackedBufferImpl(buf);
   }
 
-  /// PackedBuffer is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
-  /// You should use a try-with-resources block to ensure that it is closed once you have
-  /// written a set of records into it. You also cannot use it safely after you have:
-  /// - flipped the buffer
-  /// - read from the buffer
+  /// [PackedBuffer] is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names.
+  /// This method allocates a heap buffer of the specified size. It is not thread safe.
   static PackedBuffer allocate(int size) {
     return new PackedBufferImpl(ByteBuffer.allocate(size));
   }
 
-  /// This method allocates a buffer of sufficient size to hold the serialized form of the record.
-  /// It makes a worst case estimate that strings are UTF-8 encoded using 3 bytes and that no
-  /// compression of long or int or class names is possible. The actual size will likely be a lot smaller.
-  /// PackedBuffer is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
-  /// You should use a try-with-resources block to ensure that it is closed once you have
-  /// written a set of records into it. You also cannot use it safely after you have:
-  /// - flipped the buffer
-  /// - read from the buffer
-  default PackedBuffer allocateSufficient(T originalRoot) {
-    return null;
-  }
+  /// [PackedBuffer] is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
+  /// This method does a pessimistic estimate of the size of a record and allocates a heap buffer of the specified size.
+  /// It is not thread safe. In practice the actual pickling can write a much more compact representation of the record.
+  PackedBuffer allocateSufficient(T t);
 
   /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.
   ///
@@ -156,6 +144,7 @@ public interface Pickler<T> {
     //noinspection unchecked
     return (Pickler<S>) Companion.REGISTRY.get(sealedClass);
   }
+
 }
 
 record InternedName(String name) {

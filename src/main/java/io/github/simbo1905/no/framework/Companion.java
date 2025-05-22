@@ -72,12 +72,11 @@ class Companion {
     return 1 + Float.BYTES;
   }
 
+  /// Note that we do not varint encode a short as we would then need and additional byte to decode
   static int write(ByteBuffer buffer, short value) {
-    Optional.ofNullable(buffer).ifPresent(b -> {
-      LOGGER.finer(() -> "write(short) - Enter: value=" + value + " position=" + buffer.position());
-      buffer.put(SHORT.marker());
-      buffer.putShort(value);
-    });
+    LOGGER.finer(() -> "write(short) - Enter: value=" + value + " position=" + buffer.position());
+    buffer.put(SHORT.marker());
+    buffer.putShort(value);
     return 1 + Short.BYTES;
   }
 
@@ -259,6 +258,12 @@ class Companion {
     ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }
 
+  /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
+  static PackedBuffer allocateSufficient(Pickler<?> pickler, Object object) {
+    //noinspection unchecked,rawtypes
+    return ((RecordPickler) pickler).allocateSufficient((Record) object);
+  }
+
   /// Writes types into a buffer recursively. This is used to write out the components of a record.
   /// In order to prevent infinite loops the caller of the method must look up the pickler of any
   /// inner records and delegate to that pickler. This method will throw an exception if it is called
@@ -330,6 +335,35 @@ class Companion {
       }
       case Enum<?> ignored -> throw new AssertionError("Enum should be handled in the calling pickler method");
       default -> throw new IllegalStateException("Unexpected value: " + object);
+    };
+  }
+
+  public static int maxSizeOf(Object object) {
+    // we add 1 for the type marker
+    return 1 + switch (object) {
+      case Integer i -> Math.min(ZigZagEncoding.sizeOf(i), Integer.BYTES);
+      case Long l -> Math.min(ZigZagEncoding.sizeOf(l), Long.BYTES);
+      case Short ignored -> Short.BYTES;
+      case Byte ignored -> Byte.BYTES;
+      case Double ignored -> Double.BYTES;
+      case Float ignored -> Float.BYTES;
+      case Character ignored -> Character.BYTES;
+      case Boolean ignored -> 1;
+      case String s -> ZigZagEncoding.sizeOf(s.length()) + s.codePoints()
+          .map(cp -> {
+            if (cp < 128) {
+              return 1;
+            } else if (cp < 2048) {
+              return 2;
+            } else if (cp < 65536) {
+              return 3;
+            } else {
+              return 4;
+            }
+          }).sum();
+      case Enum<?> e -> maxSizeOf(e.getClass().getName()) + maxSizeOf(e.name());
+      case null -> 0;
+      default -> throw new AssertionError("not implemented for " + object.getClass().getName());
     };
   }
 }

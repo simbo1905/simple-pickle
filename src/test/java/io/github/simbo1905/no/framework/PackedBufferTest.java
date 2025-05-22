@@ -48,13 +48,13 @@ public class PackedBufferTest {
   void testEnum() {
     final var testEnum = new TestEnum(EnumTest.ONE);
     final var pickler = Pickler.forRecord(TestEnum.class);
-    final var serializationSession = Pickler.allocate(128);
+    final var serializationSession = pickler.allocateSufficient(testEnum);
     pickler.serialize(serializationSession, testEnum);
+    final var pos = serializationSession.position();
     final var readBuffer = serializationSession.flip();
     final var deserialized = pickler.deserialize(readBuffer);
     assertEquals(testEnum, deserialized);
   }
-  //8388608
 
   @Test
   void repeatedEnumLargeOffset() {
@@ -87,7 +87,7 @@ public class PackedBufferTest {
     final var testEnumOne = new TestEnum(EnumTest.ONE);
 
     final var pickler = Pickler.forRecord(TestEnum.class);
-    final var serializationSession = Pickler.allocate(128);
+    final var serializationSession = pickler.allocateSufficient(new TestEnum[]{testEnumOne, testEnumOne});
 
     final var pos1 = serializationSession.position();
     pickler.serialize(serializationSession, testEnumOne);
