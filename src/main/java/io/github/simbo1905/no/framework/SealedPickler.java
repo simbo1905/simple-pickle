@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: MIT
+
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
@@ -72,19 +75,5 @@ class SealedPickler<S> implements Pickler<S> {
     }
   }
 
-  @Override
-  public PackedBuffer allocateSufficient(S record) {
-    //noinspection unchecked
-    Class<? extends S> concreteType = (Class<? extends S>) record.getClass();
-    Pickler<?> pickler = subPicklers.get(concreteType);
-    return Companion.allocateSufficient(pickler, record);
-  }
 
-  @Override
-  public PackedBuffer allocateSufficient(S[] record) {
-    //noinspection unchecked
-    Class<? extends S> concreteType = (Class<? extends S>) record.getClass();
-    Pickler<?> pickler = subPicklers.get(concreteType);
-    return Companion.allocateSufficient(pickler, record);
-  }
 }

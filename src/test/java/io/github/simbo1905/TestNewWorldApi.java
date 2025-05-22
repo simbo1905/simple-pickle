@@ -88,7 +88,7 @@ public class TestNewWorldApi {
 
     ArrayRecord arrayRecord = new ArrayRecord(new String[]{"a", "b"});
     Pickler<ArrayRecord> arrayPickler = forRecord(ArrayRecord.class);
-    PackedBuffer arrayBuffer = Pickler.allocate(1024);
+    PackedBuffer arrayBuffer = PackedBuffer.of(1024);
     arrayPickler.serialize(arrayBuffer, arrayRecord);
     final var arrayBuf = arrayBuffer.flip(); // Prepare the buffer for reading
     ArrayRecord deserializedArrayRecord = arrayPickler.deserialize(arrayBuf);
@@ -100,7 +100,7 @@ public class TestNewWorldApi {
     // Example usage
     MyRecord record = new MyRecord("Hello", 42);
     Pickler<MyRecord> pickler = forRecord(MyRecord.class);
-    PackedBuffer buffer = Pickler.allocate(1024);
+    PackedBuffer buffer = PackedBuffer.of(1024);
     pickler.serialize(buffer, record);
     final var buf = buffer.flip(); // Prepare the buffer for reading
     MyRecord deserializedRecord = pickler.deserialize(buf);
@@ -119,7 +119,7 @@ public class TestNewWorldApi {
 
     // Test 1: Round-trip dog2
     Pickler<Dog> dogPickler = forRecord(Dog.class);
-    PackedBuffer dogBuffer = Pickler.allocate(1024);
+    PackedBuffer dogBuffer = PackedBuffer.of(1024);
     dogPickler.serialize(dogBuffer, dog2);
     final var buf2 = dogBuffer.flip();
     Dog deserializedDog = dogPickler.deserialize(buf2);
@@ -128,7 +128,7 @@ public class TestNewWorldApi {
     // Get pickler for sealed interface
     final Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
 
-    final var animalPacedBuffer = Pickler.allocate(4096);
+    final var animalPacedBuffer = PackedBuffer.of(4096);
 
     // Test 2: Round-trip list of animals
     List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);

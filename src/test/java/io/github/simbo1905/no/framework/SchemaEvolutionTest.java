@@ -305,7 +305,7 @@ public class SchemaEvolutionTest {
     Pickler pickler = Pickler.forRecord(recordClass);
 
     // Calculate buffer size and allocate buffer
-    final var buffer = pickler.allocateSufficient(record);
+    final var buffer = PackedBuffer.allocateSufficient(record);
 
     // Serialize the record
     pickler.serialize(buffer, record);

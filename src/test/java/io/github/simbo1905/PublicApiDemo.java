@@ -1,5 +1,6 @@
 package io.github.simbo1905;
 
+import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
 import org.junit.jupiter.api.Assertions;
 
@@ -45,7 +46,7 @@ public class PublicApiDemo {
 
   public static void main(String[] args) {
     Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
-    final var buffer = Pickler.allocate(1024);
+    final var buffer = PackedBuffer.of(1024);
 
     for (Animal animal : animals) {
       pickler.serialize(buffer, animal);
@@ -62,7 +63,7 @@ public class PublicApiDemo {
   }
 
   private static void listsCannotBeTypeOfSealedInterfaceAndPermittedRecords() {
-    final var buffer = Pickler.allocate(1024);
+    final var buffer = PackedBuffer.of(1024);
 
     Dog[] dogs = animals.stream()
         .filter(Dog.class::isInstance)

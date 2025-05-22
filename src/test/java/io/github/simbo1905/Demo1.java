@@ -1,6 +1,7 @@
 package io.github.simbo1905;
 
 
+import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
 
 public class Demo1 {
@@ -35,7 +36,7 @@ public class Demo1 {
     Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer:
-    final var buffer = Pickler.allocate(1024);
+    final var buffer = PackedBuffer.of(1024);
     treeNodePickler.serialize(buffer, originalRoot);
 
 // And deserialize it back:

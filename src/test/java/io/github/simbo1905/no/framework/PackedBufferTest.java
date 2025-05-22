@@ -48,7 +48,7 @@ public class PackedBufferTest {
   void testEnum() {
     final var testEnum = new TestEnum(EnumTest.ONE);
     final var pickler = Pickler.forRecord(TestEnum.class);
-    final var serializationSession = pickler.allocateSufficient(testEnum);
+    final var serializationSession = PackedBuffer.allocateSufficient(testEnum);
     pickler.serialize(serializationSession, testEnum);
     final var pos = serializationSession.position();
     final var readBuffer = serializationSession.flip();
@@ -87,7 +87,7 @@ public class PackedBufferTest {
     final var testEnumOne = new TestEnum(EnumTest.ONE);
 
     final var pickler = Pickler.forRecord(TestEnum.class);
-    final var serializationSession = pickler.allocateSufficient(new TestEnum[]{testEnumOne, testEnumOne});
+    final var serializationSession = PackedBuffer.allocateSufficient(new TestEnum[]{testEnumOne, testEnumOne});
 
     final var pos1 = serializationSession.position();
     pickler.serialize(serializationSession, testEnumOne);
@@ -112,7 +112,7 @@ public class PackedBufferTest {
   @Test
   void testEnumWithOthers() {
     final var pickler = Pickler.forRecord(TestRecord.class);
-    final var serializationSession = Pickler.allocate(1024);
+    final var serializationSession = PackedBuffer.of(1024);
 
     final var testRecord = new TestRecord("Simbo", 42, EnumTest.ONE);
     pickler.serialize(serializationSession, testRecord);

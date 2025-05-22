@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: MIT
+
 package io.github.simbo1905.no.framework;
 
 import java.lang.reflect.Array;
@@ -258,12 +261,6 @@ class Companion {
     ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }
 
-  /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
-  static PackedBuffer allocateSufficient(Pickler<?> pickler, Object object) {
-    //noinspection unchecked,rawtypes
-    return ((RecordPickler) pickler).allocateSufficient((Record) object);
-  }
-
   /// Writes types into a buffer recursively. This is used to write out the components of a record.
   /// In order to prevent infinite loops the caller of the method must look up the pickler of any
   /// inner records and delegate to that pickler. This method will throw an exception if it is called
@@ -338,7 +335,7 @@ class Companion {
     };
   }
 
-  public static int maxSizeOf(Object object) {
+  static int maxSizeOf(Object object) {
     // we add 1 for the type marker
     return 1 + switch (object) {
       case Integer i -> Math.min(ZigZagEncoding.sizeOf(i), Integer.BYTES);
@@ -362,6 +359,19 @@ class Companion {
             }
           }).sum();
       case Enum<?> e -> maxSizeOf(e.getClass().getName()) + maxSizeOf(e.name());
+      case Record r -> {
+        RecordPickler<?> pickler = (RecordPickler<?>) REGISTRY.get(r.getClass());
+        yield Arrays.stream(pickler.componentAccessors)
+            .map(a -> {
+              try {
+                return a.invokeWithArguments(r);
+              } catch (Throwable e) {
+                throw new RuntimeException(e);
+              }
+            })
+            .mapToInt(Companion::maxSizeOf)
+            .sum();
+      }
       case null -> 0;
       default -> throw new AssertionError("not implemented for " + object.getClass().getName());
     };

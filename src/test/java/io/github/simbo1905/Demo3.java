@@ -1,5 +1,6 @@
 package io.github.simbo1905;
 
+import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
 
 import java.util.List;
@@ -11,9 +12,7 @@ public class Demo3 {
     final List<ListRecord> outerList = List.of(new ListRecord(List.of("A", "B")), new ListRecord(List.of("X", "Y")));
 
 // Calculate size and allocate buffer. Limitations of generics means we have shallow copy into an array.
-    int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
-
-    final var buffer = Pickler.allocate(size);
+    final var buffer = PackedBuffer.allocateSufficient(outerList.toArray(ListRecord[]::new));
 
 // Serialize. Limitations of generics means we have to pass the sealed interface class.
     Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);

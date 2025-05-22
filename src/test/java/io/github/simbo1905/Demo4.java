@@ -1,5 +1,6 @@
 package io.github.simbo1905;
 
+import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
 
 import java.util.List;
@@ -18,8 +19,7 @@ public class Demo4 {
     };
 
 // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(people);
-    final var buffer = Pickler.allocate(size);
+    final var buffer = PackedBuffer.allocateSufficient(people);
 
 // Serialize the array
     Pickler.serializeMany(people, buffer);

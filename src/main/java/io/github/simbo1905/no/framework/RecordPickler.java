@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: MIT
+
 package io.github.simbo1905.no.framework;
 
 import java.lang.invoke.MethodHandle;
@@ -236,17 +239,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     return (R) canonicalConstructorHandle.invokeWithArguments(components);
   }
 
-  @Override
-  public PackedBuffer allocateSufficient(R record) {
-    // Null checks
-    Objects.requireNonNull(record);
-    final var buffer = new PackedBufferImpl(ByteBuffer.allocate(maxSizeOf(record)));
-    // Use java native endian for float and double writes
-    buffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-    // Write the all the components
-    return buffer;
-  }
-
   int maxSizeOf(R record) {
     return Arrays.stream(componentAccessors)
         .map(a -> {
@@ -257,17 +249,5 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           }
         })
         .mapToInt(Companion::maxSizeOf).sum();
-  }
-
-  @Override
-  public PackedBuffer allocateSufficient(R[] records) {
-    // Null checks
-    Objects.requireNonNull(records);
-    int size = Arrays.stream(records).mapToInt(this::maxSizeOf).sum();
-    final var buffer = new PackedBufferImpl(ByteBuffer.allocate(size));
-    // Use java native endian for float and double writes
-    buffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-    // Write the all the components
-    return buffer;
   }
 }

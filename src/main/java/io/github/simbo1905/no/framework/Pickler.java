@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: MIT
+
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
@@ -52,28 +55,6 @@ public interface Pickler<T> {
         .mapToObj(i -> Pickler.forRecord(componentType).deserialize(buffer))
         .toList();
   }
-
-  PackedBuffer allocateSufficient(T[] record);
-
-  /// PackedBuffer is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
-  /// You should use a try-with-resources block to ensure that it is closed once you have
-  /// written a set of records into it. You also cannot use it safely after you have:
-  /// - flipped the buffer
-  /// - read from the buffer
-  default PackedBuffer wrap(ByteBuffer buf) {
-    return new PackedBufferImpl(buf);
-  }
-
-  /// [PackedBuffer] is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names.
-  /// This method allocates a heap buffer of the specified size. It is not thread safe.
-  static PackedBuffer allocate(int size) {
-    return new PackedBufferImpl(ByteBuffer.allocate(size));
-  }
-
-  /// [PackedBuffer] is an auto-closeable wrapper around ByteBuffer that tracks the written position of record class names
-  /// This method does a pessimistic estimate of the size of a record and allocates a heap buffer of the specified size.
-  /// It is not thread safe. In practice the actual pickling can write a much more compact representation of the record.
-  PackedBuffer allocateSufficient(T t);
 
   /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.
   ///

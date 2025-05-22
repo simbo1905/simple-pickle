@@ -67,8 +67,7 @@ public class ListPicklerTests {
     final List<ListRecord> outerList = List.of(original, new ListRecord(List.of("X", "Y")));
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(outerList.toArray(ListRecord[]::new));
-    final var buffer = Pickler.allocate(size);
+    final var buffer = PackedBuffer.allocateSufficient(outerList.toArray(ListRecord[]::new));
 
     // Serialize
     Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
@@ -105,7 +104,7 @@ public class ListPicklerTests {
     Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
 
     // Calculate size and allocate buffer
-    var buffer = pickler.allocateSufficient(original);
+    var buffer = PackedBuffer.allocateSufficient(original);
 
     // Serialize
     pickler.serialize(buffer, original);
@@ -160,8 +159,7 @@ public class ListPicklerTests {
     }
 
     // Calculate size and allocate buffer
-    int size = Pickler.sizeOfMany(original.toArray(NestedListRecord[]::new));
-    final var buffer = Pickler.allocate(size);
+    final var buffer = PackedBuffer.allocateSufficient(original.toArray(NestedListRecord[]::new));
 
     // Serialize
     Pickler.serializeMany(original.toArray(NestedListRecord[]::new), buffer);
@@ -195,7 +193,7 @@ public class ListPicklerTests {
     var animalPickler = Pickler.forSealedInterface(Animal.class);
 
     // preallocate a buffer for the Dog instance
-    var buffer = animalPickler.allocateSufficient(dog);
+    var buffer = PackedBuffer.allocateSufficient(dog);
 
     // Serialize and deserialize the Dog instance
     animalPickler.serialize(buffer, dog);
@@ -222,10 +220,10 @@ public class ListPicklerTests {
     Alicorn[] alicorns = animals.stream().filter(i -> i instanceof Alicorn).toArray(Alicorn[]::new);
 
     int size = Stream.of(dogs, eagles, penguins, alicorns)
-        .mapToInt(Pickler::sizeOfMany)
+        .mapToInt(Companion::maxSizeOf)
         .sum();
 
-    final var animalsBuffer = Pickler.allocate(size);
+    final var animalsBuffer = PackedBuffer.allocateSufficient(size);
 
     // Serialize the list of animals
     Stream.of(dogs, eagles, penguins, alicorns)
