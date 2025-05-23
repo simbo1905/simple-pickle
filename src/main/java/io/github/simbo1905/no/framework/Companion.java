@@ -200,9 +200,16 @@ class Companion {
         }
         yield array;
       }
+      case ENUM -> {
+        final var locator = Companion.read(classesByShortName, buffer);
+        LOGGER.finer(() -> "read(enum) - locator=" + locator + " - position=" + buffer.position());
+        if (locator instanceof InternedName name) {
+          yield null; //nameToEnum.get(name);
+        }
+        yield null;
+      }
       case SAME_TYPE, RECORD ->
           throw new IllegalArgumentException("This should not be reached as caller should call self or delegate to another pickler.");
-      case ENUM -> throw new AssertionError("This should not be reached as caller should resolve enum");
       case MAP -> throw new AssertionError("not implemented MAP");
       case LIST -> throw new AssertionError("not implemented LIST");
     };
@@ -256,7 +263,7 @@ class Companion {
 
   /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
   @SuppressWarnings({"unchecked", "rawtypes"})
-  static void serializeWithPickler(PackedBufferImpl buf, Pickler<?> pickler, Object object) {
+  static void serializeWithPickler(WriteBufferImpl buf, Pickler<?> pickler, Object object) {
     // Since we know at runtime that pickler is a RecordPickler and object is the right type
     ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }
@@ -267,21 +274,21 @@ class Companion {
   /// to write out a record that is not the specific type of the pickler.
   /// @param object the class of the record
   /// @throws IllegalStateException if the buffer is closed
-  static int recursiveWrite(final PackedBufferImpl buf, Object object) {
+  static int recursiveWrite(final WriteBufferImpl buf, Object object) {
     final var buffer = buf.buffer;
     return switch (object) {
-      case null -> PackedBufferImpl.writeNull(buffer);
+      case null -> WriteBufferImpl.writeNull(buffer);
       case Integer i -> write(buffer, i);
       case Long l -> write(buffer, l);
       case Short s -> write(buffer, s);
-      case Byte b -> PackedBufferImpl.write(buffer, b);
+      case Byte b -> WriteBufferImpl.write(buffer, b);
       case Double d -> write(buffer, d);
       case Float f -> write(buffer, f);
-      case Character ch -> PackedBufferImpl.write(buffer, ch);
-      case Boolean b -> PackedBufferImpl.write(buffer, b);
-      case String s -> PackedBufferImpl.write(buffer, s);
-      case InternedName t -> PackedBufferImpl.write(buffer, t);
-      case InternedOffset t -> PackedBufferImpl.write(buffer, t);
+      case Character ch -> WriteBufferImpl.write(buffer, ch);
+      case Boolean b -> WriteBufferImpl.write(buffer, b);
+      case String s -> WriteBufferImpl.write(buffer, s);
+      case InternedName t -> WriteBufferImpl.write(buffer, t);
+      case InternedOffset t -> WriteBufferImpl.write(buffer, t);
       case Optional<?> o -> {
         int size = 1;
         if (o.isEmpty()) {
@@ -330,7 +337,18 @@ class Companion {
         }
         yield size;
       }
-      case Enum<?> ignored -> throw new AssertionError("Enum should be handled in the calling pickler method");
+      case Enum<?> e -> {
+        buf.buffer.put(Constants.ENUM.marker());
+        InternedName name = buf.enumToName.get(e);
+        if (buf.offsetMap.containsKey(name)) {
+          final var internedPosition = buf.offsetMap.get(name);
+          final var internedOffset = internedPosition.offset(buffer.position());
+          yield Companion.recursiveWrite(buf, internedOffset);
+        } else {
+          buf.offsetMap.computeIfAbsent(name, (x) -> new InternedPosition(buffer.position()));
+          yield Companion.recursiveWrite(buf, name);
+        }
+      }
       default -> throw new IllegalStateException("Unexpected value: " + object);
     };
   }
@@ -373,6 +391,8 @@ class Companion {
             .sum();
       }
       case null -> 0;
+      case Optional<?> o when o.isEmpty() -> 1;
+      case Optional<?> o -> 1 + maxSizeOf(o.get());
       default -> throw new AssertionError("not implemented for " + object.getClass().getName());
     };
   }

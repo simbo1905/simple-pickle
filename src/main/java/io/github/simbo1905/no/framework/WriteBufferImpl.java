@@ -20,13 +20,16 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 /// a class name it will write the offset of the first and only occurrence of that class name. This means that this
 /// resource is not thread safe and may only be used once. The wrapped buffer must not be flipped. Call flip on this
 /// class to flip the underlying buffer and mark this instance as closed.
-class PackedBufferImpl implements PackedBuffer {
+class WriteBufferImpl implements WriteBuffer {
 
   final ByteBuffer buffer;
   final Map<InternedName, InternedPosition> offsetMap = new HashMap<>();
+  final Map<String, Class<?>> nameToClass = new HashMap<>();
+  final Map<Enum<?>, InternedName> enumToName = new HashMap<>();
+
   boolean closed = false;
 
-  PackedBufferImpl(ByteBuffer buffer) {
+  WriteBufferImpl(ByteBuffer buffer) {
     buffer.order(ByteOrder.BIG_ENDIAN);
     this.buffer = buffer;
   }
@@ -112,7 +115,7 @@ class PackedBufferImpl implements PackedBuffer {
     buffer.put(b);
   }
 
-  public PackedBuffer putInt(int value) {
+  public WriteBuffer putInt(int value) {
     validateNotClosed();
     buffer.putInt(value);
     return this;

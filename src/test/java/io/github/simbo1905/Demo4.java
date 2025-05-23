@@ -1,7 +1,8 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.ReadBuffer;
+import io.github.simbo1905.no.framework.WriteBuffer;
 
 import java.util.List;
 import java.util.stream.IntStream;
@@ -19,11 +20,11 @@ public class Demo4 {
     };
 
 // Calculate size and allocate buffer
-    final var buffer = PackedBuffer.allocateSufficient(people);
+    final var buffer = WriteBuffer.allocateSufficient(people);
 
 // Serialize the array
     Pickler.serializeMany(people, buffer);
-    var buf = buffer.flip();
+    var buf = ReadBuffer.wrap(buffer.flip());
 
 // Deserialize the array
     List<?> deserializedPeople = Pickler.deserializeMany(Person.class, buf);

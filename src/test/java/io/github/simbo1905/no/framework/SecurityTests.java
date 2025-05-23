@@ -54,7 +54,7 @@ class SecurityTests {
     final var original = new Good("safe_value");
 
     // 3. Serialize the instance
-    final var buffer = PackedBuffer.allocateSufficient(original);
+    final var buffer = WriteBuffer.allocateSufficient(original);
     pickler.serialize(buffer, original);
     var buf = buffer.flip(); // Prepare for reading/manipulation
 
@@ -76,7 +76,7 @@ class SecurityTests {
 
     // 6. Assert that deserialization fails because "Baad" is not a permitted subtype
     assertThrows(IllegalArgumentException.class, () -> {
-      pickler.deserialize(buf);
+      pickler.deserialize(ReadBuffer.wrap(buf));
     }, "Deserialization should fail for non-record class");
   }
 
@@ -89,7 +89,7 @@ class SecurityTests {
     final var original = new Good("safe_value");
 
     // 3. Serialize the instance
-    final var buffer = PackedBuffer.allocateSufficient(original);
+    final var buffer = WriteBuffer.allocateSufficient(original);
     pickler.serialize(buffer, original);
     buffer.flip(); // Prepare for reading/manipulation
 
@@ -103,7 +103,7 @@ class SecurityTests {
 
     // Overwrite the class name bytes in the buffer
     for (int i = 0; i < maliciousBytes.length; i++) {
-      ((PackedBufferImpl) buffer).put(classNamePosition + i, maliciousBytes[i]);
+      ((WriteBufferImpl) buffer).put(classNamePosition + i, maliciousBytes[i]);
     }
 
     // 5. Reset buffer position and attempt deserialization
@@ -111,7 +111,7 @@ class SecurityTests {
 
     // 6. Assert that deserialization fails because "Bad2" is not a permitted subtype
     assertThrows(IllegalArgumentException.class, () -> {
-      pickler.deserialize(buf);
+      pickler.deserialize(ReadBuffer.wrap(buf));
     }, "Deserialization should fail for wrong record type");
   }
 }

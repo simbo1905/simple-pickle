@@ -1,7 +1,8 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.ReadBuffer;
+import io.github.simbo1905.no.framework.WriteBuffer;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -88,9 +89,9 @@ public class TestNewWorldApi {
 
     ArrayRecord arrayRecord = new ArrayRecord(new String[]{"a", "b"});
     Pickler<ArrayRecord> arrayPickler = forRecord(ArrayRecord.class);
-    PackedBuffer arrayBuffer = PackedBuffer.of(1024);
+    WriteBuffer arrayBuffer = WriteBuffer.of(1024);
     arrayPickler.serialize(arrayBuffer, arrayRecord);
-    final var arrayBuf = arrayBuffer.flip(); // Prepare the buffer for reading
+    final var arrayBuf = ReadBuffer.wrap(arrayBuffer.flip()); // Prepare the buffer for reading
     ArrayRecord deserializedArrayRecord = arrayPickler.deserialize(arrayBuf);
     System.out.println("Deserialized ArrayRecord: " + deserializedArrayRecord);
     if (!Arrays.equals(arrayRecord.ints(), deserializedArrayRecord.ints())) {
@@ -100,9 +101,9 @@ public class TestNewWorldApi {
     // Example usage
     MyRecord record = new MyRecord("Hello", 42);
     Pickler<MyRecord> pickler = forRecord(MyRecord.class);
-    PackedBuffer buffer = PackedBuffer.of(1024);
+    WriteBuffer buffer = WriteBuffer.of(1024);
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip(); // Prepare the buffer for reading
+    final var buf = ReadBuffer.wrap(buffer.flip()); // Prepare the buffer for reading
     MyRecord deserializedRecord = pickler.deserialize(buf);
     System.out.println("Deserialized Record: " + deserializedRecord);
     if (!record.equals(deserializedRecord)) {
@@ -119,16 +120,16 @@ public class TestNewWorldApi {
 
     // Test 1: Round-trip dog2
     Pickler<Dog> dogPickler = forRecord(Dog.class);
-    PackedBuffer dogBuffer = PackedBuffer.of(1024);
+    WriteBuffer dogBuffer = WriteBuffer.of(1024);
     dogPickler.serialize(dogBuffer, dog2);
-    final var buf2 = dogBuffer.flip();
+    final var buf2 = ReadBuffer.wrap(dogBuffer.flip());
     Dog deserializedDog = dogPickler.deserialize(buf2);
     System.out.println("Dog2 round-trip: " + dog2.equals(deserializedDog));
 
     // Get pickler for sealed interface
     final Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
 
-    final var animalPacedBuffer = PackedBuffer.of(4096);
+    final var animalPacedBuffer = WriteBuffer.of(4096);
 
     // Test 2: Round-trip list of animals
     List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
@@ -138,7 +139,7 @@ public class TestNewWorldApi {
     for (Animal animal : animals) {
       animalPickler.serialize(animalPacedBuffer, animal);
     }
-    final var animalBuffer = animalPacedBuffer.flip();
+    final var animalBuffer = ReadBuffer.wrap(animalPacedBuffer.flip());
 
     // Deserialize
     int size = animalBuffer.getInt();

@@ -305,7 +305,7 @@ public class SchemaEvolutionTest {
     Pickler pickler = Pickler.forRecord(recordClass);
 
     // Calculate buffer size and allocate buffer
-    final var buffer = PackedBuffer.allocateSufficient(record);
+    final var buffer = WriteBuffer.allocateSufficient(record);
 
     // Serialize the record
     pickler.serialize(buffer, record);
@@ -325,7 +325,8 @@ public class SchemaEvolutionTest {
   /// @return The deserialized record instance
   @SuppressWarnings({"unchecked"})
   public static Object deserializeRecord(Class<?> recordClass, byte[] bytes) {
-    return Pickler.forRecord((Class<? extends Record>) recordClass).deserialize(ByteBuffer.wrap(bytes));
+    final var buf = ReadBuffer.wrap(ByteBuffer.wrap(bytes));
+    return Pickler.forRecord((Class<? extends Record>) recordClass).deserialize(buf);
   }
 
   /// Verifies that a record instance has the expected component values.

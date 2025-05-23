@@ -1,8 +1,9 @@
 package io.github.simbo1905;
 
 
-import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.ReadBuffer;
+import io.github.simbo1905.no.framework.WriteBuffer;
 
 public class Demo1 {
   sealed interface TreeNode permits TreeNode.InternalNode, TreeNode.LeafNode {
@@ -36,11 +37,11 @@ public class Demo1 {
     Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer:
-    final var buffer = PackedBuffer.of(1024);
+    final var buffer = WriteBuffer.of(1024);
     treeNodePickler.serialize(buffer, originalRoot);
 
 // And deserialize it back:
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     TreeNode deserializedRoot = treeNodePickler.deserialize(buf);
 
 // Then it has elegantly and safely reconstructed the entire tree structure

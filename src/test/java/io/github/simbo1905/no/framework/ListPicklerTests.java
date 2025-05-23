@@ -67,13 +67,13 @@ public class ListPicklerTests {
     final List<ListRecord> outerList = List.of(original, new ListRecord(List.of("X", "Y")));
 
     // Calculate size and allocate buffer
-    final var buffer = PackedBuffer.allocateSufficient(outerList.toArray(ListRecord[]::new));
+    final var buffer = WriteBuffer.allocateSufficient(outerList.toArray(ListRecord[]::new));
 
     // Serialize
     Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
 
     // Flip the buffer to prepare for reading
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     // Deserialize
     final List<?> deserialized = Pickler.deserializeMany(ListRecord.class, buf);
 
@@ -104,12 +104,12 @@ public class ListPicklerTests {
     Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
 
     // Calculate size and allocate buffer
-    var buffer = PackedBuffer.allocateSufficient(original);
+    var buffer = WriteBuffer.allocateSufficient(original);
 
     // Serialize
     pickler.serialize(buffer, original);
     assertFalse(buffer.hasRemaining());
-    var buf = buffer.flip();
+    var buf = ReadBuffer.wrap(buffer.flip());
 
     // Deserialize
     NestedListRecord deserialized = pickler.deserialize(buf);
@@ -159,11 +159,11 @@ public class ListPicklerTests {
     }
 
     // Calculate size and allocate buffer
-    final var buffer = PackedBuffer.allocateSufficient(original.toArray(NestedListRecord[]::new));
+    final var buffer = WriteBuffer.allocateSufficient(original.toArray(NestedListRecord[]::new));
 
     // Serialize
     Pickler.serializeMany(original.toArray(NestedListRecord[]::new), buffer);
-    var buf = buffer.flip();
+    var buf = ReadBuffer.wrap(buffer.flip());
 
     // Deserialize
     List<?> deserialized = Pickler.deserializeMany(NestedListRecord.class, buf);
@@ -193,14 +193,14 @@ public class ListPicklerTests {
     var animalPickler = Pickler.forSealedInterface(Animal.class);
 
     // preallocate a buffer for the Dog instance
-    var buffer = PackedBuffer.allocateSufficient(dog);
+    var buffer = WriteBuffer.allocateSufficient(dog);
 
     // Serialize and deserialize the Dog instance
     animalPickler.serialize(buffer, dog);
     assertFalse(buffer.hasRemaining());
     // Flip the buffer to prepare for reading
     int bytesWritten = buffer.position();
-    var buf = buffer.flip();
+    var buf = ReadBuffer.wrap(buffer.flip());
     // Deserialize the Dog instance
     var returnedDog = animalPickler.deserialize(buf);
     // Check if the deserialized Dog instance is equal to the original
@@ -223,18 +223,18 @@ public class ListPicklerTests {
         .mapToInt(Companion::maxSizeOf)
         .sum();
 
-    final var animalsBuffer = PackedBuffer.allocateSufficient(size);
+    final var animalsBuffer = WriteBuffer.allocateSufficient(size);
 
     // Serialize the list of animals
     Stream.of(dogs, eagles, penguins, alicorns)
         .forEach(i -> Pickler.serializeMany(i, animalsBuffer));
 
     // Flip the buffer to prepare for reading
-    buf = animalsBuffer.flip();
+    buf = ReadBuffer.wrap(animalsBuffer.flip());
 
     final List<Animal> allReturnedAnimals = new ArrayList<>();
 
-    java.nio.ByteBuffer finalBuf = buf;
+    ReadBuffer finalBuf = buf;
     Stream.of(Dog.class, Eagle.class, Penguin.class, Alicorn.class)
         .forEach(i -> {
           // Deserialize the list of animals

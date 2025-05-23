@@ -3,7 +3,6 @@
 
 package io.github.simbo1905.no.framework;
 
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -31,8 +30,8 @@ class SealedPickler<S> implements Pickler<S> {
 
   /// Here we simply delegate to the RecordPickler which is configured to first write out its name.
   @Override
-  public void serialize(PackedBuffer buffer, S object) {
-    final var buf = (PackedBufferImpl) buffer;
+  public void serialize(WriteBuffer buffer, S object) {
+    final var buf = (WriteBufferImpl) buffer;
     if (object == null) {
       buf.put(NULL.marker());
       return;
@@ -44,7 +43,8 @@ class SealedPickler<S> implements Pickler<S> {
   }
 
   @Override
-  public S deserialize(ByteBuffer buffer) {
+  public S deserialize(ReadBuffer buf) {
+    final var buffer = ((ReadBufferImpl) buf).buffer;
     buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     buffer.mark();
     final byte marker = buffer.get();
@@ -67,7 +67,7 @@ class SealedPickler<S> implements Pickler<S> {
     }
     try {
       //noinspection unchecked
-      return (S) pickler.deserializeWithMap(pickler.nameToClass, buffer, false);
+      return (S) pickler.deserializeWithMap(pickler.nameToClass, (ReadBufferImpl) buf, false);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {

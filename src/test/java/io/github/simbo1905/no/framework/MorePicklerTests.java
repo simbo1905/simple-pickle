@@ -73,12 +73,12 @@ public class MorePicklerTests {
 
     // Calculate worst case buffer size needed using streams
     final var totalSize = Arrays.stream(originalAnimals)
-        .map(PackedBuffer::allocateSufficient)
-        .mapToInt(PackedBuffer::remaining)
+        .map(WriteBuffer::allocateSufficient)
+        .mapToInt(WriteBuffer::remaining)
         .sum();
 
     // Allocate a single buffer to hold all animals
-    final var buffer = PackedBuffer.allocateSufficient(totalSize);
+    final var buffer = WriteBuffer.allocateSufficient(totalSize);
 
     // Serialize all animals into the buffer using streams
     Arrays.stream(originalAnimals).forEach(animal -> pickler.serialize(buffer, animal));
@@ -86,7 +86,7 @@ public class MorePicklerTests {
     assertFalse(buffer.hasRemaining());
 
     // Prepare buffer for reading
-    var buf = buffer.flip();
+    var buf = ReadBuffer.wrap(buffer.flip());
 
     // Deserialize all animals from the buffer
     final var deserializedAnimals = new Animal[originalAnimals.length];
@@ -164,14 +164,14 @@ public class MorePicklerTests {
 
     // Calculate worst case buffer size needed using streams
     final var totalSize = Arrays.stream(originalNodes)
-        .map(PackedBuffer::allocateSufficient)
-        .mapToInt(PackedBuffer::remaining)
+        .map(WriteBuffer::allocateSufficient)
+        .mapToInt(WriteBuffer::remaining)
         .sum();
 
     LOGGER.fine(() -> "Total size is " + totalSize);
     LOGGER.fine(() -> "Allocating buffer with size: " + totalSize);
     // Allocate a single buffer to hold all nodes
-    final var buffer = PackedBuffer.of(totalSize);
+    final var buffer = WriteBuffer.of(totalSize);
 
     // Serialize all nodes into the buffer
     Arrays.stream(originalNodes).forEach(node -> {
@@ -182,7 +182,7 @@ public class MorePicklerTests {
     assertFalse(buffer.hasRemaining());
 
     // Prepare buffer for reading
-    var buf = buffer.flip();
+    var buf = ReadBuffer.wrap(buffer.flip());
 
     // Deserialize all nodes from the buffer
     final var deserializedNodes = new TreeNode[originalNodes.length];
@@ -249,7 +249,7 @@ public class MorePicklerTests {
 
     // Calculate buffer size needed for the entire chain
     // Allocate a buffer to hold the entire chain
-    var buffer = PackedBuffer.allocateSufficient(link2);
+    var buffer = WriteBuffer.allocateSufficient(link2);
     // Serialize the entire chain
     pickler.serialize(buffer, link2);
     assertFalse(buffer.hasRemaining());
@@ -265,10 +265,10 @@ public class MorePicklerTests {
       count++;
     }
     assertEquals(1, count);
-    buffer = new PackedBufferImpl(ByteBuffer.wrap(bytes));
-    ;
+    final var buf2 = ReadBuffer.wrap(ByteBuffer.wrap(bytes));
+
     // Deserialize the entire chain
-    final var deserializedChain = pickler.deserialize(buf);
+    final var deserializedChain = pickler.deserialize(buf2);
     assertNotNull(deserializedChain);
     var next = deserializedChain.next();
     assertNotNull(next);
@@ -295,7 +295,7 @@ public class MorePicklerTests {
     }
 
     // Allocate a buffer to hold the entire chain
-    var buffer = PackedBuffer.allocateSufficient(chained);
+    var buffer = WriteBuffer.allocateSufficient(chained);
     // Serialize the entire chain
     pickler.serialize(buffer, chained);
     assertFalse(buffer.hasRemaining());
@@ -320,10 +320,10 @@ public class MorePicklerTests {
     // we expect 1 matches because the outer trait has to write out that the inner is a link
     assertEquals(1, count);
     // make a fresh buffer to check that all the links are deserialized
-    buffer = new PackedBufferImpl(ByteBuffer.wrap(bytes));
-    ;
+    final var buf2 = ReadBuffer.wrap(ByteBuffer.wrap(bytes));
+
     // Deserialize the entire chain
-    final var deserializedChain = (Link) pickler.deserialize(buf);
+    final var deserializedChain = (Link) pickler.deserialize(buf2);
     assertNotNull(deserializedChain);
     var next = deserializedChain.next();
     assertNotNull(next);
@@ -358,7 +358,7 @@ public class MorePicklerTests {
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
     
     // Allocate a buffer to hold just the root node
-    var buffer = PackedBuffer.allocateSufficient(originalRoot);
+    var buffer = WriteBuffer.allocateSufficient(originalRoot);
     
     // Serialize only the root node (which should include the entire graph)
     pickler.serialize(buffer, originalRoot);
@@ -380,11 +380,10 @@ public class MorePicklerTests {
 
     assertEquals(1, count);
 
-    buffer = new PackedBufferImpl(ByteBuffer.wrap(bytes));
-    ;
+    final var buf2 = ReadBuffer.wrap(ByteBuffer.wrap(bytes));
 
     // Deserialize the root node (which should reconstruct the entire graph)
-    final var deserializedRoot = pickler.deserialize(buf);
+    final var deserializedRoot = pickler.deserialize(buf2);
     
     // Validate the entire tree structure was properly deserialized
     assertTrue(TreeNode.areTreesEqual(originalRoot, deserializedRoot), "Tree structure validation failed");
@@ -418,9 +417,9 @@ public class MorePicklerTests {
         java.util.Optional.of("Magic 🦄")
     );
 
-    var buffer = PackedBuffer.allocateSufficient(original);
+    var buffer = WriteBuffer.allocateSufficient(original);
     pickler.serialize(buffer, original);
-    var buf = buffer.flip();
+    var buf = ReadBuffer.wrap(buffer.flip());
 
     var deserialized = pickler.deserialize(buf);
 

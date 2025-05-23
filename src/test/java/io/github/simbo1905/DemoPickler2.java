@@ -1,8 +1,9 @@
 package io.github.simbo1905;
 
 
-import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.ReadBuffer;
+import io.github.simbo1905.no.framework.WriteBuffer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,9 +47,9 @@ public class DemoPickler2 {
 
     // Test 1: Round-trip dog2
     Pickler<Dog> dogPickler = Pickler.forRecord(Dog.class);
-    var dogBuffer = PackedBuffer.of(1024);
+    var dogBuffer = WriteBuffer.of(1024);
     dogPickler.serialize(dogBuffer, dog2);
-    final var buf = dogBuffer.flip();
+    final var buf = ReadBuffer.wrap(dogBuffer.flip());
     Dog deserializedDog = dogPickler.deserialize(buf);
     System.out.println("Dog2 round-trip: " + dog2.equals(deserializedDog));
 
@@ -59,7 +60,7 @@ public class DemoPickler2 {
     // Get pickler for sealed interface
     Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
 
-    final var animalBuffer = PackedBuffer.of(4096);
+    final var animalBuffer = WriteBuffer.of(4096);
 
     // Serialize
     animalBuffer.putInt(animals.size());
@@ -67,7 +68,7 @@ public class DemoPickler2 {
     for (Animal animal : animals) {
       animalPickler.serialize(animalBuffer, animal);
     }
-    final var buf2 = animalBuffer.flip();
+    final var buf2 = ReadBuffer.wrap(animalBuffer.flip());
 
     // Deserialize
     int size = buf2.getInt();

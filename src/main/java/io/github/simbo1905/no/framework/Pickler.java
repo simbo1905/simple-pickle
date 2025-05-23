@@ -3,11 +3,7 @@
 
 package io.github.simbo1905.no.framework;
 
-import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -37,7 +33,7 @@ public interface Pickler<T> {
   ///
   /// @param array The array to serialize
   /// @param buffer The buffer to write into
-  static <R extends Record> void serializeMany(R[] array, PackedBuffer buffer) {
+  static <R extends Record> void serializeMany(R[] array, WriteBuffer buffer) {
     buffer.put(ARRAY.marker());
     buffer.putInt(array.length);
 
@@ -47,25 +43,35 @@ public interface Pickler<T> {
 
   /// Unloads from the buffer a list of messages that were written using [#serializeMany].
   /// By default, there must be an exact match between the class name of the record and the class name in the buffer.
-  static <R extends Record> List<R> deserializeMany(Class<R> componentType, ByteBuffer buffer) {
-    byte marker = buffer.get();
+  static <R extends Record> List<R> deserializeMany(Class<R> componentType, ReadBuffer buffer) {
+    Objects.requireNonNull(componentType);
+    Objects.requireNonNull(buffer);
+    if (buffer.isClosed()) {
+      throw new IllegalStateException("Buffer is closed");
+    }
+    final var readBuffer = ((ReadBufferImpl) buffer).buffer;
+    byte marker = readBuffer.get();
     if (marker != ARRAY.marker()) throw new IllegalArgumentException("Invalid array marker");
 
-    return IntStream.range(0, buffer.getInt())
+    return IntStream.range(0, readBuffer.getInt())
         .mapToObj(i -> Pickler.forRecord(componentType).deserialize(buffer))
         .toList();
   }
 
-  /// Recursively loads the components reachable through record into the buffer. It always writes out all the components.
+  /// Recursively loads the components reachable through record into the buffer into the [WriteBuffer].
+  /// A packed buffer is a wrapper around a byte buffer that tracks the position of class names or
+  /// enum strings to deduplicate them. Once the buffer is flipped it is no longer usable. You should
+  /// therefore wrap it in a try-with-resources statement which will close it. After that you may flip
+  /// it to read it entirely.
   ///
   /// @param buffer The buffer to write into
   /// @param record The record to serialize
-  void serialize(PackedBuffer buffer, T record);
+  void serialize(WriteBuffer buffer, T record);
 
-  /// Recursively unloads components from the buffer and invokes a constructor following compatibility rules.
+  /// Recursively unloads components from the buffer and invokes the record constructor.
   /// @param buffer The buffer to read from
   /// @return The deserialized record
-  T deserialize(ByteBuffer buffer);
+  T deserialize(ReadBuffer buffer);
 
   static <R extends Record> Pickler<R> forRecord(Class<R> recordClass) {
     // If we do computeIfAbsent they cannot get picklers for nested classes.

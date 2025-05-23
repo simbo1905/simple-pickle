@@ -1,7 +1,8 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.ReadBuffer;
+import io.github.simbo1905.no.framework.WriteBuffer;
 import io.github.simbo1905.no.framework.animal.*;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -56,11 +57,11 @@ public class RefactorTests {
     // Arrange
     TestNewWorldApi.ArrayRecord arrayRecord = new TestNewWorldApi.ArrayRecord(new String[]{"a", "b"});
     Pickler<TestNewWorldApi.ArrayRecord> arrayPickler = forRecord(TestNewWorldApi.ArrayRecord.class);
-    PackedBuffer arrayBuffer = PackedBuffer.of(1024);
+    WriteBuffer arrayBuffer = WriteBuffer.of(1024);
     
     // Act
     arrayPickler.serialize(arrayBuffer, arrayRecord);
-    final var arrayBuf = arrayBuffer.flip(); // Prepare the buffer for reading
+    final var arrayBuf = ReadBuffer.wrap(arrayBuffer.flip()); // Prepare the buffer for reading
     TestNewWorldApi.ArrayRecord deserializedArrayRecord = arrayPickler.deserialize(arrayBuf);
     
     // Assert
@@ -73,11 +74,11 @@ public class RefactorTests {
     // Arrange
     TestNewWorldApi.MyRecord record = new TestNewWorldApi.MyRecord("Hello", 42);
     Pickler<TestNewWorldApi.MyRecord> pickler = forRecord(TestNewWorldApi.MyRecord.class);
-    PackedBuffer buffer = PackedBuffer.of(1024);
+    WriteBuffer buffer = WriteBuffer.of(1024);
     
     // Act
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip(); // Prepare the buffer for reading
+    final var buf = ReadBuffer.wrap(buffer.flip()); // Prepare the buffer for reading
     TestNewWorldApi.MyRecord deserializedRecord = pickler.deserialize(buf);
     
     // Assert
@@ -91,11 +92,11 @@ public class RefactorTests {
     Dog dog = new Dog("Fido", 2);
     Pickler<Dog> dogPickler = forRecord(Dog.class);
     // dogPickler.sizeOf(dog)
-    PackedBuffer dogBuffer = PackedBuffer.of(1024);
+    WriteBuffer dogBuffer = WriteBuffer.of(1024);
     
     // Act
     dogPickler.serialize(dogBuffer, dog);
-    final var buf = dogBuffer.flip();
+    final var buf = ReadBuffer.wrap(dogBuffer.flip());
     Dog deserializedDog = dogPickler.deserialize(buf);
     
     // Assert
@@ -116,14 +117,14 @@ public class RefactorTests {
     List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
     
     final Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
-    final var animalPackedBuffer = PackedBuffer.of(4096);
+    final var animalPackedBuffer = WriteBuffer.of(4096);
     
     // Act - Serialize
     animalPackedBuffer.putInt(animals.size());
     for (Animal animal : animals) {
       animalPickler.serialize(animalPackedBuffer, animal);
     }
-    final var animalBuffer = animalPackedBuffer.flip();
+    final var animalBuffer = ReadBuffer.wrap(animalPackedBuffer.flip());
     
     // Deserialize
     int size = animalBuffer.getInt();
@@ -148,11 +149,11 @@ public class RefactorTests {
         new String[]{"elements of harmony", "wings of a pegasus"});
     
     final Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
-    final var buffer = PackedBuffer.of(1024);
+    final var buffer = WriteBuffer.of(1024);
     
     // Act
     animalPickler.serialize(buffer, alicorn);
-    final var flippedBuffer = buffer.flip();
+    final var flippedBuffer = ReadBuffer.wrap(buffer.flip());
     Animal deserializedAnimal = animalPickler.deserialize(flippedBuffer);
     
     // Assert
@@ -193,9 +194,9 @@ public class RefactorTests {
     LOGGER.info("Starting testLinkedNode");
     final var linkedList = new LinkedListNode(1, new LinkedListNode(2, new LinkedListNode(3)));
     Pickler<LinkedListNode> linkedListPickler = Pickler.forRecord(LinkedListNode.class);
-    final var buffer = PackedBuffer.of(1024);
+    final var buffer = WriteBuffer.of(1024);
     linkedListPickler.serialize(buffer, linkedList);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     LinkedListNode deserializedLinkedList = linkedListPickler.deserialize(buf);
     assertEquals(linkedList, deserializedLinkedList,
         "Deserialized linked list should equal the original linked list");
@@ -212,11 +213,11 @@ public class RefactorTests {
     Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
 
     // Act - Serialize
-    final var buffer = PackedBuffer.of(1024);
+    final var buffer = WriteBuffer.of(1024);
     treeNodePickler.serialize(buffer, originalRoot);
 
     // Deserialize
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     TreeNode deserializedRoot = treeNodePickler.deserialize(buf);
 
     // Assert
@@ -234,11 +235,11 @@ public class RefactorTests {
     // Arrange
     ByteRecord record = new ByteRecord((byte) 127);
     Pickler<ByteRecord> pickler = forRecord(ByteRecord.class);
-    PackedBuffer buffer = PackedBuffer.allocateSufficient(record);
+    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
 
     // Act
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     ByteRecord deserialized = pickler.deserialize(buf);
 
     // Assert
@@ -254,11 +255,11 @@ public class RefactorTests {
     // Arrange
     ShortRecord record = new ShortRecord((short) 32767);
     Pickler<ShortRecord> pickler = forRecord(ShortRecord.class);
-    PackedBuffer buffer = PackedBuffer.allocateSufficient(record);
+    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
 
     // Act
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     ShortRecord deserialized = pickler.deserialize(buf);
 
     // Assert
@@ -274,11 +275,11 @@ public class RefactorTests {
     // Arrange
     FloatRecord record = new FloatRecord(3.14159f);
     Pickler<FloatRecord> pickler = forRecord(FloatRecord.class);
-    PackedBuffer buffer = PackedBuffer.allocateSufficient(record);
+    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
 
     // Act
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     FloatRecord deserialized = pickler.deserialize(buf);
 
     // Assert
@@ -294,11 +295,11 @@ public class RefactorTests {
     // Arrange
     DoubleRecord record = new DoubleRecord(Math.PI);
     Pickler<DoubleRecord> pickler = forRecord(DoubleRecord.class);
-    PackedBuffer buffer = PackedBuffer.allocateSufficient(record);
+    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
 
     // Act
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     DoubleRecord deserialized = pickler.deserialize(buf);
 
     // Assert
@@ -314,21 +315,21 @@ public class RefactorTests {
     // Arrange
     OptionalByteRecord record = new OptionalByteRecord(Optional.of((byte) 42));
     Pickler<OptionalByteRecord> pickler = forRecord(OptionalByteRecord.class);
-    PackedBuffer buffer = PackedBuffer.allocateSufficient(record);
+    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
 
     // Act - Present value
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     OptionalByteRecord deserialized = pickler.deserialize(buf);
 
     // Assert
     assertEquals(record, deserialized, "Optional<Byte> record with value should be preserved");
 
     // Test empty optional
-    buffer = PackedBuffer.allocateSufficient(record);
+    buffer = WriteBuffer.allocateSufficient(record);
     OptionalByteRecord emptyRecord = new OptionalByteRecord(Optional.empty());
     pickler.serialize(buffer, emptyRecord);
-    final var buf2 = buffer.flip();
+    final var buf2 = ReadBuffer.wrap(buffer.flip());
     OptionalByteRecord deserializedEmpty = pickler.deserialize(buf2);
 
     assertEquals(emptyRecord, deserializedEmpty, "Empty Optional<Byte> should be preserved");
@@ -355,11 +356,11 @@ public class RefactorTests {
     // Arrange
     ByteArrayRecord record = new ByteArrayRecord(new byte[]{1, 2, 3, 127, -128});
     Pickler<ByteArrayRecord> pickler = forRecord(ByteArrayRecord.class);
-    PackedBuffer buffer = PackedBuffer.allocateSufficient(record);
+    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
 
     // Act
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     ByteArrayRecord deserialized = pickler.deserialize(buf);
 
     // Assert
@@ -388,11 +389,11 @@ public class RefactorTests {
     // Arrange
     ShortArrayRecord record = new ShortArrayRecord(new short[]{100, 200, 300, 32767, -32768});
     Pickler<ShortArrayRecord> pickler = forRecord(ShortArrayRecord.class);
-    PackedBuffer buffer = PackedBuffer.allocateSufficient(record);
+    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
 
     // Act
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     ShortArrayRecord deserialized = pickler.deserialize(buf);
 
     // Assert
@@ -421,11 +422,11 @@ public class RefactorTests {
     // Arrange
     FloatArrayRecord record = new FloatArrayRecord(new float[]{1.1f, 2.2f, 3.3f, -0.1f, Float.MAX_VALUE});
     Pickler<FloatArrayRecord> pickler = forRecord(FloatArrayRecord.class);
-    PackedBuffer buffer = PackedBuffer.allocateSufficient(record);
+    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
 
     // Act
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     FloatArrayRecord deserialized = pickler.deserialize(buf);
 
     // Assert
@@ -454,11 +455,11 @@ public class RefactorTests {
     // Arrange
     DoubleArrayRecord record = new DoubleArrayRecord(new double[]{Math.PI, Math.E, 1.0 / 3.0, Double.MIN_VALUE, Double.MAX_VALUE});
     Pickler<DoubleArrayRecord> pickler = forRecord(DoubleArrayRecord.class);
-    PackedBuffer buffer = PackedBuffer.allocateSufficient(record);
+    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
 
     // Act
     pickler.serialize(buffer, record);
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
     DoubleArrayRecord deserialized = pickler.deserialize(buf);
 
     // Assert

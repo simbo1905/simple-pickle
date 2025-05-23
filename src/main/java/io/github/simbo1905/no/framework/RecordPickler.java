@@ -7,7 +7,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -99,15 +98,15 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     nameToEnum = enumToName.entrySet().stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
   }
 
-  void serializeWithMap(PackedBuffer buf, R object, boolean writeName) {
+  void serializeWithMap(WriteBuffer buf, R object, boolean writeName) {
     if (buf.isClosed()) {
       throw new IllegalStateException("PackedBuffer is closed");
     }
-    final var buffer = ((PackedBufferImpl) buf);
+    final var buffer = ((WriteBufferImpl) buf);
     if (writeName) {
       // If we are being asked to write out our record class name by a sealed pickler then we so now
       buffer.offsetMap.put(internedName, new InternedPosition(buffer.position()));
-      PackedBufferImpl.write(buffer.buffer, internedName);
+      WriteBufferImpl.write(buffer.buffer, internedName);
     }
     Object[] components = new Object[componentAccessors.length];
     Arrays.setAll(components, i -> {
@@ -140,18 +139,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
           nestedPickler.serializeWithMap(buffer, record, true);
         }
-      } else if (c instanceof Enum<?> e) {
-        // If the component is an enum we need to write out the interned name
-        buffer.buffer.put(Constants.ENUM.marker());
-        InternedName name = enumToName.get(e);
-        if (buffer.offsetMap.containsKey(name)) {
-          final var internedPosition = buffer.offsetMap.get(name);
-          final var internedOffset = internedPosition.offset(buffer.position());
-          Companion.recursiveWrite(buffer, internedOffset);
-        } else {
-          buffer.offsetMap.computeIfAbsent(name, (x) -> new InternedPosition(buffer.position()));
-          Companion.recursiveWrite(buffer, name);
-        }
       } else {
         Companion.recursiveWrite(buffer, c);
       }
@@ -159,11 +146,11 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   }
 
   @Override
-  public void serialize(PackedBuffer buf, R object) {
+  public void serialize(WriteBuffer buf, R object) {
     // Null checks
     Objects.requireNonNull(buf);
     Objects.requireNonNull(object);
-    final var buffer = ((PackedBufferImpl) buf);
+    final var buffer = ((WriteBufferImpl) buf);
     // Use java native endian for float and double writes
     buffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     if (0 == object.getClass().getRecordComponents().length) {
@@ -174,10 +161,12 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   }
 
   @Override
-  public R deserialize(ByteBuffer buffer) {
-    buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+  public R deserialize(ReadBuffer buf) {
+    if (buf.isClosed()) {
+      throw new IllegalStateException("PackedBuffer is closed");
+    }
     try {
-      return deserializeWithMap(nameToClass, buffer, false);
+      return deserializeWithMap(nameToClass, (ReadBufferImpl) buf, false);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {
@@ -185,7 +174,8 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     }
   }
 
-  R deserializeWithMap(final Map<String, Class<?>> nameToRecordClass, ByteBuffer buffer, boolean readName) throws Throwable {
+  R deserializeWithMap(final Map<String, Class<?>> nameToRecordClass, ReadBufferImpl buf, boolean readName) throws Throwable {
+    final var buffer = buf.buffer;
     if (readName) {
       final byte marker = buffer.get();
       if (marker != INTERNED_NAME.marker()) {
@@ -208,22 +198,18 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     Arrays.setAll(components, i -> {
       try {
         buffer.mark();
-        final var marker = buffer.get();
+        final var firstByte = buffer.get();
+        final var marker = (firstByte == Constants.OPTIONAL_OF.marker()) ? buffer.get() : firstByte;
         if (marker == Constants.SAME_TYPE.marker()) {
           // The component is the same types such as linked list or tree node of other nodes
-          return deserializeWithMap(nameToRecordClass, buffer, readName);
+          return deserializeWithMap(nameToRecordClass, buf, readName);
         } else if (marker == Constants.RECORD.marker()) {
           final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
+          assert name != null;
           //noinspection unchecked
           Class<? extends Record> concreteType = (Class<? extends Record>) nameToRecordClass.get(name.name());
           Pickler<?> pickler = Pickler.forRecord(concreteType);
-          return pickler.deserialize(buffer);
-        } else if (marker == Constants.ENUM.marker()) {
-          final var locator = Companion.read(nameToRecordClass, buffer);
-          LOGGER.finer(() -> "read(enum) - locator=" + locator + " - position=" + buffer.position());
-          if (locator instanceof InternedName name) {
-            return nameToEnum.get(name);
-          }
+          return pickler.deserialize(buf);
         }
         buffer.reset();
         // Read the component
@@ -237,17 +223,5 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     });
     //noinspection unchecked
     return (R) canonicalConstructorHandle.invokeWithArguments(components);
-  }
-
-  int maxSizeOf(R record) {
-    return Arrays.stream(componentAccessors)
-        .map(a -> {
-          try {
-            return a.invokeWithArguments(record);
-          } catch (Throwable e) {
-            throw new RuntimeException(e);
-          }
-        })
-        .mapToInt(Companion::maxSizeOf).sum();
   }
 }

@@ -62,12 +62,12 @@ class MapPicklerTests {
     @SuppressWarnings("unchecked") final var pickler = Pickler.forRecord((Class<T>) original.getClass());
 
     // Calculate size and allocate buffer
-    final var buffer = PackedBuffer.allocateSufficient(original);
+    final var buffer = WriteBuffer.allocateSufficient(original);
 
     // Serialize
     pickler.serialize(buffer, original);
     assertFalse(buffer.hasRemaining());
-    final var buf = buffer.flip();
+    final var buf = ReadBuffer.wrap(buffer.flip());
 
     // Deserialize
     final var deserialized = pickler.deserialize(buf);

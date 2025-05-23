@@ -1,7 +1,8 @@
 package io.github.simbo1905;
 
-import io.github.simbo1905.no.framework.PackedBuffer;
 import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.ReadBuffer;
+import io.github.simbo1905.no.framework.WriteBuffer;
 import org.junit.jupiter.api.Assertions;
 
 import java.util.Arrays;
@@ -46,13 +47,13 @@ public class PublicApiDemo {
 
   public static void main(String[] args) {
     Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
-    final var buffer = PackedBuffer.of(1024);
+    final var buffer = WriteBuffer.of(1024);
 
     for (Animal animal : animals) {
       pickler.serialize(buffer, animal);
     }
 
-    final var buf = buffer.flip(); // Prepare for reading
+    final var buf = ReadBuffer.wrap(buffer.flip()); // Prepare for reading
 
     for (Animal animal : animals) {
       Animal deserializedAnimal = pickler.deserialize(buf);
@@ -63,7 +64,7 @@ public class PublicApiDemo {
   }
 
   private static void listsCannotBeTypeOfSealedInterfaceAndPermittedRecords() {
-    final var buffer = PackedBuffer.of(1024);
+    final var buffer = WriteBuffer.of(1024);
 
     Dog[] dogs = animals.stream()
         .filter(Dog.class::isInstance)
@@ -100,10 +101,10 @@ public class PublicApiDemo {
 
     Pickler.serializeMany(alicorns, buffer);
 
-    final var buf = buffer.flip(); // Prepare for reading
+    final var buf = ReadBuffer.wrap(buffer.flip()); // Prepare for reading
 
     // Deserialize the data back into objects
-    buffer.flip(); // Prepare for reading
+    ReadBuffer.wrap(buffer.flip()); // Prepare for reading
     Dog[] deserializedDogs = Pickler.deserializeMany(Dog.class, buf).toArray(Dog[]::new);
     Cat[] deserializedCats = Pickler.deserializeMany(Cat.class, buf).toArray(Cat[]::new);
     Eagle[] deserializedEagles = Pickler.deserializeMany(Eagle.class, buf).toArray(Eagle[]::new);
