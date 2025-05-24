@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2025 Simon Massey
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 package io.github.simbo1905.no.framework;
 
 import io.github.simbo1905.no.framework.animal.*;
@@ -18,7 +18,6 @@ import static org.junit.jupiter.api.Assertions.*;
 /// Test class for the Pickler functionality.
 /// Demonstrates basic serialization and deserialization of records.
 public class PicklerTests {
-
   @BeforeAll
   static void setupLogging() {
     final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
@@ -51,8 +50,6 @@ public class PicklerTests {
 
     LOGGER.info("Logging initialized at level: " + level);
   }
-
-
 
   /**
    * Utility method to check nested array record equality
@@ -154,9 +151,6 @@ public class PicklerTests {
     assertEquals("John Manager", deserialized.manager().person().name());
     assertEquals(employee, deserialized.employee());
     assertEquals("Jane Employee", deserialized.employee().person().name());
-  }
-
-  public record SimpleArrayExample(int[] array1, int[] array2) {
   }
 
   @Test
@@ -450,9 +444,6 @@ public class PicklerTests {
 
     // Verify empty optional
     assertTrue(deserialized.emptyOptionalArray().isEmpty());
-
-    // Verify buffer is fully consumed
-
   }
 
   // Define simple enums for testing
@@ -520,7 +511,6 @@ public class PicklerTests {
     Pickler<OptionalEnumRecord> pickler = Pickler.forRecord(OptionalEnumRecord.class);
 
     // Calculate size and allocate buffer
-
     final var buffer = WriteBuffer.allocateSufficient(original);
 
     // Serialize
@@ -542,9 +532,6 @@ public class PicklerTests {
     assertTrue(deserialized.sizeOpt().isPresent());
     assertEquals(TestSize.MEDIUM, deserialized.sizeOpt().get());
     assertTrue(deserialized.emptyColorOpt().isEmpty());
-
-    // Verify buffer is fully consumed
-
   }
 
   @SuppressWarnings("OptionalGetWithoutIsPresent")
@@ -608,8 +595,5 @@ public class PicklerTests {
     assertEquals(TestSize.EXTRA_LARGE, deserialized.mixedArray()[3]);
     assertEquals(TestColor.GREEN, deserialized.optionalMixedArray().get()[0]);
     assertEquals(TestSize.SMALL, deserialized.optionalMixedArray().get()[2]);
-
-    // Verify buffer is fully consumed
-
   }
 }
