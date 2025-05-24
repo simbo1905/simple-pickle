@@ -85,7 +85,8 @@ class WriteBufferImpl implements WriteBuffer {
   static int intern(ByteBuffer buffer, String string) {
     final var nameBytes = string.getBytes(StandardCharsets.UTF_8);
     final var nameLength = nameBytes.length;
-    var size = ZigZagEncoding.putInt(buffer, nameLength);
+    ZigZagEncoding.putInt(buffer, nameLength);
+    var size = 1;
     buffer.put(nameBytes);
     size += nameLength;
     return size;
@@ -97,7 +98,8 @@ class WriteBufferImpl implements WriteBuffer {
     final int size = ZigZagEncoding.sizeOf(offset);
     if (size < Integer.BYTES) {
       buffer.put(INTERNED_OFFSET_VAR.marker());
-      return 1 + ZigZagEncoding.putInt(buffer, offset);
+      ZigZagEncoding.putInt(buffer, offset);
+      return 1;
     } else {
       buffer.put(INTERNED_OFFSET.marker());
       buffer.putInt(offset);

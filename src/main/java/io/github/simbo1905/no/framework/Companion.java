@@ -36,52 +36,47 @@ class Companion {
     return manufactureRecordPickler(new HashMap<>(), recordClass, recordClass.getName());
   }
 
-  static int write(ByteBuffer buffer, int value) {
+  static void write(ByteBuffer buffer, int value) {
     if (ZigZagEncoding.sizeOf(value) < Integer.BYTES) {
       LOGGER.finer(() -> "write(varint) - Enter: value=" + value + " position=" + buffer.position() + " size=" + ZigZagEncoding.sizeOf(value));
       buffer.put(INTEGER_VAR.marker());
-      return 1 + ZigZagEncoding.putInt(buffer, value);
+      ZigZagEncoding.putInt(buffer, value);
     } else {
       LOGGER.finer(() -> "write(int) - Enter: value=" + value + " position=" + buffer.position());
       buffer.put(INTEGER.marker());
       buffer.putInt(value);
-      return 1 + Integer.BYTES;
     }
   }
 
-  static int write(ByteBuffer buffer, long value) {
+  static void write(ByteBuffer buffer, long value) {
     if (ZigZagEncoding.sizeOf(value) < Long.BYTES) {
       LOGGER.finer(() -> "write(varlong) - Enter: value=" + value + " position=" + buffer.position() + " size=" + ZigZagEncoding.sizeOf(value));
       buffer.put(LONG_VAR.marker());
-      return 1 + ZigZagEncoding.putLong(buffer, value);
+      ZigZagEncoding.putLong(buffer, value);
     } else {
       LOGGER.finer(() -> "write(long) - Enter: value=" + value + " position=" + buffer.position());
       buffer.put(LONG.marker());
       buffer.putLong(value);
-      return 1 + Long.BYTES;
     }
   }
 
-  static int write(ByteBuffer buffer, double value) {
+  static void write(ByteBuffer buffer, double value) {
     LOGGER.finer(() -> "write(double) - Enter: value=" + value + " position=" + buffer.position());
     buffer.put(DOUBLE.marker());
     buffer.putDouble(value);
-    return 1 + Double.BYTES;
   }
 
-  static int write(ByteBuffer buffer, float value) {
+  static void write(ByteBuffer buffer, float value) {
     LOGGER.finer(() -> "write(float) - Enter: value=" + value + " position=" + buffer.position());
     buffer.put(FLOAT.marker());
     buffer.putFloat(value);
-    return 1 + Float.BYTES;
   }
 
   /// Note that we do not varint encode a short as we would then need and additional byte to decode
-  static int write(ByteBuffer buffer, short value) {
+  static void write(ByteBuffer buffer, short value) {
     LOGGER.finer(() -> "write(short) - Enter: value=" + value + " position=" + buffer.position());
     buffer.put(SHORT.marker());
     buffer.putShort(value);
-    return 1 + Short.BYTES;
   }
 
   static Object read(final int componentIndex, final ReadBufferImpl buf) {
@@ -297,9 +292,9 @@ class Companion {
 
   /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
   @SuppressWarnings({"unchecked", "rawtypes"})
-  static int serializeWithPickler(WriteBufferImpl buf, Pickler<?> pickler, Object object) {
+  static void serializeWithPickler(WriteBufferImpl buf, Pickler<?> pickler, Object object) {
     // Since we know at runtime that pickler is a RecordPickler and object is the right type
-    return ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
+    ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }
 
   /// Writes types into a buffer recursively. This is used to write out the components of a record.
@@ -308,9 +303,9 @@ class Companion {
   /// to write out a record that is not the specific type of the pickler.
   /// @param object the class of the record
   /// @throws IllegalStateException if the buffer is closed
-  static int recursiveWrite(final int componentIndex, final WriteBufferImpl buf, final Object object) {
+  static void recursiveWrite(final int componentIndex, final WriteBufferImpl buf, final Object object) {
     final var buffer = buf.buffer;
-    return switch (object) {
+    switch (object) {
       case null -> WriteBufferImpl.writeNull(buffer);
       case Integer i -> write(buffer, i);
       case Long l -> write(buffer, l);
@@ -324,16 +319,14 @@ class Companion {
       case InternedName t -> WriteBufferImpl.write(buffer, t);
       case InternedOffset t -> WriteBufferImpl.write(buffer, t);
       case Optional<?> o -> {
-        int size = 1;
         if (o.isEmpty()) {
           LOGGER.finer(() -> "write(empty) - position=" + buffer.position());
           buffer.put(Constants.OPTIONAL_EMPTY.marker());
         } else {
           LOGGER.finer(() -> "write(optional) - position=" + buffer.position());
           buffer.put(Constants.OPTIONAL_OF.marker());
-          size += recursiveWrite(componentIndex, buf, o.get());
+          recursiveWrite(componentIndex, buf, o.get());
         }
-        yield size;
       }
       case List<?> l -> {
         LOGGER.finer(() -> "write(list) - " +
@@ -344,24 +337,21 @@ class Companion {
         final Type[] componentTypes = buf.componentGenericTypes.get(componentIndex);
         assert componentTypes != null && componentTypes.length == 1 : "componentGenericTypes must contain at least one type";
         final var internedName = new InternedName(componentTypes[0].getTypeName());
-        int size = 1;
         // FIXME: this should write the interned name of an interned offset
-        size += recursiveWrite(componentIndex, buf, internedName);
-        size += ZigZagEncoding.putInt(buffer, l.size());
+        recursiveWrite(componentIndex, buf, internedName);
+        ZigZagEncoding.putInt(buffer, l.size());
         for (Object item : l) {
-          size += recursiveWrite(componentIndex, buf, item);
+          recursiveWrite(componentIndex, buf, item);
         }
-        yield size;
       }
       case Map<?, ?> m -> {
         LOGGER.finer(() -> "write(map) - size=" + ZigZagEncoding.sizeOf(m.size()) + " position=" + buffer.position());
         buffer.put(Constants.MAP.marker());
-        int size = 1 + ZigZagEncoding.putInt(buffer, m.size());
+        ZigZagEncoding.putInt(buffer, m.size());
         for (Map.Entry<?, ?> entry : m.entrySet()) {
-          size += recursiveWrite(componentIndex, buf, entry.getKey());
-          size += recursiveWrite(componentIndex, buf, entry.getValue());
+          recursiveWrite(componentIndex, buf, entry.getKey());
+          recursiveWrite(componentIndex, buf, entry.getValue());
         }
-        yield size;
       }
       case Enum<?> e -> {
         LOGGER.finer(() -> "write(enum) - enumToName=" + buf.enumToName.get(e) + " position=" + buffer.position());
@@ -370,10 +360,10 @@ class Companion {
         if (buf.offsetMap.containsKey(name)) {
           final var internedPosition = buf.offsetMap.get(name);
           final var internedOffset = internedPosition.offset(buffer.position());
-          yield Companion.recursiveWrite(componentIndex, buf, internedOffset);
+          Companion.recursiveWrite(componentIndex, buf, internedOffset);
         } else {
           buf.offsetMap.computeIfAbsent(name, (x) -> new InternedPosition(buffer.position()));
-          yield Companion.recursiveWrite(componentIndex, buf, name);
+          Companion.recursiveWrite(componentIndex, buf, name);
         }
       }
       // TODO zigzag compress long[] and int[]
@@ -382,22 +372,19 @@ class Companion {
         buffer.put(Constants.ARRAY.marker());
         // FIXME: this reflection should be done at pickler creation time
         final var internedName = new InternedName(a.getClass().getComponentType().getName());
-        int size = 1;
         // FIXME: this should write the interned name of an interned offset
-        size += recursiveWrite(componentIndex, buf, internedName);
+        recursiveWrite(componentIndex, buf, internedName);
         int length = Array.getLength(a);
-        size += ZigZagEncoding.putInt(buffer, length);
+        ZigZagEncoding.putInt(buffer, length);
         // FIXME: we would know at pickler creation time that this is a byte[] or int[] and take the shortcut
         if (byte.class.equals(a.getClass().getComponentType())) {
           buffer.put((byte[]) a);
-          size += ((byte[]) a).length;
         } else {
-          size += IntStream.range(0, length).map(i -> recursiveWrite(componentIndex, buf, Array.get(a, i))).sum();
+          IntStream.range(0, length).forEach(i -> recursiveWrite(componentIndex, buf, Array.get(a, i)));
         }
-        yield size;
       }
       default -> throw new IllegalStateException("Unexpected value: " + object);
-    };
+    }
   }
 
   static int maxSizeOf(Object object) {

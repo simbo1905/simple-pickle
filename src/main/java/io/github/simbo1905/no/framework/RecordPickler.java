@@ -132,7 +132,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
         .collect(Collectors.toMap(e -> e.getValue().name(), Map.Entry::getKey));
   }
 
-  int serializeWithMap(WriteBuffer buf, R object, boolean writeName) {
+  void serializeWithMap(WriteBuffer buf, R object, boolean writeName) {
     final var buffer = ((WriteBufferImpl) buf);
     if (writeName) {
       // If we are being asked to write out our record class name by a sealed pickler then we so now
@@ -155,10 +155,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
         " position=" + buffer.position() +
         " components=" + components.length +
         " size " + ZigZagEncoding.sizeOf(components.length));
-    int size = ZigZagEncoding.putInt(buffer.buffer, components.length);
+    ZigZagEncoding.putInt(buffer.buffer, components.length);
     // FIXME create array of Function<WriteBuffer, Object, Integer> toWrite = (w, c) -> {}
-
-    return 1 + size + IntStream.range(0, components.length).map(componentIndex -> {
+    IntStream.range(0, components.length).forEach(componentIndex -> {
       final var c = components[componentIndex];
       if (c instanceof Record record) {
         if (recordClass.equals(record.getClass())) {
@@ -166,7 +165,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           // If the record is the same class as this pickler we simply mark it is the same pickler type as self and recurse
           buffer.buffer.put(Constants.SAME_TYPE.marker());
           //noinspection unchecked
-          return serializeWithMap(buffer, (R) record, false);
+          serializeWithMap(buffer, (R) record, false);
         } else {
           LOGGER.fine(() -> "serializeWithMap writing RECORD type record " + record.getClass().getName() + " position=" + buffer.position());
           // we need to write that this is a different record type we need to resolve the pickler for
@@ -174,13 +173,13 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           // if the record is a different class we need to write out the interned name
           @SuppressWarnings("unchecked")
           RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-          return nestedPickler.serializeWithMap(buffer, record, true);
+          nestedPickler.serializeWithMap(buffer, record, true);
         }
       } else {
         LOGGER.finer(() -> "serializeWithMap writing " + object.getClass().getSimpleName() + " position=" + buffer.position());
-        return Companion.recursiveWrite(componentIndex, buffer, c);
+        Companion.recursiveWrite(componentIndex, buffer, c);
       }
-    }).sum();
+    });
   }
 
   @Override

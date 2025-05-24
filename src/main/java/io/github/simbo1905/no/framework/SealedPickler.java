@@ -37,6 +37,7 @@ class SealedPickler<S> implements Pickler<S> {
       throw new IllegalStateException("Cannot serialize to a closed buffer");
     }
     final var buf = (WriteBufferImpl) buffer;
+    final var startPosition = buf.position();
     if (object == null) {
       buf.put(NULL.marker());
       return 1; // 1 byte for NULL marker
@@ -44,7 +45,8 @@ class SealedPickler<S> implements Pickler<S> {
     //noinspection unchecked
     Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
     Pickler<?> pickler = subPicklers.get(concreteType);
-    return Companion.serializeWithPickler(buf, pickler, object);
+    Companion.serializeWithPickler(buf, pickler, object);
+    return buf.position() - startPosition;
   }
 
   @Override
