@@ -389,12 +389,12 @@ class Companion {
           }).sum();
       case Enum<?> e -> maxSizeOf(e.getClass().getName()) + maxSizeOf(e.name());
       case Record r -> {
+        // TODO this works but feels a little hacky
         RecordPickler<?> pickler = (RecordPickler<?>) REGISTRY.get(r.getClass());
         yield Arrays.stream(pickler.componentAccessors)
             .map(a -> {
               try {
-                final var value = a.invokeWithArguments(r);
-                return value;
+                return a.invokeWithArguments(r);
               } catch (Throwable e) {
                 throw new RuntimeException(e);
               }
@@ -405,6 +405,15 @@ class Companion {
       case null -> 0;
       case Optional<?> o when o.isEmpty() -> 1;
       case Optional<?> o -> 1 + maxSizeOf(o.get());
+      case List<?> l -> {
+        // FIXME do the reflection at pickler creation time
+        int size = 1 + 4 + ZigZagEncoding.sizeOf(l.size());
+        if (l.isEmpty()) {
+          yield size;
+        }
+        size += l.stream().mapToInt(Companion::maxSizeOf).sum();
+        yield size;
+      }
       case Object a when a.getClass().isArray() -> {
         int length = Array.getLength(a);
         if (length == 0) {
