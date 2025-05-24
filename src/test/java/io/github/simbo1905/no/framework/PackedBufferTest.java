@@ -50,7 +50,6 @@ public class PackedBufferTest {
     final var pickler = Pickler.forRecord(TestEnum.class);
     final var serializationSession = WriteBuffer.allocateSufficient(testEnum);
     pickler.serialize(serializationSession, testEnum);
-    final var pos = serializationSession.position();
     final var readBuffer = ReadBuffer.wrap(serializationSession.flip());
     final var deserialized = pickler.deserialize(readBuffer);
     assertEquals(testEnum, deserialized);

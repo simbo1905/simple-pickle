@@ -5,6 +5,7 @@ package io.github.simbo1905.no.framework;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
@@ -30,21 +31,26 @@ class SealedPickler<S> implements Pickler<S> {
 
   /// Here we simply delegate to the RecordPickler which is configured to first write out its name.
   @Override
-  public void serialize(WriteBuffer buffer, S object) {
+  public int serialize(WriteBuffer buffer, S object) {
+    Objects.requireNonNull(buffer, "buffer");
+    if (buffer.isClosed()) {
+      throw new IllegalStateException("Cannot serialize to a closed buffer");
+    }
     final var buf = (WriteBufferImpl) buffer;
     if (object == null) {
       buf.put(NULL.marker());
-      return;
+      return 1; // 1 byte for NULL marker
     }
     //noinspection unchecked
     Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
     Pickler<?> pickler = subPicklers.get(concreteType);
-    Companion.serializeWithPickler(buf, pickler, object);
+    return Companion.serializeWithPickler(buf, pickler, object);
   }
 
   @Override
-  public S deserialize(ReadBuffer buf) {
-    final var buffer = ((ReadBufferImpl) buf).buffer;
+  public S deserialize(ReadBuffer readBuffer) {
+    final var buf = (ReadBufferImpl) readBuffer;
+    final var buffer = buf.buffer;
     buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     buffer.mark();
     final byte marker = buffer.get();
@@ -59,7 +65,7 @@ class SealedPickler<S> implements Pickler<S> {
     }
     buffer.reset();
     // Read the interned name
-    final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
+    final InternedName name = (InternedName) Companion.read(nameToRecordClass, buf);
     assert name != null;
     final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(classesByShortName.get(name.name()));
     if (pickler == null) {
@@ -67,7 +73,7 @@ class SealedPickler<S> implements Pickler<S> {
     }
     try {
       //noinspection unchecked
-      return (S) pickler.deserializeWithMap(pickler.nameToClass, (ReadBufferImpl) buf, false);
+      return (S) pickler.deserializeWithMap(pickler.nameToClass, buf, false);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {

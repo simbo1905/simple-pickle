@@ -83,7 +83,8 @@ class Companion {
     return 1 + Short.BYTES;
   }
 
-  static Object read(final Map<String, Class<?>> classesByShortName, final ByteBuffer buffer) {
+  static Object read(final Map<String, Class<?>> classesByShortName, final ReadBufferImpl buf) {
+    final var buffer = buf.buffer;
     final int position = buffer.position();
     final byte marker = buffer.get();
     final Constants type = fromMarker(marker);
@@ -158,13 +159,14 @@ class Companion {
       }
       case OPTIONAL_OF -> {
         LOGGER.finer(() -> "read(of) - position=" + buffer.position());
-        yield Optional.ofNullable(read(classesByShortName, buffer));
+        yield Optional.ofNullable(read(classesByShortName, buf));
       }
       case INTERNED_NAME -> {
         LOGGER.finer(() -> "read(name) - position=" + buffer.position());
         yield unintern(buffer);
       }
       case INTERNED_OFFSET -> {
+        // Resolve and return actual interned name from the offset
         final int offset = buffer.getInt();
         final int highWaterMark = buffer.position();
         final int lowWaterMark = buffer.position() + offset - 4;
@@ -186,7 +188,7 @@ class Companion {
       }
       case ARRAY -> {
         LOGGER.finer(() -> "read(ARRAY) start position=" + buffer.position());
-        final var internedName = (InternedName) read(classesByShortName, buffer);
+        final var internedName = (InternedName) read(classesByShortName, buf);
         final Class<?> componentType = classesByShortName.get(Objects.requireNonNull(internedName).name());
         assert componentType != null : "Component type not found for name: " + internedName.name();
         final int length = ZigZagEncoding.getInt(buffer);
@@ -196,17 +198,20 @@ class Companion {
         } else {
           // Deserialize each element using IntStream instead of for loop
           IntStream.range(0, length)
-              .forEach(i -> Array.set(array, i, read(classesByShortName, buffer)));
+              .forEach(i -> Array.set(array, i, read(classesByShortName, buf)));
         }
         yield array;
       }
       case ENUM -> {
-        final var locator = Companion.read(classesByShortName, buffer);
+        final var locatorPosition = buffer.position();
+        final var locator = Companion.read(classesByShortName, buf);
         LOGGER.finer(() -> "read(enum) - locator=" + locator + " - position=" + buffer.position());
-        if (locator instanceof InternedName name) {
-          yield null; //nameToEnum.get(name);
+        if (locator instanceof InternedName(final var name)) {
+          assert buf.nameToEnum.containsKey(name) : "Name not found in enum map: " + name;
+          yield buf.nameToEnum.get(name);
         }
-        yield null;
+        Objects.requireNonNull(locator, "enum location cannot be null");
+        throw new IllegalStateException("invalid enum location type found at position=" + locatorPosition + " + locator=" + locator);
       }
       case SAME_TYPE, RECORD ->
           throw new IllegalArgumentException("This should not be reached as caller should call self or delegate to another pickler.");
@@ -263,9 +268,9 @@ class Companion {
 
   /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
   @SuppressWarnings({"unchecked", "rawtypes"})
-  static void serializeWithPickler(WriteBufferImpl buf, Pickler<?> pickler, Object object) {
+  static int serializeWithPickler(WriteBufferImpl buf, Pickler<?> pickler, Object object) {
     // Since we know at runtime that pickler is a RecordPickler and object is the right type
-    ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
+    return ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }
 
   /// Writes types into a buffer recursively. This is used to write out the components of a record.
@@ -320,6 +325,19 @@ class Companion {
         }
         yield size;
       }
+      case Enum<?> e -> {
+        LOGGER.finer(() -> "write(enum) - enumToName=" + buf.enumToName.get(e) + " position=" + buffer.position());
+        buf.buffer.put(Constants.ENUM.marker());
+        InternedName name = buf.enumToName.get(e);
+        if (buf.offsetMap.containsKey(name)) {
+          final var internedPosition = buf.offsetMap.get(name);
+          final var internedOffset = internedPosition.offset(buffer.position());
+          yield Companion.recursiveWrite(buf, internedOffset);
+        } else {
+          buf.offsetMap.computeIfAbsent(name, (x) -> new InternedPosition(buffer.position()));
+          yield Companion.recursiveWrite(buf, name);
+        }
+      }
       // TODO zigzag compress long[] and int[]
       case Object a when a.getClass().isArray() -> {
         LOGGER.finer(() -> "write(array) - size=" + ZigZagEncoding.sizeOf(Array.getLength(a)) + " position=" + buffer.position());
@@ -336,18 +354,6 @@ class Companion {
           size += IntStream.range(0, length).map(i -> recursiveWrite(buf, Array.get(a, i))).sum();
         }
         yield size;
-      }
-      case Enum<?> e -> {
-        buf.buffer.put(Constants.ENUM.marker());
-        InternedName name = buf.enumToName.get(e);
-        if (buf.offsetMap.containsKey(name)) {
-          final var internedPosition = buf.offsetMap.get(name);
-          final var internedOffset = internedPosition.offset(buffer.position());
-          yield Companion.recursiveWrite(buf, internedOffset);
-        } else {
-          buf.offsetMap.computeIfAbsent(name, (x) -> new InternedPosition(buffer.position()));
-          yield Companion.recursiveWrite(buf, name);
-        }
       }
       default -> throw new IllegalStateException("Unexpected value: " + object);
     };

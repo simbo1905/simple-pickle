@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
@@ -25,7 +26,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   final InternedName internedName;
   final Map<String, Class<?>> nameToClass = new HashMap<>(nameToBasicClass);
   final Map<Enum<?>, InternedName> enumToName = new HashMap<>();
-  final Map<InternedName, Enum<?>> nameToEnum;
+  final Map<String, Enum<?>> nameToEnum;
 
   RecordPickler(final Class<R> recordClass,
                 InternedName internedName,
@@ -95,13 +96,11 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       throw new IllegalArgumentException(msg, inner);
     }
     // flip the map for the deserialization
-    nameToEnum = enumToName.entrySet().stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+    nameToEnum = enumToName.entrySet().stream()
+        .collect(Collectors.toMap(e -> e.getValue().name(), Map.Entry::getKey));
   }
 
-  void serializeWithMap(WriteBuffer buf, R object, boolean writeName) {
-    if (buf.isClosed()) {
-      throw new IllegalStateException("PackedBuffer is closed");
-    }
+  int serializeWithMap(WriteBuffer buf, R object, boolean writeName) {
     final var buffer = ((WriteBufferImpl) buf);
     if (writeName) {
       // If we are being asked to write out our record class name by a sealed pickler then we so now
@@ -122,14 +121,14 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     // Write the number of components as an unsigned byte (max 255)
     LOGGER.finer(() -> "serializeWithMap object=" + object.hashCode() + " writing component length length=" + components.length + " position=" + buffer.position() + " writing length as zigzag size " + ZigZagEncoding.sizeOf(components.length));
     ZigZagEncoding.putInt(buffer.buffer, components.length);
-    Arrays.stream(components).forEach(c -> {
+    return Arrays.stream(components).mapToInt(c -> {
       if (c instanceof Record record) {
         if (recordClass.equals(record.getClass())) {
           LOGGER.fine(() -> "serializeWithMap writing SAME_TYPE type record " + record.getClass().getName() + " position=" + buffer.position());
           // If the record is the same class as this pickler we simply mark it is the same pickler type as self and recurse
           buffer.buffer.put(Constants.SAME_TYPE.marker());
           //noinspection unchecked
-          serializeWithMap(buffer, (R) record, false);
+          return serializeWithMap(buffer, (R) record, false);
         } else {
           LOGGER.fine(() -> "serializeWithMap writing RECORD type record " + record.getClass().getName() + " position=" + buffer.position());
           // we need to write that this is a different record type we need to resolve the pickler for
@@ -137,36 +136,45 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           // if the record is a different class we need to write out the interned name
           @SuppressWarnings("unchecked")
           RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-          nestedPickler.serializeWithMap(buffer, record, true);
+          return nestedPickler.serializeWithMap(buffer, record, true);
         }
       } else {
-        Companion.recursiveWrite(buffer, c);
+        LOGGER.finer(() -> "serializeWithMap writing " + object.getClass().getName() + " position=" + buffer.position());
+        return Companion.recursiveWrite(buffer, c);
       }
-    });
+    }).sum();
   }
 
   @Override
-  public void serialize(WriteBuffer buf, R object) {
-    // Null checks
+  public int serialize(WriteBuffer buf, R object) {
+    // Validations
     Objects.requireNonNull(buf);
-    Objects.requireNonNull(object);
-    final var buffer = ((WriteBufferImpl) buf);
-    // Use java native endian for float and double writes
-    buffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+    if (buf.isClosed()) {
+      throw new IllegalStateException("WriteBuffer is closed");
+    }
     if (0 == object.getClass().getRecordComponents().length) {
       throw new AssertionError(object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.");
     }
+    final var buffer = ((WriteBufferImpl) buf);
+    // Ensure java native endian writes
+    buffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+    // Initialize the state tracking the offsets of the record class names
+    buffer.enumToName.putAll(enumToName);
+    buffer.nameToClass.putAll(nameToClass);
     // Write the all the components
-    serializeWithMap(buf, object, false);
+    return serializeWithMap(buf, object, false);
   }
 
   @Override
-  public R deserialize(ReadBuffer buf) {
-    if (buf.isClosed()) {
+  public R deserialize(ReadBuffer buffer) {
+    Objects.requireNonNull(buffer);
+    if (buffer.isClosed()) {
       throw new IllegalStateException("PackedBuffer is closed");
     }
+    final var buf = ((ReadBufferImpl) buffer);
+    buf.nameToEnum.putAll(nameToEnum);
     try {
-      return deserializeWithMap(nameToClass, (ReadBufferImpl) buf, false);
+      return deserializeWithMap(nameToClass, buf, false);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {
@@ -174,7 +182,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     }
   }
 
-  R deserializeWithMap(final Map<String, Class<?>> nameToRecordClass, ReadBufferImpl buf, boolean readName) throws Throwable {
+  R deserializeWithMap(
+      final Map<String, Class<?>> nameToRecordClass, // FIXME move this into the buffer
+      ReadBufferImpl buf, boolean readName) throws Throwable {
     final var buffer = buf.buffer;
     if (readName) {
       final byte marker = buffer.get();
@@ -197,6 +207,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     final Object[] components = new Object[length];
     Arrays.setAll(components, i -> {
       try {
+        // FIXME the record pickler should know if it is recursive or nested so we can skip this work
+        // it can also know which ordinal is the one that is the special case of the same type or nnested type
+        // it can also know the intern name of the nested type
         buffer.mark();
         final var firstByte = buffer.get();
         final var marker = (firstByte == Constants.OPTIONAL_OF.marker()) ? buffer.get() : firstByte;
@@ -204,7 +217,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           // The component is the same types such as linked list or tree node of other nodes
           return deserializeWithMap(nameToRecordClass, buf, readName);
         } else if (marker == Constants.RECORD.marker()) {
-          final InternedName name = (InternedName) Companion.read(nameToRecordClass, buffer);
+          final InternedName name = (InternedName) Companion.read(nameToRecordClass, buf);
           assert name != null;
           //noinspection unchecked
           Class<? extends Record> concreteType = (Class<? extends Record>) nameToRecordClass.get(name.name());
@@ -213,7 +226,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
         }
         buffer.reset();
         // Read the component
-        return Companion.read(nameToRecordClass, buffer);
+        return Companion.read(nameToRecordClass, buf);
       } catch (Throwable e) {
         final var msg = "Failed to access component: " + i +
             " in record class '" + recordClass.getName() + "' : " + e.getMessage();

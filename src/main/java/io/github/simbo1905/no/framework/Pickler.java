@@ -66,7 +66,8 @@ public interface Pickler<T> {
   ///
   /// @param buffer The buffer to write into
   /// @param record The record to serialize
-  void serialize(WriteBuffer buffer, T record);
+  /// @return The number of bytes written to the buffer
+  int serialize(WriteBuffer buffer, T record);
 
   /// Recursively unloads components from the buffer and invokes the record constructor.
   /// @param buffer The buffer to read from
@@ -135,13 +136,27 @@ public interface Pickler<T> {
 }
 
 record InternedName(String name) {
+  InternedName {
+    Objects.requireNonNull(name);
+  }
 }
 
 record InternedOffset(int offset) {
+  InternedOffset {
+    if (offset >= 0) {
+      throw new IllegalArgumentException("Offset must be negative");
+    }
+  }
 }
 
 record InternedPosition(int position) {
-  public Object offset(int position) {
+  InternedPosition {
+    if (position < 0) {
+      throw new IllegalArgumentException("Position must be non-negative");
+    }
+  }
+
+  Object offset(int position) {
     return new InternedOffset(position() - position);
   }
 }

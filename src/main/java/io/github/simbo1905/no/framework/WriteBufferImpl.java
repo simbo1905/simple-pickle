@@ -23,9 +23,9 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 class WriteBufferImpl implements WriteBuffer {
 
   final ByteBuffer buffer;
-  final Map<InternedName, InternedPosition> offsetMap = new HashMap<>();
-  final Map<String, Class<?>> nameToClass = new HashMap<>();
-  final Map<Enum<?>, InternedName> enumToName = new HashMap<>();
+  final Map<InternedName, InternedPosition> offsetMap = new HashMap<>(64);
+  final Map<String, Class<?>> nameToClass = new HashMap<>(64);
+  final Map<Enum<?>, InternedName> enumToName = new HashMap<>(64);
 
   boolean closed = false;
 
@@ -163,9 +163,8 @@ class WriteBufferImpl implements WriteBuffer {
 
   @Override
   public String toString() {
-    return "PackedBufferImpl{" +
-        "buffer=" + buffer +
-        ", offsetMap.keys()=" + offsetMap.keySet() +
+    return "WriteBufferImpl{" +
+        "offsetMap=" + offsetMap +
         '}';
   }
 }
