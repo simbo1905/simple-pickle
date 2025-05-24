@@ -89,6 +89,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       componentGenericTypes = new Type[components.length][];
       Arrays.setAll(componentGenericTypes, i -> {
         try {
+          // FIXME: when we have lists of lists we need to unroll all the generic types to get a nested structure
           return switch (components[i].getGenericType()) {
             case ParameterizedType p -> p.getActualTypeArguments();
             case Type ignored -> null;
@@ -107,11 +108,12 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           .forEach(type -> {
             if (type instanceof Class<?> c) {
               nameToClass.putIfAbsent(c.getName(), c); // FIXME make shortName
-            } else {
-              try {
-                nameToClass.putIfAbsent(type.getTypeName(), Class.forName(type.getTypeName())); // FIXME make shortName
-              } catch (ClassNotFoundException e) {
-                throw new RuntimeException(e);
+            } else if (type instanceof ParameterizedType p) {
+              final var genericType = p.getActualTypeArguments();
+              for (Type t : genericType) {
+                if (t instanceof Class<?> ct) {
+                  nameToClass.putIfAbsent(ct.getName(), ct); // FIXME make shortName
+                }
               }
             }
           });

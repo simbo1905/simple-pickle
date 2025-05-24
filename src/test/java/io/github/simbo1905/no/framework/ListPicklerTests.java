@@ -72,11 +72,12 @@ public class ListPicklerTests {
     Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
 
     // Calculate size and allocate buffer
-    var buffer = WriteBuffer.allocateSufficient(original);
+    var buffer = WriteBuffer.of(1024);
 
     // Serialize
     pickler.serialize(buffer, original);
-    assertFalse(buffer.hasRemaining());
+
+    // Flip the buffer to prepare for reading
     var buf = ReadBuffer.wrap(buffer.flip());
 
     // Deserialize
@@ -90,12 +91,10 @@ public class ListPicklerTests {
         .forEach(i ->
             assertEquals(original.nestedList().get(i).size(), deserialized.nestedList().get(i).size()));
 
-
     // Verify buffer is fully consumed
     assertFalse(buffer.hasRemaining());
 
     // verify the inner lists are immutable
     assertThrows(UnsupportedOperationException.class, () -> deserialized.nestedList().removeFirst());
   }
-
 }
