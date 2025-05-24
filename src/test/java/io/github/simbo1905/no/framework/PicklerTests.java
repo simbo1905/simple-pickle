@@ -750,96 +750,6 @@ class PicklerTests {
 
   }
 
-  @Test
-  void testPrimitiveArrays() {
-    // Create arrays of all primitive types
-    byte[] byteArray = {1, 2, 3, 127, -128};
-    short[] shortArray = {1, 2, 3, 32767, -32768};
-    char[] charArray = {'a', 'b', 'c', '1', '2'};
-    long[] longArray = {1L, 2L, 3L, Long.MAX_VALUE, Long.MIN_VALUE};
-    float[] floatArray = {1.0f, 2.5f, 3.14f, Float.MAX_VALUE, Float.MIN_VALUE};
-    double[] doubleArray = {1.0, 2.5, 3.14, Double.MAX_VALUE, Double.MIN_VALUE};
-
-    // Create a record to hold these arrays
-    record PrimitiveArraysRecord(
-        byte[] byteArray,
-        short[] shortArray,
-        char[] charArray,
-        long[] longArray,
-        float[] floatArray,
-        double[] doubleArray
-    ) {
-    }
-
-    // Create an instance
-    PrimitiveArraysRecord original = new PrimitiveArraysRecord(
-        byteArray, shortArray, charArray, longArray, floatArray, doubleArray);
-
-    // Get a pickler for the record
-    Pickler<PrimitiveArraysRecord> pickler = Pickler.forRecord(PrimitiveArraysRecord.class);
-
-    // Calculate size and allocate buffer
-
-    final var buffer = WriteBuffer.allocateSufficient(original);
-
-    // Serialize
-    pickler.serialize(buffer, original);
-
-    var buf = ReadBuffer.wrap(buffer.flip());
-
-    // Deserialize
-    PrimitiveArraysRecord deserialized = pickler.deserialize(buf);
-
-    // Verify all arrays
-    assertArrayEquals(original.byteArray(), deserialized.byteArray());
-    assertArrayEquals(original.shortArray(), deserialized.shortArray());
-    assertArrayEquals(original.charArray(), deserialized.charArray());
-    assertArrayEquals(original.longArray(), deserialized.longArray());
-    assertArrayEquals(original.floatArray(), deserialized.floatArray(), 0.0f);
-    assertArrayEquals(original.doubleArray(), deserialized.doubleArray(), 0.0);
-
-    // Verify buffer is fully consumed
-
-  }
-
-  @Test
-  void testByteArray() {
-    // Create arrays of all primitive types
-    byte[] byteArray = {1, 2, 3, 127, -128};
-
-    // Create a record to hold these arrays
-    record PrimitiveArraysRecord(
-        byte[] byteArray
-    ) {
-    }
-
-    // Create an instance
-    PrimitiveArraysRecord original = new PrimitiveArraysRecord(
-        byteArray);
-
-    // Get a pickler for the record
-    Pickler<PrimitiveArraysRecord> pickler = Pickler.forRecord(PrimitiveArraysRecord.class);
-
-    // Calculate size and allocate buffer
-
-    final var buffer = WriteBuffer.allocateSufficient(original);
-
-    // Serialize
-    pickler.serialize(buffer, original);
-
-    var buf = ReadBuffer.wrap(buffer.flip());
-
-    // Deserialize
-    PrimitiveArraysRecord deserialized = pickler.deserialize(buf);
-
-    // Verify all arrays
-    assertArrayEquals(original.byteArray(), deserialized.byteArray());
-
-    // Verify buffer is fully consumed
-
-  }
-
-
   // Define simple enums for testing
   enum TestColor {
     RED, GREEN, BLUE, YELLOW
@@ -847,38 +757,6 @@ class PicklerTests {
 
   enum TestSize {
     SMALL, MEDIUM, LARGE, EXTRA_LARGE
-  }
-
-  @Test
-  void testBasicEnum() {
-    // Create a record with enum fields
-    record EnumRecord(TestColor color, TestSize size) {
-    }
-
-    // Create an instance
-    EnumRecord original = new EnumRecord(TestColor.BLUE, TestSize.LARGE);
-
-    // Get a pickler for the record
-    Pickler<EnumRecord> pickler = Pickler.forRecord(EnumRecord.class);
-
-    // Calculate size and allocate buffer
-
-    final var buffer = WriteBuffer.allocateSufficient(original);
-
-    // Serialize
-    pickler.serialize(buffer, original);
-
-    var buf = ReadBuffer.wrap(buffer.flip());
-
-    // Deserialize
-    EnumRecord deserialized = pickler.deserialize(buf);
-
-    // Verify enum values
-    assertEquals(original.color(), deserialized.color());
-    assertEquals(original.size(), deserialized.size());
-
-    // Verify buffer is fully consumed
-
   }
 
   @Test
@@ -914,9 +792,6 @@ class PicklerTests {
     for (int i = 0; i < original.colors().length; i++) {
       assertEquals(original.colors()[i], deserialized.colors()[i]);
     }
-
-    // Verify buffer is fully consumed
-
   }
 
   @Test

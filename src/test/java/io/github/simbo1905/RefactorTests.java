@@ -384,70 +384,52 @@ public class RefactorTests {
     assertArrayEquals(record.values(), deserialized.values(), "Short array contents should match");
   }
 
-  // Test record for float array
-  public record FloatArrayRecord(float[] values) {
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      FloatArrayRecord that = (FloatArrayRecord) o;
-      return java.util.Arrays.equals(values, that.values);
-    }
-
-    @Override
-    public int hashCode() {
-      return java.util.Arrays.hashCode(values);
-    }
+  // Create a record to hold these arrays
+  public record PrimitiveArraysRecord(
+      byte[] byteArray,
+      short[] shortArray,
+      char[] charArray,
+      long[] longArray,
+      float[] floatArray,
+      double[] doubleArray
+  ) {
   }
 
   @Test
-  void testFloatArrayRecordSerialization() {
-    // Arrange
-    FloatArrayRecord record = new FloatArrayRecord(new float[]{1.1f, 2.2f, 3.3f, -0.1f, Float.MAX_VALUE});
-    Pickler<FloatArrayRecord> pickler = forRecord(FloatArrayRecord.class);
-    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
+  void testPrimitiveArrays() {
+    // Create arrays of all primitive types
+    byte[] byteArray = {1, 2, 3, 127, -128};
+    short[] shortArray = {1, 2, 3, 32767, -32768};
+    char[] charArray = {'a', 'b', 'c', '1', '2'};
+    long[] longArray = {1L, 2L, 3L, Long.MAX_VALUE, Long.MIN_VALUE};
+    float[] floatArray = {1.0f, 2.5f, 3.14f, Float.MAX_VALUE, Float.MIN_VALUE};
+    double[] doubleArray = {1.0, 2.5, 3.14, Double.MAX_VALUE, Double.MIN_VALUE};
 
-    // Act
-    pickler.serialize(buffer, record);
-    final var buf = ReadBuffer.wrap(buffer.flip());
-    FloatArrayRecord deserialized = pickler.deserialize(buf);
+    // Create an instance
+    PrimitiveArraysRecord original = new PrimitiveArraysRecord(
+        byteArray, shortArray, charArray, longArray, floatArray, doubleArray);
 
-    // Assert
-    assertEquals(record, deserialized, "Float array record should be preserved");
-    assertArrayEquals(record.values(), deserialized.values(), "Float array contents should match");
-  }
+    // Get a pickler for the record
+    Pickler<PrimitiveArraysRecord> pickler = Pickler.forRecord(PrimitiveArraysRecord.class);
 
-  // Test record for double array
-  public record DoubleArrayRecord(double[] values) {
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      DoubleArrayRecord that = (DoubleArrayRecord) o;
-      return java.util.Arrays.equals(values, that.values);
-    }
+    // Calculate size and allocate buffer
+    final var buffer = WriteBuffer.allocateSufficient(original);
 
-    @Override
-    public int hashCode() {
-      return java.util.Arrays.hashCode(values);
-    }
-  }
+    // Serialize
+    pickler.serialize(buffer, original);
 
-  @Test
-  void testDoubleArrayRecordSerialization() {
-    // Arrange
-    DoubleArrayRecord record = new DoubleArrayRecord(new double[]{Math.PI, Math.E, 1.0 / 3.0, Double.MIN_VALUE, Double.MAX_VALUE});
-    Pickler<DoubleArrayRecord> pickler = forRecord(DoubleArrayRecord.class);
-    WriteBuffer buffer = WriteBuffer.allocateSufficient(record);
+    var buf = ReadBuffer.wrap(buffer.flip());
 
-    // Act
-    pickler.serialize(buffer, record);
-    final var buf = ReadBuffer.wrap(buffer.flip());
-    DoubleArrayRecord deserialized = pickler.deserialize(buf);
+    // Deserialize
+    PrimitiveArraysRecord deserialized = pickler.deserialize(buf);
 
-    // Assert
-    assertEquals(record, deserialized, "Double array record should be preserved");
-    assertArrayEquals(record.values(), deserialized.values(), "Double array contents should match");
+    // Verify all arrays
+    assertArrayEquals(original.byteArray(), deserialized.byteArray());
+    assertArrayEquals(original.shortArray(), deserialized.shortArray());
+    assertArrayEquals(original.charArray(), deserialized.charArray());
+    assertArrayEquals(original.longArray(), deserialized.longArray());
+    assertArrayEquals(original.floatArray(), deserialized.floatArray(), 0.0f);
+    assertArrayEquals(original.doubleArray(), deserialized.doubleArray(), 0.0);
   }
 
   @Test
@@ -527,7 +509,7 @@ public class RefactorTests {
     }
   }
 
-  public record ArrayRecord(String[] ints) {
+  public record ArrayRecord(String[] values) {
   }
 
   @Test
@@ -543,7 +525,7 @@ public class RefactorTests {
     final var deserializedArrayRecord = arrayPickler.deserialize(readBuffer);
 
     // Then the records should be equal
-    assertArrayEquals(arrayRecord.ints(), deserializedArrayRecord.ints());
+    assertArrayEquals(arrayRecord.values(), deserializedArrayRecord.values());
   }
 
   @Test
@@ -648,5 +630,48 @@ public class RefactorTests {
       IntStream.range(0, animals.size()).forEach(i ->
           assertEquals(animals.get(i), deserializedAnimals.get(i)));
     }
+  }
+
+
+  // Define simple enums for testing
+  @SuppressWarnings("unused")
+  enum TestColor {
+    RED, GREEN, BLUE, YELLOW
+  }
+
+  @SuppressWarnings("unused")
+  enum TestSize {
+    SMALL, MEDIUM, LARGE, EXTRA_LARGE
+  }
+
+  // Create a record with enum fields
+  public record EnumRecord(TestColor color, TestSize size) {
+  }
+
+  @Test
+  void testBasicEnum() {
+
+
+    // Create an instance
+    EnumRecord original = new EnumRecord(TestColor.BLUE, TestSize.LARGE);
+
+    // Get a pickler for the record
+    Pickler<EnumRecord> pickler = Pickler.forRecord(EnumRecord.class);
+
+    // Calculate size and allocate buffer
+
+    final var buffer = WriteBuffer.allocateSufficient(original);
+
+    // Serialize
+    pickler.serialize(buffer, original);
+
+    var buf = ReadBuffer.wrap(buffer.flip());
+
+    // Deserialize
+    EnumRecord deserialized = pickler.deserialize(buf);
+
+    // Verify enum values
+    assertEquals(original.color(), deserialized.color());
+    assertEquals(original.size(), deserialized.size());
   }
 }
