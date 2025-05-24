@@ -466,4 +466,38 @@ public class RefactorTests {
     assertEquals(record, deserialized, "Double array record should be preserved");
     assertArrayEquals(record.values(), deserialized.values(), "Double array contents should match");
   }
+
+  @Test
+  void testList() throws Exception {
+    // Here we are deliberately passing in a mutable list to the constructor
+    final var original = new ListRecord(new ArrayList<>() {{
+      add("A");
+      add("B");
+    }});
+
+    final var pickler = Pickler.forRecord(ListRecord.class);
+    final byte[] bytes;
+    try (var buffer = WriteBuffer.of(1024)) {
+      final int len = pickler.serialize(buffer, original);
+      assert len == buffer.position();
+      bytes = new byte[len];
+      final var output = buffer.flip();
+      output.get(bytes);
+    }
+
+    final ListRecord deserialized = pickler.deserialize(ReadBuffer.wrap(bytes));
+
+    // Verify the record counts
+    assertEquals(original.list().size(), deserialized.list().size());
+    assertArrayEquals(original.list().toArray(), deserialized.list().toArray());
+    // Verify immutable list by getting the deserialized list and trying to add into the list we expect an exception
+    assertThrows(UnsupportedOperationException.class, () -> deserialized.list().removeFirst());
+  }
+
+  public record ListRecord(List<String> list) {
+    // Use the canonical constructor to make an immutable copy
+    public ListRecord {
+      list = List.copyOf(list);
+    }
+  }
 }

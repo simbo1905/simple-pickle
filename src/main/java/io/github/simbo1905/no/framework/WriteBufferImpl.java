@@ -5,12 +5,11 @@ package io.github.simbo1905.no.framework;
 
 import org.jetbrains.annotations.TestOnly;
 
+import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 import static io.github.simbo1905.no.framework.Constants.*;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -26,6 +25,7 @@ class WriteBufferImpl implements WriteBuffer {
   final Map<InternedName, InternedPosition> offsetMap = new HashMap<>(64);
   final Map<String, Class<?>> nameToClass = new HashMap<>(64);
   final Map<Enum<?>, InternedName> enumToName = new HashMap<>(64);
+  final List<Type[]> componentGenericTypes = new ArrayList<>();
 
   boolean closed = false;
 

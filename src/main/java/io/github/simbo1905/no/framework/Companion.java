@@ -5,6 +5,7 @@ package io.github.simbo1905.no.framework;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -83,9 +84,7 @@ class Companion {
     return 1 + Short.BYTES;
   }
 
-  static Object read(
-      final Map<String, Class<?>> classesByShortName, // FIXME: move this into the ReadBufferImpl
-      final ReadBufferImpl buf) {
+  static Object read(final int componentIndex, final ReadBufferImpl buf) {
     final var buffer = buf.buffer;
     final int position = buffer.position();
     final byte marker = buffer.get();
@@ -161,7 +160,7 @@ class Companion {
       }
       case OPTIONAL_OF -> {
         LOGGER.finer(() -> "read(of) - position=" + buffer.position());
-        yield Optional.ofNullable(read(classesByShortName, buf));
+        yield Optional.ofNullable(read(componentIndex, buf));
       }
       case INTERNED_NAME -> {
         LOGGER.finer(() -> "read(name) - position=" + buffer.position());
@@ -190,8 +189,8 @@ class Companion {
       }
       case ARRAY -> {
         LOGGER.finer(() -> "read(ARRAY) start position=" + buffer.position());
-        final var internedName = (InternedName) read(classesByShortName, buf);
-        final Class<?> componentType = classesByShortName.get(Objects.requireNonNull(internedName).name());
+        final var internedName = (InternedName) read(componentIndex, buf);
+        final Class<?> componentType = buf.nameToClass.get(Objects.requireNonNull(internedName).name());
         assert componentType != null : "Component type not found for name: " + internedName.name();
         final int length = ZigZagEncoding.getInt(buffer);
         final Object array = Array.newInstance(componentType, length);
@@ -200,14 +199,17 @@ class Companion {
         } else {
           // Deserialize each element using IntStream instead of for loop
           IntStream.range(0, length)
-              .forEach(i -> Array.set(array, i, read(classesByShortName, buf)));
+              .forEach(i -> Array.set(array, i, read(componentIndex, buf)));
         }
         yield array;
       }
       case ENUM -> {
         final var locatorPosition = buffer.position();
-        final var locator = Companion.read(classesByShortName, buf);
-        LOGGER.finer(() -> "read(enum) - locator=" + locator + " - position=" + buffer.position());
+        final var locator = Companion.read(componentIndex, buf);
+        LOGGER.finer(() -> "read(enum) -" +
+            " position=" + buffer.position() +
+            " locator=" + locator
+        );
         if (locator instanceof InternedName(final var name)) {
           assert buf.nameToEnum.containsKey(name) : "Name not found in enum map: " + name;
           yield buf.nameToEnum.get(name);
@@ -215,10 +217,35 @@ class Companion {
         Objects.requireNonNull(locator, "enum location cannot be null");
         throw new IllegalStateException("invalid enum location type found at position=" + locatorPosition + " + locator=" + locator);
       }
+      case LIST -> {
+        LOGGER.finer(() -> "read(list) - start position=" + buffer.position());
+        final var internedName = (InternedName) read(componentIndex, buf);
+        final Type[] componentTypes = buf.componentGenericTypes.get(componentIndex);
+        assert componentTypes != null && componentTypes.length == 1 : "componentGenericTypes must contain at least one type";
+        final Class<?> componentType = buf.nameToClass.get(Objects.requireNonNull(internedName).name());
+        assert componentType != null : "Component type not found for name: " + internedName.name();
+        final int size = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "read(list) - size=" + size + " position=" + buffer.position());
+        if (size == 0) {
+          yield Collections.emptyList();
+        }
+        final List<Object> list = new ArrayList<>(size);
+        IntStream.range(0, size).forEach(i -> {
+          final Object item = read(componentIndex, buf);
+          if (item == null) {
+            throw new IllegalStateException("List item cannot be null at index " + i + " in list of type " + componentType.getName());
+          }
+          if (!componentType.isInstance(item)) {
+            throw new IllegalStateException("List item at index " + i + " is not of type " + componentType.getName() + ": " + item.getClass().getName());
+          }
+          list.add(i, item);
+        });
+        // Return an immutable list to prevent modification
+        yield Collections.unmodifiableList(list);
+      }
       case SAME_TYPE, RECORD ->
           throw new IllegalArgumentException("This should not be reached as caller should call self or delegate to another pickler.");
       case MAP -> throw new AssertionError("not implemented MAP");
-      case LIST -> throw new AssertionError("not implemented LIST");
     };
   }
 
@@ -281,7 +308,7 @@ class Companion {
   /// to write out a record that is not the specific type of the pickler.
   /// @param object the class of the record
   /// @throws IllegalStateException if the buffer is closed
-  static int recursiveWrite(final WriteBufferImpl buf, Object object) {
+  static int recursiveWrite(final int componentIndex, final WriteBufferImpl buf, final Object object) {
     final var buffer = buf.buffer;
     return switch (object) {
       case null -> WriteBufferImpl.writeNull(buffer);
@@ -304,16 +331,25 @@ class Companion {
         } else {
           LOGGER.finer(() -> "write(optional) - position=" + buffer.position());
           buffer.put(Constants.OPTIONAL_OF.marker());
-          size += recursiveWrite(buf, o.get());
+          size += recursiveWrite(componentIndex, buf, o.get());
         }
         yield size;
       }
       case List<?> l -> {
-        LOGGER.finer(() -> "write(list) - size=" + ZigZagEncoding.sizeOf(l.size()) + " position=" + buffer.position());
+        LOGGER.finer(() -> "write(list) - " +
+            " position=" + buffer.position() +
+            " size=" + ZigZagEncoding.sizeOf(l.size())
+        );
         buffer.put(Constants.LIST.marker());
-        int size = 1 + ZigZagEncoding.putInt(buffer, l.size());
+        final Type[] componentTypes = buf.componentGenericTypes.get(componentIndex);
+        assert componentTypes != null && componentTypes.length == 1 : "componentGenericTypes must contain at least one type";
+        final var internedName = new InternedName(componentTypes[0].getTypeName());
+        int size = 1;
+        // FIXME: this should write the interned name of an interned offset
+        size += recursiveWrite(componentIndex, buf, internedName);
+        size += ZigZagEncoding.putInt(buffer, l.size());
         for (Object item : l) {
-          size += recursiveWrite(buf, item);
+          size += recursiveWrite(componentIndex, buf, item);
         }
         yield size;
       }
@@ -322,8 +358,8 @@ class Companion {
         buffer.put(Constants.MAP.marker());
         int size = 1 + ZigZagEncoding.putInt(buffer, m.size());
         for (Map.Entry<?, ?> entry : m.entrySet()) {
-          size += recursiveWrite(buf, entry.getKey());
-          size += recursiveWrite(buf, entry.getValue());
+          size += recursiveWrite(componentIndex, buf, entry.getKey());
+          size += recursiveWrite(componentIndex, buf, entry.getValue());
         }
         yield size;
       }
@@ -334,10 +370,10 @@ class Companion {
         if (buf.offsetMap.containsKey(name)) {
           final var internedPosition = buf.offsetMap.get(name);
           final var internedOffset = internedPosition.offset(buffer.position());
-          yield Companion.recursiveWrite(buf, internedOffset);
+          yield Companion.recursiveWrite(componentIndex, buf, internedOffset);
         } else {
           buf.offsetMap.computeIfAbsent(name, (x) -> new InternedPosition(buffer.position()));
-          yield Companion.recursiveWrite(buf, name);
+          yield Companion.recursiveWrite(componentIndex, buf, name);
         }
       }
       // TODO zigzag compress long[] and int[]
@@ -345,10 +381,10 @@ class Companion {
         LOGGER.finer(() -> "write(array) - size=" + ZigZagEncoding.sizeOf(Array.getLength(a)) + " position=" + buffer.position());
         buffer.put(Constants.ARRAY.marker());
         // FIXME: this reflection should be done at pickler creation time
-        final var InternedName = new InternedName(a.getClass().getComponentType().getName());
+        final var internedName = new InternedName(a.getClass().getComponentType().getName());
         int size = 1;
         // FIXME: this should write the interned name of an interned offset
-        size += recursiveWrite(buf, InternedName);
+        size += recursiveWrite(componentIndex, buf, internedName);
         int length = Array.getLength(a);
         size += ZigZagEncoding.putInt(buffer, length);
         // FIXME: we would know at pickler creation time that this is a byte[] or int[] and take the shortcut
@@ -356,7 +392,7 @@ class Companion {
           buffer.put((byte[]) a);
           size += ((byte[]) a).length;
         } else {
-          size += IntStream.range(0, length).map(i -> recursiveWrite(buf, Array.get(a, i))).sum();
+          size += IntStream.range(0, length).map(i -> recursiveWrite(componentIndex, buf, Array.get(a, i))).sum();
         }
         yield size;
       }
@@ -406,7 +442,7 @@ class Companion {
       case Optional<?> o when o.isEmpty() -> 1;
       case Optional<?> o -> 1 + maxSizeOf(o.get());
       case List<?> l -> {
-        // FIXME do the reflection at pickler creation time
+        // FIXME broken must do the reflection at pickler creation time to know the component type of the list
         int size = 1 + 4 + ZigZagEncoding.sizeOf(l.size());
         if (l.isEmpty()) {
           yield size;

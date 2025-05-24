@@ -96,6 +96,7 @@ public interface Pickler<T> {
 record InternedName(String name) {
   InternedName {
     Objects.requireNonNull(name);
+    // TODO shorten java.lang.String to be j.l.String the StringBuild reverse it to be gnirtS.l.j
   }
 }
 

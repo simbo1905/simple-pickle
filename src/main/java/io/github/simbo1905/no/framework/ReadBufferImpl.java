@@ -1,8 +1,11 @@
 package io.github.simbo1905.no.framework;
 
+import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 class ReadBufferImpl implements ReadBuffer {
@@ -10,6 +13,8 @@ class ReadBufferImpl implements ReadBuffer {
   boolean closed = false;
 
   final Map<String, Enum<?>> nameToEnum = new HashMap<>(64);
+  final Map<String, Class<?>> nameToClass = new HashMap<>(64);
+  final List<Type[]> componentGenericTypes = new ArrayList<>();
 
   ReadBufferImpl(ByteBuffer buffer) {
     buffer.order(ByteOrder.BIG_ENDIAN);

@@ -13,14 +13,14 @@ import static io.github.simbo1905.no.framework.Constants.*;
 
 class SealedPickler<S> implements Pickler<S> {
   final Map<Class<? extends S>, Pickler<? extends S>> subPicklers;
-  final Map<String, Class<?>> classesByShortName;
+  final Map<String, Class<?>> recordClassByName;
   final Map<String, Class<?>> nameToRecordClass = new HashMap<>(nameToBasicClass);
 
   public SealedPickler(
       Map<Class<? extends S>, Pickler<? extends S>> subPicklers,
       Map<String, Class<?>> classesByShortName) {
     this.subPicklers = subPicklers;
-    this.classesByShortName = classesByShortName;
+    this.recordClassByName = classesByShortName;
     this.nameToRecordClass.putAll(classesByShortName.entrySet().stream()
         .filter(e -> e.getValue().isRecord())
         .collect(Collectors.toMap(
@@ -64,22 +64,23 @@ class SealedPickler<S> implements Pickler<S> {
           + marker);
     }
     buffer.reset();
+    buf.nameToClass.putAll(nameToRecordClass);
     // Read the interned name
-    final InternedName name = (InternedName) Companion.read(nameToRecordClass, buf);
+    final InternedName name = (InternedName) Companion.read(-1, buf); // TODO annoying that passing -1 for unused
     assert name != null;
-    final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(classesByShortName.get(name.name()));
+    final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(recordClassByName.get(name.name()));
     if (pickler == null) {
       throw new IllegalStateException("No pickler found for " + name.name());
     }
+    buf.nameToClass.clear();
+    buf.nameToClass.putAll(pickler.nameToClass);
     try {
       //noinspection unchecked
-      return (S) pickler.deserializeWithMap(pickler.nameToClass, buf, false);
+      return (S) pickler.deserializeWithMap(buf, false);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {
       throw new RuntimeException("Failed to deserialize " + name.name() + " : " + t.getMessage(), t);
     }
   }
-
-
 }

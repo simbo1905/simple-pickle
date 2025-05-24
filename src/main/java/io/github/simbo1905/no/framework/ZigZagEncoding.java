@@ -2,30 +2,14 @@ package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
 
-/// Written by Gil Tene of Azul Systems, and released to the public domain,
-/// as explained at [CC0 1.0 Universal](http://creativecommons.org/publicdomain/zero/1.0/)
-///
-/// This class provides encoding and decoding methods for writing and reading
-/// ZigZag-encoded LEB128-64b9B-variant (Little Endian Base 128) values to/from a
-/// ByteBuffer. LEB128's variable length encoding provides for using a
-/// smaller number of bytes for smaller values, and the use of ZigZag encoding
-/// allows small (closer to zero) negative values to use fewer bytes. Details
-/// on both LEB128 and ZigZag can be readily found elsewhere.
-///
-/// The LEB128-64b9B-variant encoding used here diverges from the "original"
-/// LEB128 as it extends to 64 bit values: In the original LEB128, a 64 bit
-/// value can take up to 10 bytes in the stream, where this variant's encoding
-/// of a 64 bit values will max out at 9 bytes.
-///
-/// As such, this encoder/decoder should NOT be used for encoding or decoding
-/// "standard" LEB128 formats (e.g. Google Protocol Buffers).
-/// @author Gil Tene
-public class ZigZagEncoding {
+
+class ZigZagEncoding {
 
   /// Writes a long value to the given buffer in LEB128 ZigZag encoded format
   /// @param buffer the buffer to write to
   /// @param value  the value to write to the buffer
   /// @return the number of bytes written
+  // FIXME: restore the original methods for putInt and putLong as much cheaper to get the size from the buffer old/new position
   static int putLong(ByteBuffer buffer, long value) {
     int count = 0;
     value = (value << 1) ^ (value >> 63);

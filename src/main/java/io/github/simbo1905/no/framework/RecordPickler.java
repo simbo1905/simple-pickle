@@ -6,7 +6,9 @@ package io.github.simbo1905.no.framework;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -20,6 +22,7 @@ import static io.github.simbo1905.no.framework.Constants.INTERNED_NAME;
 
 final class RecordPickler<R extends Record> implements Pickler<R> {
   final MethodHandle[] componentAccessors;
+  final Type[][] componentGenericTypes;
   final Class<R> recordClass;
   final int componentCount;
   final MethodHandle canonicalConstructorHandle;
@@ -44,15 +47,13 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
 
     try {
       // Get parameter types for the canonical constructor
-      Class<?>[] parameterTypes = Arrays.stream(components)
-          .map(RecordComponent::getType)
-          .toArray(Class<?>[]::new);
+      Class<?>[] parameterTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
       // Record the regular types, the array types, and the enums that we will write into the buffer
       Arrays.stream(parameterTypes).forEach(c -> {
         switch (c) {
           case Class<?> arrayType when arrayType.isArray() -> {
             Class<?> componentType = arrayType.getComponentType();
-            nameToClass.putIfAbsent(componentType.getName(), componentType);
+            nameToClass.putIfAbsent(componentType.getName(), componentType); // FIXME: make short name
           }
           case Class<?> enumType when enumType.isEnum() -> {
             for (Object e : enumType.getEnumConstants()) {
@@ -68,7 +69,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
               }
             }
           }
-          default -> nameToClass.putIfAbsent(c.getName(), c);
+          default -> nameToClass.putIfAbsent(c.getName(), c); // FIXME make shortName
         }
       });
       // Get the canonical constructor
@@ -85,6 +86,35 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           throw new IllegalArgumentException(msg, e);
         }
       });
+      componentGenericTypes = new Type[components.length][];
+      Arrays.setAll(componentGenericTypes, i -> {
+        try {
+          return switch (components[i].getGenericType()) {
+            case ParameterizedType p -> p.getActualTypeArguments();
+            case Type ignored -> null;
+          };
+        } catch (Throwable e) {
+          final var msg = "Failed to resolve component generic type for " + components[i].getName() +
+              " in record class " + recordClass.getName() + ": " + e.getClass().getSimpleName();
+          LOGGER.severe(() -> msg);
+          throw new IllegalArgumentException(msg, e);
+        }
+      });
+      Arrays.stream(componentGenericTypes)
+          .filter(Objects::nonNull)
+          .flatMap(Arrays::stream)
+          .filter(Objects::nonNull)
+          .forEach(type -> {
+            if (type instanceof Class<?> c) {
+              nameToClass.putIfAbsent(c.getName(), c); // FIXME make shortName
+            } else {
+              try {
+                nameToClass.putIfAbsent(type.getTypeName(), Class.forName(type.getTypeName())); // FIXME make shortName
+              } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+              }
+            }
+          });
     } catch (Exception e) {
       Throwable inner = e;
       while (inner.getCause() != null) {
@@ -119,9 +149,15 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       }
     });
     // Write the number of components as an unsigned byte (max 255)
-    LOGGER.finer(() -> "serializeWithMap object=" + object.hashCode() + " writing component length length=" + components.length + " position=" + buffer.position() + " writing length as zigzag size " + ZigZagEncoding.sizeOf(components.length));
-    ZigZagEncoding.putInt(buffer.buffer, components.length);
-    return Arrays.stream(components).mapToInt(c -> {
+    LOGGER.finer(() -> "serializeWithMap object=" + object.hashCode() +
+        " position=" + buffer.position() +
+        " components=" + components.length +
+        " size " + ZigZagEncoding.sizeOf(components.length));
+    int size = ZigZagEncoding.putInt(buffer.buffer, components.length);
+    // FIXME create array of Function<WriteBuffer, Object, Integer> toWrite = (w, c) -> {}
+
+    return 1 + size + IntStream.range(0, components.length).map(componentIndex -> {
+      final var c = components[componentIndex];
       if (c instanceof Record record) {
         if (recordClass.equals(record.getClass())) {
           LOGGER.fine(() -> "serializeWithMap writing SAME_TYPE type record " + record.getClass().getName() + " position=" + buffer.position());
@@ -139,30 +175,33 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
           return nestedPickler.serializeWithMap(buffer, record, true);
         }
       } else {
-        LOGGER.finer(() -> "serializeWithMap writing " + object.getClass().getName() + " position=" + buffer.position());
-        return Companion.recursiveWrite(buffer, c);
+        LOGGER.finer(() -> "serializeWithMap writing " + object.getClass().getSimpleName() + " position=" + buffer.position());
+        return Companion.recursiveWrite(componentIndex, buffer, c);
       }
     }).sum();
   }
 
   @Override
-  public int serialize(WriteBuffer buf, R object) {
+  public int serialize(WriteBuffer buffer, R object) {
     // Validations
-    Objects.requireNonNull(buf);
-    if (buf.isClosed()) {
+    Objects.requireNonNull(buffer);
+    if (buffer.isClosed()) {
       throw new IllegalStateException("WriteBuffer is closed");
     }
     if (0 == object.getClass().getRecordComponents().length) {
       throw new AssertionError(object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.");
     }
-    final var buffer = ((WriteBufferImpl) buf);
+    final var buf = ((WriteBufferImpl) buffer);
+    final var startPos = buf.position();
     // Ensure java native endian writes
-    buffer.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+    buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     // Initialize the state tracking the offsets of the record class names
-    buffer.enumToName.putAll(enumToName);
-    buffer.nameToClass.putAll(nameToClass);
+    buf.enumToName.putAll(enumToName);
+    buf.nameToClass.putAll(nameToClass);
+    buf.componentGenericTypes.addAll(Arrays.stream(componentGenericTypes).toList());
     // Write the all the components
-    return serializeWithMap(buf, object, false);
+    serializeWithMap(buffer, object, false);
+    return buffer.position() - startPos;
   }
 
   @Override
@@ -172,9 +211,12 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       throw new IllegalStateException("PackedBuffer is closed");
     }
     final var buf = ((ReadBufferImpl) buffer);
+    buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     buf.nameToEnum.putAll(nameToEnum);
+    buf.nameToClass.putAll(nameToClass);
+    buf.componentGenericTypes.addAll(Arrays.stream(componentGenericTypes).toList());
     try {
-      return deserializeWithMap(nameToClass, buf, false);
+      return deserializeWithMap(buf, false);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {
@@ -182,9 +224,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     }
   }
 
-  R deserializeWithMap(
-      final Map<String, Class<?>> nameToRecordClass, // FIXME move this into the buffer
-      ReadBufferImpl buf, boolean readName) throws Throwable {
+  R deserializeWithMap(ReadBufferImpl buf, boolean readName) throws Throwable {
     final var buffer = buf.buffer;
     if (readName) {
       final byte marker = buffer.get();
@@ -202,10 +242,10 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       LOGGER.finer(() -> "deserializeWithMap reading interned name " + internedName.name() + " position=" + buffer.position());
     }
     // Read the number of components as an unsigned byte
-    LOGGER.finer(() -> "deserializeWithMap reading component length position=" + buffer.position());
     final int length = ZigZagEncoding.getInt(buffer);
+    LOGGER.finer(() -> "deserializeWithMap read length=" + length + " position=" + buffer.position());
     final Object[] components = new Object[length];
-    Arrays.setAll(components, i -> {
+    Arrays.setAll(components, componentIndex -> {
       try {
         // FIXME the record pickler should know if it is recursive or nested so we can skip this work
         // it can also know which ordinal is the one that is the special case of the same type or nnested type
@@ -215,20 +255,20 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
         final var marker = (firstByte == Constants.OPTIONAL_OF.marker()) ? buffer.get() : firstByte;
         if (marker == Constants.SAME_TYPE.marker()) {
           // The component is the same types such as linked list or tree node of other nodes
-          return deserializeWithMap(nameToRecordClass, buf, readName);
+          return deserializeWithMap(buf, readName);
         } else if (marker == Constants.RECORD.marker()) {
-          final InternedName name = (InternedName) Companion.read(nameToRecordClass, buf);
+          final InternedName name = (InternedName) Companion.read(componentIndex, buf);
           assert name != null;
           //noinspection unchecked
-          Class<? extends Record> concreteType = (Class<? extends Record>) nameToRecordClass.get(name.name());
+          Class<? extends Record> concreteType = (Class<? extends Record>) buf.nameToClass.get(name.name());
           Pickler<?> pickler = Pickler.forRecord(concreteType);
           return pickler.deserialize(buf);
         }
         buffer.reset();
         // Read the component
-        return Companion.read(nameToRecordClass, buf);
+        return Companion.read(componentIndex, buf);
       } catch (Throwable e) {
-        final var msg = "Failed to access component: " + i +
+        final var msg = "Failed to access component: " + componentIndex +
             " in record class '" + recordClass.getName() + "' : " + e.getMessage();
         LOGGER.severe(() -> msg);
         throw new IllegalArgumentException(msg, e);

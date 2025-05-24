@@ -55,30 +55,6 @@ public class ListPicklerTests {
   }
 
   @Test
-  void testList() throws Exception {
-    // Here we are deliberately passing in a mutable list to the constructor
-    final var original = new ListRecord(new ArrayList<>() {{
-      add("A");
-      add("B");
-    }});
-
-    final var pickler = Pickler.forRecord(ListRecord.class);
-    final byte[] bytes;
-    try (var buffer = WriteBuffer.allocateSufficient(original)) {
-      final int len = pickler.serialize(buffer, original);
-      bytes = new byte[len];
-      buffer.flip().put(bytes);
-    }
-
-    final ListRecord deserialized = pickler.deserialize(ReadBuffer.wrap(bytes));
-
-    // Verify the record counts
-    assertEquals(original.list().size(), deserialized.list().size());
-    // Verify immutable list by getting the deserialized list and trying to add into the list we expect an exception
-    assertThrows(UnsupportedOperationException.class, () -> deserialized.list().removeFirst());
-  }
-
-  @Test
   void testNestedLists() {
     // Create a record with nested lists
     record NestedListRecord(List<List<String>> nestedList) {
