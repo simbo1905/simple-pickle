@@ -43,6 +43,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     this.recordClass = recordClass;
     final RecordComponent[] components = recordClass.getRecordComponents();
     componentCount = components.length;
+    if (componentCount == 0) {
+      LOGGER.info(() -> "Record class " + recordClass.getName() + " has no components which is unusual but not an error.");
+    }
     final MethodHandles.Lookup lookup = MethodHandles.lookup();
 
     try {
@@ -190,7 +193,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       throw new IllegalStateException("WriteBuffer is closed");
     }
     if (0 == object.getClass().getRecordComponents().length) {
-      throw new AssertionError(object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.");
+      LOGGER.fine(() -> object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.");
     }
     final var buf = ((WriteBufferImpl) buffer);
     final var startPos = buf.position();
