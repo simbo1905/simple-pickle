@@ -115,9 +115,15 @@ class WriteBufferImpl implements WriteBuffer {
     buffer.put(b);
   }
 
-  public WriteBuffer putInt(int value) {
+  public WriteBuffer putVarInt(int value) {
     validateNotClosed();
-    buffer.putInt(value);
+    ZigZagEncoding.putInt(buffer, value);
+    return this;
+  }
+
+  public WriteBuffer putVarLong(long value) {
+    validateNotClosed();
+    ZigZagEncoding.putLong(buffer, value);
     return this;
   }
 

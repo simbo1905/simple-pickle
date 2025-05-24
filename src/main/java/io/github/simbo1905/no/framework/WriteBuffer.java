@@ -16,11 +16,11 @@ public interface WriteBuffer extends AutoCloseable {
 
   int remaining();
 
-  WriteBuffer putInt(int size);
-
-  void put(byte marker);
-
   boolean isClosed();
+
+  WriteBuffer putVarInt(int value);
+
+  WriteBuffer putVarLong(long value);
 
   static WriteBuffer wrap(ByteBuffer buffer) {
     return new WriteBufferImpl(buffer);

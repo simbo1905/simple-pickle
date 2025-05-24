@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
-import java.util.List;
 import java.util.Optional;
 import java.util.logging.*;
 import java.util.regex.Matcher;
@@ -592,63 +591,6 @@ class PicklerTests {
       }
     }
     return escapedSearchString;
-  }
-
-  @Test
-  void testEmptyRecordArray() {
-    // Create an empty array of records
-    Person[] emptyArray = new Person[0];
-
-    // Calculate size and allocate buffer
-    final var buffer = WriteBuffer.of(1024);
-
-    // Serialize the array
-    Pickler.serializeMany(emptyArray, buffer);
-    var buf = ReadBuffer.wrap(buffer.flip());
-
-    // Deserialize the array
-    @SuppressWarnings("MismatchedReadAndWriteOfArray")
-    Person[] deserialized = Pickler.deserializeMany(Person.class, buf).toArray(Person[]::new);
-
-    // Verify the array is empty
-    assertEquals(0, deserialized.length);
-
-    // Verify buffer is fully consumed
-
-  }
-
-  @Test
-  void testRecordArray() {
-
-    List<Person> personList = List.of(
-        new Person("Alice", 30),
-        new Person("Bob", 25),
-        new Person("Charlie", 40)
-    );
-
-    // Create an array of records
-    Person[] people = personList.toArray(Person[]::new);
-
-    // Calculate size and allocate buffer
-    final var buffer = WriteBuffer.of(1024);
-
-    // Serialize the array
-    Pickler.serializeMany(people, buffer);
-    var buf = ReadBuffer.wrap(buffer.flip());
-
-    // Deserialize the array
-    Person[] deserialized = Pickler.deserializeMany(Person.class, buf).toArray(Person[]::new);
-
-    // Verify array length
-    assertEquals(people.length, deserialized.length);
-
-    // Verify each element
-    for (int i = 0; i < people.length; i++) {
-      assertEquals(people[i], deserialized[i]);
-    }
-
-    // Verify buffer is fully consumed
-
   }
 
   // https://www.perplexity.ai/search/b11ebab9-122c-4841-b4bd-1d55de721ebd

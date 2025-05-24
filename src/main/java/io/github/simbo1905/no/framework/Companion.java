@@ -83,7 +83,9 @@ class Companion {
     return 1 + Short.BYTES;
   }
 
-  static Object read(final Map<String, Class<?>> classesByShortName, final ReadBufferImpl buf) {
+  static Object read(
+      final Map<String, Class<?>> classesByShortName, // FIXME: move this into the ReadBufferImpl
+      final ReadBufferImpl buf) {
     final var buffer = buf.buffer;
     final int position = buffer.position();
     final byte marker = buffer.get();
@@ -342,11 +344,14 @@ class Companion {
       case Object a when a.getClass().isArray() -> {
         LOGGER.finer(() -> "write(array) - size=" + ZigZagEncoding.sizeOf(Array.getLength(a)) + " position=" + buffer.position());
         buffer.put(Constants.ARRAY.marker());
+        // FIXME: this reflection should be done at pickler creation time
         final var InternedName = new InternedName(a.getClass().getComponentType().getName());
         int size = 1;
+        // FIXME: this should write the interned name of an interned offset
         size += recursiveWrite(buf, InternedName);
         int length = Array.getLength(a);
         size += ZigZagEncoding.putInt(buffer, length);
+        // FIXME: we would know at pickler creation time that this is a byte[] or int[] and take the shortcut
         if (byte.class.equals(a.getClass().getComponentType())) {
           buffer.put((byte[]) a);
           size += ((byte[]) a).length;
@@ -388,7 +393,8 @@ class Companion {
         yield Arrays.stream(pickler.componentAccessors)
             .map(a -> {
               try {
-                return a.invokeWithArguments(r);
+                final var value = a.invokeWithArguments(r);
+                return value;
               } catch (Throwable e) {
                 throw new RuntimeException(e);
               }
@@ -399,6 +405,21 @@ class Companion {
       case null -> 0;
       case Optional<?> o when o.isEmpty() -> 1;
       case Optional<?> o -> 1 + maxSizeOf(o.get());
+      case Object a when a.getClass().isArray() -> {
+        int length = Array.getLength(a);
+        if (length == 0) {
+          yield 1 + ZigZagEncoding.sizeOf(0);
+        }
+        // FIXME: the reflection should be done at pickler creation time
+        int size = 1 + maxSizeOf(a.getClass().getComponentType().getName()) + ZigZagEncoding.sizeOf(length);
+        if (byte.class.equals(a.getClass().getComponentType())) {
+          yield size + ((byte[]) a).length;
+        } else {
+          yield size + IntStream.range(0, length)
+              .map(i -> maxSizeOf(Array.get(a, i)))
+              .sum();
+        }
+      }
       default -> throw new AssertionError("not implemented for " + object.getClass().getName());
     };
   }

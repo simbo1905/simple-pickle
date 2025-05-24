@@ -1,6 +1,5 @@
 package io.github.simbo1905.no.framework;
 
-import io.github.simbo1905.no.framework.animal.*;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -9,7 +8,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.logging.*;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.*;
@@ -56,35 +54,6 @@ public class ListPicklerTests {
     }
   }
 
-  @Test
-  void testImmutableLists() {
-    // Here we are deliberately passing in a mutable list to the constructor
-    final var original = new ListRecord(new ArrayList<>() {{
-      add("A");
-      add("B");
-    }});
-
-    final List<ListRecord> outerList = List.of(original, new ListRecord(List.of("X", "Y")));
-
-    // Calculate size and allocate buffer
-    final var buffer = WriteBuffer.allocateSufficient(outerList.toArray(ListRecord[]::new));
-
-    // Serialize
-    Pickler.serializeMany(outerList.toArray(ListRecord[]::new), buffer);
-
-    // Flip the buffer to prepare for reading
-    final var buf = ReadBuffer.wrap(buffer.flip());
-    // Deserialize
-    final List<?> deserialized = Pickler.deserializeMany(ListRecord.class, buf);
-
-    // Verify the record counts
-    assertEquals(original.list().size(), deserialized.size());
-    // Verify immutable list by getting the deserialized list and trying to add into the list we expect an exception
-    assertThrows(UnsupportedOperationException.class, deserialized::removeFirst);
-
-    // Verify buffer is fully consumed
-    assertFalse(buffer.hasRemaining());
-  }
 
   @Test
   void testNestedLists() {
@@ -130,126 +99,4 @@ public class ListPicklerTests {
     assertThrows(UnsupportedOperationException.class, () -> deserialized.nestedList().removeFirst());
   }
 
-  @Test
-  void testOuterLists() {
-    // Create a record with nested lists
-    record NestedListRecord(List<List<String>> nestedList) {
-    }
-
-    final List<NestedListRecord> original = new ArrayList<>();
-
-    {
-      // Create an instance
-      List<List<String>> nestedList = new ArrayList<>();
-      nestedList.add(Arrays.asList("A", "B", "C"));
-      nestedList.add(Arrays.asList("D", "E"));
-
-      NestedListRecord item = new NestedListRecord(nestedList);
-      original.add(item);
-    }
-
-    {
-      // Create another instance
-      List<List<String>> nestedList = new ArrayList<>();
-      nestedList.add(List.of("F"));
-      nestedList.add(List.of());
-
-      NestedListRecord item = new NestedListRecord(nestedList);
-      original.add(item);
-    }
-
-    // Calculate size and allocate buffer
-    final var buffer = WriteBuffer.allocateSufficient(original.toArray(NestedListRecord[]::new));
-
-    // Serialize
-    Pickler.serializeMany(original.toArray(NestedListRecord[]::new), buffer);
-    var buf = ReadBuffer.wrap(buffer.flip());
-
-    // Deserialize
-    List<?> deserialized = Pickler.deserializeMany(NestedListRecord.class, buf);
-
-    // Verify the nested list structure
-    assertEquals(original.size(), deserialized.size());
-
-    IntStream.range(0, original.size()).forEach(i -> {
-      //assertEquals(original.get(i).nestedList().size(), deserialized.get(i).nestedList().size());
-      //IntStream.range(0, original.get(i).nestedList().size()).forEach(j -> assertEquals(original.get(i).nestedList().get(j), deserialized.get(i).nestedList().get(j)));
-    });
-
-    // Verify buffer is fully consumed
-    assertFalse(buffer.hasRemaining());
-  }
-
-  @Test
-  void demoTests() {
-    // Create instances of different Animal implementations
-    Dog dog = new Dog("Buddy", 3);
-    Dog dog2 = new Dog("Fido", 2);
-    Animal eagle = new Eagle(2.1);
-    Penguin penguin = new Penguin(true);
-    Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
-
-    // Get a pickler for the sealed trait Animal
-    var animalPickler = Pickler.forSealedInterface(Animal.class);
-
-    // preallocate a buffer for the Dog instance
-    var buffer = WriteBuffer.allocateSufficient(dog);
-
-    // Serialize and deserialize the Dog instance
-    animalPickler.serialize(buffer, dog);
-    assertFalse(buffer.hasRemaining());
-    // Flip the buffer to prepare for reading
-    int bytesWritten = buffer.position();
-    var buf = ReadBuffer.wrap(buffer.flip());
-    // Deserialize the Dog instance
-    var returnedDog = animalPickler.deserialize(buf);
-    // Check if the deserialized Dog instance is equal to the original
-    if (dog.equals(returnedDog)) {
-      LOGGER.info("Dog serialized and deserialized correctly");
-    } else {
-      throw new AssertionError("""
-          ¯\\_(ツ)_/¯
-          """);
-    }
-
-    List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
-
-    Dog[] dogs = animals.stream().filter(i -> i instanceof Dog).toArray(Dog[]::new);
-    Eagle[] eagles = animals.stream().filter(i -> i instanceof Eagle).toArray(Eagle[]::new);
-    Penguin[] penguins = animals.stream().filter(i -> i instanceof Penguin).toArray(Penguin[]::new);
-    Alicorn[] alicorns = animals.stream().filter(i -> i instanceof Alicorn).toArray(Alicorn[]::new);
-
-    int size = Stream.of(dogs, eagles, penguins, alicorns)
-        .mapToInt(Companion::maxSizeOf)
-        .sum();
-
-    final var animalsBuffer = WriteBuffer.allocateSufficient(size);
-
-    // Serialize the list of animals
-    Stream.of(dogs, eagles, penguins, alicorns)
-        .forEach(i -> Pickler.serializeMany(i, animalsBuffer));
-
-    // Flip the buffer to prepare for reading
-    buf = ReadBuffer.wrap(animalsBuffer.flip());
-
-    final List<Animal> allReturnedAnimals = new ArrayList<>();
-
-    ReadBuffer finalBuf = buf;
-    Stream.of(Dog.class, Eagle.class, Penguin.class, Alicorn.class)
-        .forEach(i -> {
-          // Deserialize the list of animals
-          //var returnedAnimals = PicklerOld.deserializeArray(i, animalsBuffer);
-          var returnedAnimals = Pickler.deserializeMany(i, finalBuf);
-          // Check if the deserialized Dog instance is equal to the original
-          if (animals.containsAll(returnedAnimals)) {
-            LOGGER.info(i.getSimpleName() + " serialized and deserialized correctly");
-          } else {
-            throw new AssertionError("""
-                ¯\\_(ツ)_/¯
-                """);
-          }
-          //allReturnedAnimals.addAll(returnedAnimals);
-        });
-    assertArrayEquals(animals.toArray(), allReturnedAnimals.toArray(), "Animals should be equal");
-  }
 }

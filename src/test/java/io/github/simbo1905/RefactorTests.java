@@ -120,14 +120,14 @@ public class RefactorTests {
     final var animalPackedBuffer = WriteBuffer.of(4096);
     
     // Act - Serialize
-    animalPackedBuffer.putInt(animals.size());
+    animalPackedBuffer.putVarInt(animals.size());
     for (Animal animal : animals) {
       animalPickler.serialize(animalPackedBuffer, animal);
     }
     final var animalBuffer = ReadBuffer.wrap(animalPackedBuffer.flip());
     
     // Deserialize
-    int size = animalBuffer.getInt();
+    int size = animalBuffer.getVarInt();
     List<Animal> deserializedAnimals = new ArrayList<>(size);
     IntStream.range(0, size).forEach(i -> {
       Animal animal = animalPickler.deserialize(animalBuffer);

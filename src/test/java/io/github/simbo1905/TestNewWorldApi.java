@@ -135,14 +135,14 @@ public class TestNewWorldApi {
     List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
     // Serialize
-    animalPacedBuffer.putInt(animals.size());
+    animalPacedBuffer.putVarInt(animals.size());
     for (Animal animal : animals) {
       animalPickler.serialize(animalPacedBuffer, animal);
     }
     final var animalBuffer = ReadBuffer.wrap(animalPacedBuffer.flip());
 
     // Deserialize
-    int size = animalBuffer.getInt();
+    int size = animalBuffer.getVarInt();
     List<Animal> deserializedAnimals = new ArrayList<>(size);
     IntStream.range(0, size).forEach(i -> {
       Animal animal = animalPickler.deserialize(animalBuffer);

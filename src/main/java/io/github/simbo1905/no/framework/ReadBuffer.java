@@ -7,7 +7,17 @@ public interface ReadBuffer extends AutoCloseable {
     return new ReadBufferImpl(buf);
   }
 
+  static ReadBuffer wrap(byte[] bytes) {
+    return new ReadBufferImpl(ByteBuffer.wrap(bytes));
+  }
+
   boolean isClosed();
 
-  int getInt();
+  int getVarInt();
+
+  long getVarLong();
+
+  boolean hasRemaining();
+
+  int remaining();
 }

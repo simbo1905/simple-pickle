@@ -27,10 +27,28 @@ class ReadBufferImpl implements ReadBuffer {
   }
 
   @Override
-  public int getInt() {
+  public int getVarInt() {
     if (closed) {
       throw new IllegalStateException("Buffer is closed");
     }
-    return buffer.getInt();
+    return ZigZagEncoding.getInt(buffer);
+  }
+
+  @Override
+  public long getVarLong() {
+    if (closed) {
+      throw new IllegalStateException("Buffer is closed");
+    }
+    return ZigZagEncoding.getLong(buffer);
+  }
+
+  @Override
+  public boolean hasRemaining() {
+    return buffer.hasRemaining();
+  }
+
+  @Override
+  public int remaining() {
+    return buffer.remaining();
   }
 }

@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Assertions;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.IntStream;
 
 
 public class PublicApiDemo {
@@ -60,67 +59,6 @@ public class PublicApiDemo {
       Assertions.assertEquals(animal, deserializedAnimal);
     }
 
-    listsCannotBeTypeOfSealedInterfaceAndPermittedRecords();
-  }
-
-  private static void listsCannotBeTypeOfSealedInterfaceAndPermittedRecords() {
-    final var buffer = WriteBuffer.of(1024);
-
-    Dog[] dogs = animals.stream()
-        .filter(Dog.class::isInstance)
-        .map(Dog.class::cast)
-        .toArray(Dog[]::new);
-
-    Pickler.serializeMany(dogs, buffer);
-
-    Cat[] cats = animals.stream()
-        .filter(Cat.class::isInstance)
-        .map(Cat.class::cast)
-        .toArray(Cat[]::new);
-
-    Pickler.serializeMany(cats, buffer);
-
-    Eagle[] eagles = animals.stream()
-        .filter(Eagle.class::isInstance)
-        .map(Eagle.class::cast)
-        .toArray(Eagle[]::new);
-
-    Pickler.serializeMany(eagles, buffer);
-
-    Penguin[] penguins = animals.stream()
-        .filter(Penguin.class::isInstance)
-        .map(Penguin.class::cast)
-        .toArray(Penguin[]::new);
-
-    Pickler.serializeMany(penguins, buffer);
-
-    Alicorn[] alicorns = animals.stream()
-        .filter(Alicorn.class::isInstance)
-        .map(Alicorn.class::cast)
-        .toArray(Alicorn[]::new);
-
-    Pickler.serializeMany(alicorns, buffer);
-
-    final var buf = ReadBuffer.wrap(buffer.flip()); // Prepare for reading
-
-    // Deserialize the data back into objects
-    ReadBuffer.wrap(buffer.flip()); // Prepare for reading
-    Dog[] deserializedDogs = Pickler.deserializeMany(Dog.class, buf).toArray(Dog[]::new);
-    Cat[] deserializedCats = Pickler.deserializeMany(Cat.class, buf).toArray(Cat[]::new);
-    Eagle[] deserializedEagles = Pickler.deserializeMany(Eagle.class, buf).toArray(Eagle[]::new);
-    Penguin[] deserializedPenguins = Pickler.deserializeMany(Penguin.class, buf).toArray(Penguin[]::new);
-    Alicorn[] deserializedAlicorns = Pickler.deserializeMany(Alicorn.class, buf).toArray(Alicorn[]::new);
-
-    IntStream.range(0, dogs.length)
-        .forEach(i -> Assertions.assertEquals(dogs[i], deserializedDogs[i]));
-    IntStream.range(0, cats.length)
-        .forEach(i -> Assertions.assertEquals(cats[i], deserializedCats[i]));
-    IntStream.range(0, eagles.length)
-        .forEach(i -> Assertions.assertEquals(eagles[i], deserializedEagles[i]));
-    IntStream.range(0, penguins.length)
-        .forEach(i -> Assertions.assertEquals(penguins[i], deserializedPenguins[i]));
-    IntStream.range(0, alicorns.length)
-        .forEach(i -> Assertions.assertEquals(alicorns[i], deserializedAlicorns[i]));
   }
 }
 

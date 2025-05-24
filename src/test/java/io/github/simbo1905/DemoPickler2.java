@@ -63,7 +63,7 @@ public class DemoPickler2 {
     final var animalBuffer = WriteBuffer.of(4096);
 
     // Serialize
-    animalBuffer.putInt(animals.size());
+    animalBuffer.putVarInt(animals.size());
 
     for (Animal animal : animals) {
       animalPickler.serialize(animalBuffer, animal);
@@ -71,7 +71,7 @@ public class DemoPickler2 {
     final var buf2 = ReadBuffer.wrap(animalBuffer.flip());
 
     // Deserialize
-    int size = buf2.getInt();
+    int size = buf2.getVarInt();
     List<Animal> deserializedAnimals = new ArrayList<>(size);
     IntStream.range(0, size).forEach(i -> {
       Animal animal = animalPickler.deserialize(buf2);
