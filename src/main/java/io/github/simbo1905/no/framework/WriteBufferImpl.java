@@ -34,21 +34,19 @@ class WriteBufferImpl implements WriteBuffer {
     this.buffer = buffer;
   }
 
-  static int write(ByteBuffer buffer, byte value) {
+  static void write(ByteBuffer buffer, byte value) {
     LOGGER.finer(() -> "write(byte) - Enter: value=" + value + " position=" + buffer.position());
     buffer.put(BYTE.marker());
     buffer.put(value);
-    return 1 + 1; // 1 byte for marker + 1 byte for value
   }
 
-  static int write(ByteBuffer buffer, char value) {
+  static void write(ByteBuffer buffer, char value) {
     LOGGER.finer(() -> "write(char) - Enter: value=" + value + " position=" + buffer.position());
     buffer.put(CHARACTER.marker());
     buffer.putChar(value);
-    return 1 + Character.BYTES;
   }
 
-  static int write(ByteBuffer buffer, boolean value) {
+  static void write(ByteBuffer buffer, boolean value) {
     LOGGER.finer(() -> "write(boolean) - Enter: value=" + value + " position=" + buffer.position());
     buffer.put(BOOLEAN.marker());
     if (value) {
@@ -56,10 +54,9 @@ class WriteBufferImpl implements WriteBuffer {
     } else {
       buffer.put((byte) 0);
     }
-    return 1 + 1;
   }
 
-  static int write(ByteBuffer buffer, String s) {
+  static void write(ByteBuffer buffer, String s) {
     LOGGER.finer(() -> "write(String) - Enter: value=" + s + " position=" + buffer.position());
     Objects.requireNonNull(s);
     buffer.put(STRING.marker());
@@ -67,43 +64,36 @@ class WriteBufferImpl implements WriteBuffer {
     int length = utf8.length;
     ZigZagEncoding.putInt(buffer, length);
     buffer.put(utf8);
-    return 1 + length;
   }
 
-  static int writeNull(ByteBuffer buffer) {
+  static void writeNull(ByteBuffer buffer) {
     buffer.put(NULL.marker());
-    return 1;
   }
 
-  static int write(ByteBuffer buffer, InternedName type) {
+  static void write(ByteBuffer buffer, InternedName type) {
     Objects.requireNonNull(type);
     Objects.requireNonNull(type.name());
     buffer.put(INTERNED_NAME.marker());
-    return 1 + intern(buffer, type.name());
+    intern(buffer, type.name());
   }
 
-  static int intern(ByteBuffer buffer, String string) {
+  static void intern(ByteBuffer buffer, String string) {
     final var nameBytes = string.getBytes(StandardCharsets.UTF_8);
     final var nameLength = nameBytes.length;
     ZigZagEncoding.putInt(buffer, nameLength);
-    var size = 1;
     buffer.put(nameBytes);
-    size += nameLength;
-    return size;
   }
 
-  static int write(ByteBuffer buffer, InternedOffset typeOffset) {
+  static void write(ByteBuffer buffer, InternedOffset typeOffset) {
     Objects.requireNonNull(typeOffset);
     final int offset = typeOffset.offset();
     final int size = ZigZagEncoding.sizeOf(offset);
     if (size < Integer.BYTES) {
       buffer.put(INTERNED_OFFSET_VAR.marker());
       ZigZagEncoding.putInt(buffer, offset);
-      return 1;
     } else {
       buffer.put(INTERNED_OFFSET.marker());
       buffer.putInt(offset);
-      return 1 + Integer.BYTES;
     }
   }
 

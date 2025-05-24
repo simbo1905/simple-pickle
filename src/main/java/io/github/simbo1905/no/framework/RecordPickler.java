@@ -249,7 +249,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     Arrays.setAll(components, componentIndex -> {
       try {
         // FIXME the record pickler should know if it is recursive or nested so we can skip this work
-        // it can also know which ordinal is the one that is the special case of the same type or nnested type
+        // it can also know which ordinal is the one that is the special case of the same type or nested type
         // it can also know the intern name of the nested type
         buffer.mark();
         final var firstByte = buffer.get();
