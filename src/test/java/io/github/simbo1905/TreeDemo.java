@@ -7,7 +7,7 @@ import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
 
-public class Demo2 {
+public class TreeDemo {
   public static void main(String[] args) {
 
     final var leaf1 = new LeafNode(42);
@@ -22,7 +22,7 @@ public class Demo2 {
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
 // Allocate a buffer to hold just the root node
-    final var buffer = WriteBuffer.allocateSufficient(originalRoot);
+    final var buffer = WriteBuffer.of(1024);
 
 // Serialize only the root node (which should include the entire graph)
     pickler.serialize(buffer, originalRoot);

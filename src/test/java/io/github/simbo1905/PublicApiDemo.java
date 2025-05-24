@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assertions;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.IntStream;
 
 
 public class PublicApiDemo {
@@ -44,21 +45,31 @@ public class PublicApiDemo {
 
   static List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
-  public static void main(String[] args) {
+  public static void main(String[] args) throws Exception {
     Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
+    // TODO: fix the allocateSufficient of WriteBuffer
+
     final var buffer = WriteBuffer.of(1024);
+
+    buffer.putVarInt(animals.size());
 
     for (Animal animal : animals) {
       pickler.serialize(buffer, animal);
     }
 
-    final var buf = ReadBuffer.wrap(buffer.flip()); // Prepare for reading
+    // Prepare the buffer for reading
+    try (final var buf = ReadBuffer.wrap(buffer.flip())) {
 
-    for (Animal animal : animals) {
-      Animal deserializedAnimal = pickler.deserialize(buf);
-      Assertions.assertEquals(animal, deserializedAnimal);
+      final int size = buf.getVarInt();
+
+      IntStream.range(0, size).forEach(i -> {
+        Animal animal = animals.get(i);
+        Animal deserializedAnimal = pickler.deserialize(buf);
+        Assertions.assertEquals(animal, deserializedAnimal);
+      });
+
+      System.out.println("All animals serialized and deserialized correctly!");
     }
-
   }
 }
 
