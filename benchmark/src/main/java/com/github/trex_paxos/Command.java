@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 - 2025 Simon Massey
 // SPDX-License-Identifier: Apache-2.0
 package com.github.trex_paxos;
+import java.io.Serializable;
 import java.util.UUID;
 import java.util.zip.CRC32;
 
@@ -16,7 +17,7 @@ import java.util.zip.CRC32;
 ///                                             reserved for system administration commands.
 public record Command(
     UUID uuid, byte[] operationBytes, byte flavour
-) implements AbstractCommand {
+) implements AbstractCommand, Serializable {
 
   public Command {
     if (uuid == null) {

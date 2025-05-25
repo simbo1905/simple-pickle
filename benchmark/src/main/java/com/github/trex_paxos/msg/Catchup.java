@@ -4,6 +4,8 @@ package com.github.trex_paxos.msg;
 
 import com.github.trex_paxos.BallotNumber;
 
+import java.io.Serializable;
+
 /// Catchup is a message sent by a replica to the leader to request retransmission of lost `Accept` messages
 /// that have been fixed above the last slot the node has previously learnt to be fixed.
 ///
@@ -14,7 +16,7 @@ import com.github.trex_paxos.BallotNumber;
 public record Catchup(short from,
     short to,
     long highestFixedIndex,
-    BallotNumber highestPromised) implements DirectMessage, TrexMessage {
+    BallotNumber highestPromised) implements DirectMessage, TrexMessage, Serializable {
 
   @Override
   public String toString() {

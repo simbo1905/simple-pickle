@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.github.trex_paxos;
 
+import java.io.Serializable;
+
 /// A ballot number is the proposal number used in the Paxos algorithm. Here we are using eight bytes.Nodes make
 /// promises to not accept any mny protocol messages with a number less than the one they have promised. The [BallotNumber#compareTo(com.github.trex_paxos.BallotNumber)]
 ///
@@ -13,7 +15,7 @@ package com.github.trex_paxos;
 /// @param era The cluster configuration number. This is incremented when the cluster configuration changes.
 /// @param counter The counter is incremented when a node wishes to take over the leadership and run the leader takeover protocol.
 /// @param nodeIdentifier The node identifier is used to break ties and to ensure no node in a cluster generates the same number.
-public record BallotNumber(short era, int counter, short nodeIdentifier) implements Comparable<BallotNumber> {
+public record BallotNumber(short era, int counter, short nodeIdentifier) implements Comparable<BallotNumber>, Serializable {
 
   public static final BallotNumber MIN = new BallotNumber(Short.MIN_VALUE, Integer.MIN_VALUE, Short.MIN_VALUE);
 

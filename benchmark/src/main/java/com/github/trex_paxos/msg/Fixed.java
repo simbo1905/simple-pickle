@@ -5,6 +5,8 @@ package com.github.trex_paxos.msg;
 import com.github.trex_paxos.BallotNumber;
 import com.github.trex_paxos.SlotTerm;
 
+import java.io.Serializable;
+
 /// A leader sends out a Fixed when it learns of a new fixed log index. It will also heartbeat this message to keep
 /// the followers from timing out. This message type is one of the three [LearningMessage] types where the progress
 /// of the node in terms of fixing slots and making an up-call to the host is called.
@@ -14,7 +16,7 @@ import com.github.trex_paxos.SlotTerm;
 public record Fixed(
     short from,
     SlotTerm slotTerm
-) implements TrexMessage, BroadcastMessage, LearningMessage {
+) implements TrexMessage, BroadcastMessage, LearningMessage, Serializable {
   public Fixed(short from, long logIndex, BallotNumber number) {
     this(from, new SlotTerm(logIndex, number));
   }

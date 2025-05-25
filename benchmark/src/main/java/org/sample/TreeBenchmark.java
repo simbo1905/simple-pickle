@@ -8,7 +8,6 @@ import org.sample.proto.*;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @State(Scope.Thread)
 @Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
@@ -88,21 +87,8 @@ public class TreeBenchmark {
     return new TreeNode.InternalNode("Node-" + level + "-" + mid, left, right);
   }
 
-  public static void main(String[] args) {
-    final var tb = new TreeBenchmark();
-    tb.setupTrial();
-    tb.setupInvocation();
-    try {
-      //tb.testJdkSerialize(null);
-//      tb.testPicklerSerialize(null);
-      tb.testProtobufSerialize(null);
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-  }
-
   @Benchmark
-  public void testJdkSerialize(Blackhole bh) throws IOException, ClassNotFoundException {
+  public void treeJdk(Blackhole bh) throws IOException, ClassNotFoundException {
     // Clear the output stream
     byteArrayOutputStream.reset();
 
@@ -128,7 +114,7 @@ public class TreeBenchmark {
   }
 
   @Benchmark
-  public void testPicklerSerialize(Blackhole bh) {
+  public void treeNfp(Blackhole bh) {
     // Clear the buffer
     buffer.clear();
 
@@ -144,7 +130,7 @@ public class TreeBenchmark {
   }
 
   @Benchmark
-  public void testProtobufSerialize(Blackhole bh) throws IOException {
+  public void treeProtobuf(Blackhole bh) throws IOException {
     // Clear the buffer
     buffer.clear();
 

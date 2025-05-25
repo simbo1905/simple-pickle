@@ -5,6 +5,8 @@ package com.github.trex_paxos.msg;
 import com.github.trex_paxos.BallotNumber;
 import com.github.trex_paxos.SlotTerm;
 
+import java.io.Serializable;
+
 /// The Prepare message is the first message in the Paxos protocol named in the paper Paxos Made Simple by Leslie Lamport.
 ///
 /// @param from     The node identifier of the proposer used to route the message and self-accept.
@@ -12,7 +14,7 @@ import com.github.trex_paxos.SlotTerm;
 public record Prepare(
   short from,
     SlotTerm slotTerm
-) implements TrexMessage, BroadcastMessage, PaxosMessage {
+) implements TrexMessage, BroadcastMessage, PaxosMessage, Serializable {
   public Prepare(short from, long logIndex, BallotNumber number) {
     this(from, new SlotTerm(logIndex, number));
   }

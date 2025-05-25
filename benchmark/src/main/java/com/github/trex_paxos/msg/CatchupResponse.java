@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.github.trex_paxos.msg;
 
+import java.io.Serializable;
 import java.util.List;
 /// CatchupResponse is a message sent by the leader to a replica in response to a Catchup message.
 /// It will only return the accept messages for fixed slots. We do not attempt to send any information
@@ -12,5 +13,5 @@ import java.util.List;
 public record CatchupResponse(short from,
                                 short to,
                               List<Accept> accepts
-) implements TrexMessage, DirectMessage, LearningMessage {
+) implements TrexMessage, DirectMessage, LearningMessage, Serializable {
 }

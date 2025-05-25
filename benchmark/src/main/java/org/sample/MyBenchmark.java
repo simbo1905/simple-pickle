@@ -10,17 +10,17 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
 
-@State(Scope.Thread)
-@Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
-@Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
-@Fork(1)
+//@State(Scope.Thread)
+//@Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
+//@Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
+//@Fork(1)
 public class MyBenchmark {
 
   final ByteBuffer buffer = ByteBuffer.allocate(1024);
   final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(1024);
   final ByteArrayOutputStream protobufOutputStream = new ByteArrayOutputStream(1024);
 
-  @Setup(Level.Invocation)
+//  @Setup(Level.Invocation)
   public void setupInvocation() {
     buffer.clear();
     byteArrayOutputStream.reset();
@@ -46,7 +46,7 @@ public class MyBenchmark {
   static int nfp = 0;
   static int protobuf = 0;
 
-  @TearDown(Level.Trial)
+//  @TearDown(Level.Trial)
   public void tearDown() {
     // Teardown code that runs once after the entire benchmark
     System.out.println("Benchmark completed! nfp: " + nfp + ", jdk: " + jdk + ", protobuf: " + protobuf);
@@ -57,7 +57,7 @@ public class MyBenchmark {
     new MyBenchmark().testPickler1(null);
   }
 
-  @Benchmark
+//  @Benchmark
   public void testPickler1(Blackhole bh) {
 
     Pickler.serializeMany(original, buffer);
@@ -67,7 +67,7 @@ public class MyBenchmark {
     bh.consume(back);
   }
 
-  @Benchmark
+//  @Benchmark
   public void testJdkSerialize1(Blackhole bh) throws IOException, ClassNotFoundException {
     // Clear the buffer before use
     buffer.clear();
@@ -93,7 +93,7 @@ public class MyBenchmark {
     }
   }
 
-  @Benchmark
+//  @Benchmark
   public void testProtobuf1(Blackhole bh) throws IOException {
     // Clear the buffer before use
     buffer.clear();

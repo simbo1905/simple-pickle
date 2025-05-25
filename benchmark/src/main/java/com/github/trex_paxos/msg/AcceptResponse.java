@@ -4,6 +4,7 @@ package com.github.trex_paxos.msg;
 
 import com.github.trex_paxos.SlotTerm;
 
+import java.io.Serializable;
 import java.util.Objects;
 
 /// An AcceptResponse response back to a {@link Accept} message. We add the highestFixedIndex as more information
@@ -21,7 +22,7 @@ public record AcceptResponse(short from,
                              short era,
                              Vote vote,
                              long highestFixedIndex
-) implements TrexMessage, DirectMessage, LearningMessage {
+) implements TrexMessage, DirectMessage, LearningMessage, Serializable {
   public AcceptResponse{
     Objects.requireNonNull(vote);
     if (vote.from() != from) {

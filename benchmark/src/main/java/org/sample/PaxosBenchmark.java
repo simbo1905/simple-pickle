@@ -45,12 +45,8 @@ public class PaxosBenchmark {
     // Print your results or summary here
   }
 
-  public static void main(String[] args) {
-    new PaxosBenchmark().testPickler1(null);
-  }
-
   @Benchmark
-  public void testPickler1(Blackhole bh) {
+  public void paxosNfp(Blackhole bh) {
 
     Pickler.serializeMany(original, buffer);
     buffer.flip();
@@ -60,7 +56,7 @@ public class PaxosBenchmark {
   }
 
   @Benchmark
-  public void testJdkSerialize1(Blackhole bh) throws IOException, ClassNotFoundException {
+  public void paxosJdk(Blackhole bh) throws IOException, ClassNotFoundException {
     // Clear the buffer before use
     buffer.clear();
 
@@ -79,9 +75,14 @@ public class PaxosBenchmark {
     // Deserialize from ByteBuffer
     byte[] readBytes = new byte[buffer.remaining()];
     buffer.get(readBytes);
+    final Accept[] back;
     try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(readBytes))) {
-      Accept[] back = (Accept[]) ois.readObject();
-      bh.consume(back);
+      back = (Accept[]) ois.readObject();
     }
+    bh.consume(back);
+  }
+
+  public static void main(String[] args) throws IOException, ClassNotFoundException {
+    new PaxosBenchmark().paxosJdk(null);
   }
 }

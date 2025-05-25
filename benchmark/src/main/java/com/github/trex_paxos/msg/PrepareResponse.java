@@ -4,6 +4,7 @@ package com.github.trex_paxos.msg;
 
 import com.github.trex_paxos.SlotTerm;
 
+import java.io.Serializable;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -22,7 +23,7 @@ public record PrepareResponse(
     Vote vote,
     Optional<Accept> journaledAccept,
     long highestAcceptedIndex
-) implements TrexMessage, DirectMessage {
+) implements TrexMessage, DirectMessage, Serializable {
   public PrepareResponse{
     Objects.requireNonNull(vote);
     Objects.requireNonNull(journaledAccept);

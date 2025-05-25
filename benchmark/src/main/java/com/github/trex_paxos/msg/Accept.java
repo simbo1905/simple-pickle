@@ -6,6 +6,8 @@ import com.github.trex_paxos.AbstractCommand;
 import com.github.trex_paxos.BallotNumber;
 import com.github.trex_paxos.SlotTerm;
 
+import java.io.Serializable;
+
 /// The Accept message is the second message in the Paxos protocol named in the paper Paxos Made Simple by Leslie Lamport.
 ///
 /// @param from see {@link TrexMessage}
@@ -13,7 +15,7 @@ import com.github.trex_paxos.SlotTerm;
 /// @param command  The command to be accepted by the acceptor. This may be a NOOP or a true Command.
 public record Accept(short from,
                      SlotTerm slotTerm,
-                     AbstractCommand command) implements TrexMessage, BroadcastMessage, PaxosMessage {
+                     AbstractCommand command) implements TrexMessage, BroadcastMessage, PaxosMessage, Serializable {
 
   public Accept(short from, long logIndex, BallotNumber number, AbstractCommand command) {
     this(from, new SlotTerm(logIndex, number), command);
