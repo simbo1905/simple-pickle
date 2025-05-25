@@ -7,10 +7,12 @@ import com.github.trex_paxos.msg.Accept;
 import io.github.simbo1905.no.framework.Pickler;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
+import org.sample.proto.*;
 
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @State(Scope.Thread)
@@ -80,6 +82,127 @@ public class PaxosBenchmark {
       back = (Accept[]) ois.readObject();
     }
     bh.consume(back);
+  }
+
+  @Benchmark
+  public void paxosProtobuf(Blackhole bh) throws IOException {
+    // Clear the buffer
+    buffer.clear();
+
+    // Convert to protobuf array wrapper
+    AcceptArray.Builder arrayBuilder = AcceptArray.newBuilder();
+    for (Accept accept : original) {
+      arrayBuilder.addAccepts(convertToProto(accept));
+    }
+    AcceptArray protoArray = arrayBuilder.build();
+
+    // Serialize to buffer
+    byte[] serialized = protoArray.toByteArray();
+    protobuf = serialized.length;
+    buffer.put(serialized);
+
+    // Prepare buffer for reading
+    buffer.flip();
+
+    // Read from buffer
+    byte[] bytes = new byte[buffer.remaining()];
+    buffer.get(bytes);
+
+    // Deserialize
+    AcceptArray deserializedProtoArray = AcceptArray.parseFrom(bytes);
+
+    // Convert back to Accept array
+    Accept[] deserializedAccepts = new Accept[deserializedProtoArray.getAcceptsCount()];
+    for (int i = 0; i < deserializedProtoArray.getAcceptsCount(); i++) {
+      deserializedAccepts[i] = convertFromProto(deserializedProtoArray.getAccepts(i));
+    }
+
+    bh.consume(deserializedAccepts);
+  }
+
+  /**
+   * Converts an Accept record to its Protocol Buffer representation
+   */
+  private static AcceptMessage convertToProto(Accept accept) {
+    SlotTermMessage slotTermProto = SlotTermMessage.newBuilder()
+        .setLogIndex(accept.slotTerm().logIndex())
+        .setNumber(convertBallotNumberToProto(accept.slotTerm().number()))
+        .build();
+
+    AbstractCommandMessage commandProto = convertCommandToProto(accept.command());
+
+    return AcceptMessage.newBuilder()
+        .setFrom(accept.from())
+        .setSlotTerm(slotTermProto)
+        .setCommand(commandProto)
+        .build();
+  }
+
+  /**
+   * Converts a Protocol Buffer AcceptMessage back to an Accept record
+   */
+  private static Accept convertFromProto(AcceptMessage proto) {
+    com.github.trex_paxos.SlotTerm slotTerm = new com.github.trex_paxos.SlotTerm(
+        proto.getSlotTerm().getLogIndex(),
+        convertBallotNumberFromProto(proto.getSlotTerm().getNumber())
+    );
+
+    com.github.trex_paxos.AbstractCommand command = convertCommandFromProto(proto.getCommand());
+
+    return new Accept(
+        (short) proto.getFrom(),
+        slotTerm,
+        command
+    );
+  }
+
+  private static BallotNumberMessage convertBallotNumberToProto(com.github.trex_paxos.BallotNumber ballotNumber) {
+    return BallotNumberMessage.newBuilder()
+        .setEra(ballotNumber.era())
+        .setCounter(ballotNumber.counter())
+        .setNodeIdentifier(ballotNumber.nodeIdentifier())
+        .build();
+  }
+
+  private static com.github.trex_paxos.BallotNumber convertBallotNumberFromProto(BallotNumberMessage proto) {
+    return new com.github.trex_paxos.BallotNumber(
+        (short) proto.getEra(),
+        proto.getCounter(),
+        (short) proto.getNodeIdentifier()
+    );
+  }
+
+  private static AbstractCommandMessage convertCommandToProto(com.github.trex_paxos.AbstractCommand command) {
+    AbstractCommandMessage.Builder builder = AbstractCommandMessage.newBuilder();
+
+    if (command instanceof NoOperation) {
+      builder.setNoOperation(NoOperationMessage.newBuilder().build());
+    } else if (command instanceof Command cmd) {
+      CommandMessage commandMsg = CommandMessage.newBuilder()
+          .setUuid(cmd.uuid().toString())
+          .setOperationBytes(com.google.protobuf.ByteString.copyFrom(cmd.operationBytes()))
+          .setFlavour(cmd.flavour())
+          .build();
+      builder.setCommand(commandMsg);
+    }
+
+    return builder.build();
+  }
+
+  private static com.github.trex_paxos.AbstractCommand convertCommandFromProto(AbstractCommandMessage proto) {
+    switch (proto.getCommandTypeCase()) {
+      case NO_OPERATION:
+        return NoOperation.NOOP;
+      case COMMAND:
+        CommandMessage cmdProto = proto.getCommand();
+        return new Command(
+            UUID.fromString(cmdProto.getUuid()),
+            cmdProto.getOperationBytes().toByteArray(),
+            (byte) cmdProto.getFlavour()
+        );
+      default:
+        throw new IllegalArgumentException("Unknown command type: " + proto.getCommandTypeCase());
+    }
   }
 
   public static void main(String[] args) throws IOException, ClassNotFoundException {
