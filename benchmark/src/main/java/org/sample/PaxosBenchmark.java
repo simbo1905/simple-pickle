@@ -7,8 +7,6 @@ import com.github.trex_paxos.msg.Accept;
 import io.github.simbo1905.no.framework.Pickler;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
-import org.sample.proto.PushArray;
-import org.sample.proto.PushMessage;
 
 import java.io.*;
 import java.nio.ByteBuffer;
