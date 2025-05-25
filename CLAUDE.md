@@ -1,12 +1,86 @@
-You must follow the codeing style in CODING_STYLE_LLM.md. 
-You must avoid changing many files we only want incremental addative changes not radical broken refactors. 
-We add logic in self contained tests and get those self contained tests working before we try to refactor all existing tests to work with new logic. 
-The style of what has been written is very delibrate it is vandalism to make arbitrary changes that disrespect the coding style of what is there. 
-You do not cheat by ignoring the intention of the code to try to make code pass tests. We start with trival test because it is idiocy to try to write and pass complex tests. This means you must respect the intentions of the code in fixing the code to pass the tests you cannot ignore the purpose of the code to take out features to pass the tests. 
-The README.md explains the intention of the codebase so it is a specification; where the code deviates from the specification of the README.md it is the README.md that should be followed. If I don't like the code I will change the README.md.
+# CLAUDE.md
 
-The codebase as-is does not support using java.util.UUID within a record. The README.md makes no such claim to support it yet which is fine at this point. We must see if we can fit it in before we document. We are using Java 21 and mvn. Java has shockingly bad support for java.util.UUID. In order to have Pickler.java be able to processes records containing a java.util.UUID you must use the UUID methods `public long getLeastSignificantBits()` and `public long getMostSignificantBits()` to get a java long then use ByteBuffer `putLong` to write them both. We need a new `enum Constants` which will be `UUID((byte)17, 16, java.util.UUID.class)`. Then its easy to see that verywhere in the code that we the other `enum Constant` which will be in switch statements and the like we must add a case for the new `UUID` enum value. We will obviously write out the byte marker `16` then the two longs for msb and lsb. When reading back the marker 16 will resolve to the enum `UUID` and the case statement will simply read back the two longs and instnaiate a UUID using the `new UUID(mostSigBits, leastSigBits)`.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-It is important to note that the tests that exist are in two packages under src/test/java. one isn't the same pacakge as the code under test. this can only test the public API. the other is is the same package as the code under test. it can test private internals using package-protected methods. that is why the coding style says to use package-protected by default. don't fuck thing up by being sloppy in how you write the tests. specifically i have already said abve that you must write a new test class and not fucking existing tests. you just only run that test class until it is working. if-and-only-if it succeeds even bother to consider attempting to change any other tests. we also don't like cross dependencies and many files. the framework pickler needs recoreds under test to be public; so make them public nested classes inside the junit test file. also don't fuck up the logging. make a new junit test file, in the package that can only test the public api, make a recored with a UUID in it, write a test that constructs the UUID from two longs, make a pickler for it, and round trip it with good logging. 
+## Project Overview
 
-everything above has explained how to create the new feature of support for java.util.UUID in his project. lets see if you do a less bad job than the last time I tried to get you do to anyting which was a disaster.  
+No Framework Pickler is a tiny Java 21+ serialization library that generates type-safe picklers for records and sealed interfaces. The entire implementation is contained in a single Java file (`Pickler.java`) with ~1,100 lines of code.
+
+## Development Commands
+
+### Build and Test
+```bash
+# Compile and run all tests
+mvn clean test
+
+# Run a specific test class
+mvn test -Dtest=ClassName
+
+# Build jar
+mvn clean package
+
+# Run benchmarks (if needed)
+cd benchmark && mvn clean package exec:java
+```
+
+### Schema Evolution Testing
+The codebase has special system property for testing schema evolution:
+```bash
+# Test with backwards compatibility
+mvn test -Dno.framework.Pickler.Compatibility=BACKWARDS
+
+# Test with forwards compatibility  
+mvn test -Dno.framework.Pickler.Compatibility=FORWARDS
+```
+
+## Architecture
+
+### Core Components
+- **`Pickler<T>` interface**: Main API for serialization/deserialization
+- **`RecordPickler<R>`**: Handles record types using MethodHandles for performance
+- **`SealedPickler<S>`**: Handles sealed interfaces by delegating to record picklers
+- **`Constants` enum**: Type markers for wire protocol (NULL=1, BOOLEAN=2, etc.)
+- **`Companion` class**: Static helper methods for serialization/deserialization
+
+### Key Design Patterns
+- **Single file architecture**: Everything in `Pickler.java` to avoid dependencies
+- **MethodHandle caching**: Avoids reflection on hot path by using `unreflect()` once
+- **Exhaustive pattern matching**: Uses sealed interfaces with switch expressions
+- **Schema evolution support**: Optional backwards/forwards compatibility via alternative constructors
+
+### Supported Types
+The library supports: primitives, String, Optional, Record, Map, List, Enum, Arrays
+- All deserialized collections are immutable
+- Nested sealed interfaces and records are fully supported
+- Binary format uses type markers + data
+
+## Development Guidelines
+
+### Code Style (Critical)
+- **MUST follow CODING_STYLE_LLM.md exactly** - use package-private by default, JEP 467 markdown docs (`///`), Records + static methods
+- **Use TDD approach** - write failing test first, then implement feature
+- **Incremental changes only** - avoid large refactors, add features via new self-contained tests
+- **Respect existing patterns** - follow established coding style religiously
+
+### Test Organization
+- `src/test/java/io/github/simbo1905/` - same package tests (can test package-private)
+- `src/test/java/io/github/simbo1905/no/framework/` - public API tests only
+- Test records must be public and often nested inside test classes
+- Always create new test classes for new features, don't modify existing tests initially
+
+### Schema Evolution
+- Add new record components only at the end
+- Provide backwards compatibility constructors that match old parameter order
+- Use system property `no.framework.Pickler.Compatibility=BACKWARDS|FORWARDS|ALL` to enable
+- Default is strict matching (NONE) for security
+
+## Current Development Task
+
+The codebase needs UUID support added. Requirements:
+1. Add `UUID((byte)17, 16, java.util.UUID.class)` to Constants enum
+2. Handle UUID serialization using `getLeastSignificantBits()` and `getMostSignificantBits()`
+3. Add UUID cases to all switch statements in Companion class
+4. Write new test class with public nested record containing UUID field
+5. Test round-trip serialization with proper logging
+
+Remember: Write the test first, make it pass, then consider broader changes.
