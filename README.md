@@ -46,22 +46,23 @@ Notice that there is more logic in the `TreeNode` code to define a very elegant 
 
 This approach is also safer than many other approaches. It uses the JDK's `ByteBuffer` class to read and write binary data, which correctly validates the data on the wire. The pickler resolves the legal code paths that regular Java code would take when creating the pickler, not when deserializing. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour. 
 
-No Framework Pickler works out of the box with nested sealed interfaces of permitted record types or an outer array of such where the records may contain arbitrarily nested:
+No Framework Pickler works out of the box with nested sealed interfaces of permitted record types or an outer array of such where the records may contain arbitrarily nested objects of the following types:
 
-- boolean.class
-- byte.class
-- short.class
-- char.class
-- int.class
-- long.class
-- float.class
-- double.class
-- String.class
-- Optional.class
-- Record.class
-- Map.class
-- List.class
-- Enum.class
+- boolean / Boolean
+- byte / Byte
+- short / Short
+- char / Character
+- int / Integer
+- long / Long
+- float / Float
+- double / Double
+- String
+- Optional (containing any supported type)
+- Map (immutable maps when deserializing)
+- List (immutable lists when deserializing)
+- UUID
+- Enum
+- Record (meaning nested record types for linked-list / tree-like structures)
 - Arrays of the above
 
 When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either records or sealed interfaces of records. This allows you to use record patterns with type safe exhaustive switch statements.

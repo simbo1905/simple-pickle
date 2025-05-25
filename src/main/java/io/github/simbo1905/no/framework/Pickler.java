@@ -397,7 +397,8 @@ enum Constants {
   ARRAY((byte) 13, 0, null),
   MAP((byte) 14, 0, Map.class),
   ENUM((byte) 15, 0, Enum.class),
-  LIST((byte) 16, 0, List.class);
+  LIST((byte) 16, 0, List.class),
+  UUID((byte) 17, 16, java.util.UUID.class);
 
   private final byte typeMarker;
   private final int sizeInBytes;
@@ -560,6 +561,11 @@ class Companion {
         buffer.putInt(enumNameBytes.length);
         buffer.put(enumNameBytes);
       }
+      case UUID uuid -> {
+        buffer.put(typeMarker(c));
+        buffer.putLong(uuid.getMostSignificantBits());
+        buffer.putLong(uuid.getLeastSignificantBits());
+      }
       default -> throw new IllegalArgumentException("Unsupported type: " + c.getClass());
     }
   }
@@ -619,6 +625,7 @@ class Companion {
       case Record ignored -> RECORD.marker();
       case Map<?, ?> ignored -> MAP.marker();
       case List<?> ignored -> LIST.marker();
+      case UUID ignored -> UUID.marker();
       default -> throw new IllegalArgumentException("Unsupported type: " + c.getClass());
     };
   }
@@ -730,6 +737,11 @@ class Companion {
           LOGGER.severe(() -> msg);
           throw new IllegalArgumentException(msg, e);
         }
+      }
+      case UUID -> { // Handle UUIDs
+        long mostSigBits = buffer.getLong();
+        long leastSigBits = buffer.getLong();
+        yield new UUID(mostSigBits, leastSigBits);
       }
     };
   }
@@ -917,6 +929,8 @@ class Companion {
       byte[] enumNameBytes = enumConstantName.getBytes(UTF_8);
       int constantNameSize = 4 + enumNameBytes.length; // 4 bytes for length + name bytes
       size += constantNameSize;
+    } else if (c instanceof UUID) {
+      size += 2 * Long.BYTES; // UUID: 16 bytes (2 longs for mostSigBits and leastSigBits)
     } else {
       size += plainSize;
     }
