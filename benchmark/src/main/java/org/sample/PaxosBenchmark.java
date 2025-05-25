@@ -206,6 +206,36 @@ public class PaxosBenchmark {
   }
 
   public static void main(String[] args) throws IOException, ClassNotFoundException {
-    new PaxosBenchmark().paxosJdk(null);
+    System.out.println("=== Paxos Serialization Size Comparison ===");
+    System.out.println("Test data: " + original.length + " Accept records");
+    
+    // Test JDK serialization
+    ByteArrayOutputStream jdkOut = new ByteArrayOutputStream();
+    try (ObjectOutputStream oos = new ObjectOutputStream(jdkOut)) {
+      oos.writeObject(original);
+    }
+    int jdkSize = jdkOut.size();
+    System.out.println("JDK Serialization size: " + jdkSize + " bytes");
+    
+    // Test No Framework Pickler
+    ByteBuffer nfpBuffer = ByteBuffer.allocate(1024);
+    Pickler.serializeMany(original, nfpBuffer);
+    int nfpSize = nfpBuffer.position();
+    System.out.println("No Framework Pickler size: " + nfpSize + " bytes");
+    
+    // Test Protobuf
+    AcceptArray.Builder arrayBuilder = AcceptArray.newBuilder();
+    for (Accept accept : original) {
+      arrayBuilder.addAccepts(convertToProto(accept));
+    }
+    AcceptArray protoArray = arrayBuilder.build();
+    byte[] protobufBytes = protoArray.toByteArray();
+    int protobufSize = protobufBytes.length;
+    System.out.println("Protobuf size: " + protobufSize + " bytes");
+    
+    // Calculate compression ratios
+    System.out.println("\n=== Compression Ratios (vs JDK) ===");
+    System.out.printf("NFP: %.2fx smaller\n", (double) jdkSize / nfpSize);
+    System.out.printf("Protobuf: %.2fx smaller\n", (double) jdkSize / protobufSize);
   }
 }
