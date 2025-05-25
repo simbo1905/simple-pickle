@@ -3,3 +3,4 @@ target/
 .mvn/
 .aider*
 benchmark/.vscode/
+.claude/
