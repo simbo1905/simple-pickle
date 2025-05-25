@@ -42,7 +42,7 @@ if( TreeNode.areTreesEqual(originalRoot, deserializedRoot) ){
 }
 ```
 
-Notice that there is more logic in the `TreeNode` code to define a very elegant data structure than there was logic to create and ue the picklers. There are no annotations. There are no build-time steps. 
+Notice that there is more logic in the `TreeNode` code to define a very elegant data structure than there was logic to create and use the picklers. There are no annotations. There are no build-time steps. 
 
 This approach is also safer than many other approaches. It uses the JDK's `ByteBuffer` class to read and write binary data, which correctly validates the data on the wire. The pickler resolves the legal code paths that regular Java code would take when creating the pickler, not when deserializing. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour. 
 
