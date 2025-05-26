@@ -149,6 +149,12 @@ class Companion {
         buffer.get(bytes);
         yield new String(bytes, StandardCharsets.UTF_8);
       }
+      case UUID -> {
+        LOGGER.finer(() -> "read(UUID) - start position=" + buffer.position());
+        long mostSigBits = buffer.getLong();
+        long leastSigBits = buffer.getLong();
+        yield new java.util.UUID(mostSigBits, leastSigBits);
+      }
       case OPTIONAL_EMPTY -> {
         LOGGER.finer(() -> "read(empty) - position=" + buffer.position());
         yield Optional.empty();

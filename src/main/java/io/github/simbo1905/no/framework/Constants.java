@@ -31,7 +31,8 @@ enum Constants {
   MAP((byte) 20, 0, Map.class),
   LIST((byte) 21, 0, List.class),
   RECORD((byte) 22, 0, Record.class),
-  SAME_TYPE((byte) 23, 0, Record.class);
+  SAME_TYPE((byte) 23, 0, Record.class),
+  UUID((byte) 24, 16, java.util.UUID.class);
 
   private final byte typeMarker;
   final int sizeInBytes;

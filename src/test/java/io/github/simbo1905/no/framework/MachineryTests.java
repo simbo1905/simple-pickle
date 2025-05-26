@@ -295,6 +295,24 @@ public class MachineryTests {
     assertArrayEquals(testRecord.bools(), deserializedRecord.bools());
   }
 
+  public record UUIDRecord(UUID uuid) {
+  }
+
+  @Test
+  void testUUID() throws Throwable {
+    RecordReflection<UUIDRecord> reflection = RecordReflection.analyze(UUIDRecord.class);
+
+    UUID testUUID = new UUID(12343535L, 9876543210L);
+    UUIDRecord testRecord = new UUIDRecord(testUUID);
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    reflection.serialize(writeBuffer, testRecord);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    UUIDRecord deserialized = reflection.deserialize(readBuffer);
+
+    assertEquals(testUUID, deserialized.uuid());
+  }
+
   static boolean deepEquals(Object a, Object b) {
     if (a == null || b == null) return a == b;
 

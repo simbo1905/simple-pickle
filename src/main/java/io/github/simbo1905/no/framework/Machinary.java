@@ -11,8 +11,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
-import static io.github.simbo1905.no.framework.Tag.MAP;
-import static io.github.simbo1905.no.framework.Tag.OPTIONAL;
+import static io.github.simbo1905.no.framework.Tag.*;
 
 record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle[] componentAccessors,
                                           TypeStructure[] componentTypes,
@@ -117,7 +116,8 @@ enum Tag {
   // Complex types
   ENUM(Enum.class),
   ARRAY(Arrays.class), // Arrays don't have a single class use Arrays.class as a marker
-  RECORD(Record.class);
+  RECORD(Record.class),
+  UUID(java.util.UUID.class);
 
   final Class<?>[] supportedClasses;
 
@@ -274,6 +274,15 @@ final class Writers {
     buffer.put(bytes);
   };
 
+  static final BiConsumer<WriteBuffer, Object> UUID_WRITER = (buf, value) -> {
+    ByteBuffer buffer = byteBuffer(buf, value);
+    LOGGER.fine(() -> "Writing ENUM - position=" + buffer.position() + " value=" + value);
+    buffer.put(Constants.UUID.marker());
+    java.util.UUID uuid = (java.util.UUID) value;
+    buffer.putLong(uuid.getMostSignificantBits());
+    buffer.putLong(uuid.getLeastSignificantBits());
+  };
+
   static final BiConsumer<WriteBuffer, Object> ARRAY_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
     LOGGER.fine(() -> "Writing ARRAY - position=" + buffer.position() + " length=" + value);
@@ -408,13 +417,14 @@ final class Writers {
       case DOUBLE -> DOUBLE_WRITER;
       case STRING -> STRING_WRITER;
       case ARRAY -> ARRAY_WRITER;
+      case UUID -> UUID_WRITER;
       default -> throw new IllegalArgumentException("No leaf writer for tag: " + leafTag);
     };
   }
 }
 
 final class Readers {
-  static final Function<ByteBuffer, Boolean> BOOLEAN_READER = (buffer) -> {
+  static final Function<ByteBuffer, Object> BOOLEAN_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading BOOLEAN - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.BOOLEAN.marker()) {
@@ -425,7 +435,7 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Byte> BYTE_READER = (buffer) -> {
+  static final Function<ByteBuffer, Object> BYTE_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading BYTE - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.BYTE.marker()) {
@@ -436,7 +446,7 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Short> SHORT_READER = (buffer) -> {
+  static final Function<ByteBuffer, Object> SHORT_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading SHORT - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.SHORT.marker()) {
@@ -447,7 +457,7 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Character> CHAR_READER = (buffer) -> {
+  static final Function<ByteBuffer, Object> CHAR_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading CHARACTER - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.CHARACTER.marker()) {
@@ -458,7 +468,7 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Integer> INTEGER_READER = (buffer) -> {
+  static final Function<ByteBuffer, Object> INTEGER_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading INTEGER - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.INTEGER.marker()) {
@@ -469,7 +479,7 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Long> LONG_READER = (buffer) -> {
+  static final Function<ByteBuffer, Object> LONG_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading LONG - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.LONG.marker()) {
@@ -480,7 +490,7 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Float> FLOAT_READER = (buffer) -> {
+  static final Function<ByteBuffer, Object> FLOAT_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading FLOAT - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.FLOAT.marker()) {
@@ -491,7 +501,7 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Double> DOUBLE_READER = (buffer) -> {
+  static final Function<ByteBuffer, Object> DOUBLE_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading DOUBLE - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.DOUBLE.marker()) {
@@ -502,7 +512,7 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, String> STRING_READER = (buffer) -> {
+  static final Function<ByteBuffer, Object> STRING_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading STRING - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.STRING.marker()) {
@@ -513,6 +523,19 @@ final class Readers {
     buffer.get(bytes);
     String value = new String(bytes);
     LOGGER.finer(() -> "Read String: " + value);
+    return value;
+  };
+
+  static final Function<ByteBuffer, Object> UUID_READER = (buffer) -> {
+    LOGGER.fine(() -> "Reading UUID - position=" + buffer.position());
+    byte marker = buffer.get();
+    if (marker != Constants.UUID.marker()) {
+      throw new IllegalStateException("Expected UUID marker but got: " + marker);
+    }
+    final long mostSigBits = buffer.getLong();
+    final long leastSigBits = buffer.getLong();
+    UUID value = new UUID(mostSigBits, leastSigBits);
+    LOGGER.finer(() -> "Read UUID: " + value);
     return value;
   };
 
@@ -617,16 +640,17 @@ final class Readers {
   static Function<ByteBuffer, Object> createLeafReader(Tag tag) {
     LOGGER.fine(() -> "Creating leaf reader for tag: " + tag);
     return switch (tag) {
-      case BOOLEAN -> BOOLEAN_READER::apply;
-      case BYTE -> BYTE_READER::apply;
-      case SHORT -> SHORT_READER::apply;
-      case CHARACTER -> CHAR_READER::apply;
-      case INTEGER -> INTEGER_READER::apply;
-      case LONG -> LONG_READER::apply;
-      case FLOAT -> FLOAT_READER::apply;
-      case DOUBLE -> DOUBLE_READER::apply;
-      case STRING -> STRING_READER::apply;
+      case BOOLEAN -> BOOLEAN_READER;
+      case BYTE -> BYTE_READER;
+      case SHORT -> SHORT_READER;
+      case CHARACTER -> CHAR_READER;
+      case INTEGER -> INTEGER_READER;
+      case LONG -> LONG_READER;
+      case FLOAT -> FLOAT_READER;
+      case DOUBLE -> DOUBLE_READER;
+      case STRING -> STRING_READER;
       case ARRAY -> ARRAY_READER;
+      case UUID -> UUID_READER;
       default -> throw new IllegalArgumentException("No base reader for tag: " + tag);
     };
   }
