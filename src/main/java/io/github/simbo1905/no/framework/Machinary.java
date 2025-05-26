@@ -16,7 +16,8 @@ import static io.github.simbo1905.no.framework.Tag.*;
 record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle[] componentAccessors,
                                           TypeStructure[] componentTypes,
                                           BiConsumer<WriteBuffer, Object>[] componentWriters,
-                                          Function<ByteBuffer, Object>[] componentReaders) {
+                                          Function<ByteBuffer, Object>[] componentReaders,
+                                          Function<Object, Integer>[] componentSizes) {
 
   static <R extends Record> RecordReflection<R> analyze(Class<R> recordClass) throws Throwable {
     RecordComponent[] components = recordClass.getRecordComponents();
@@ -36,6 +37,8 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     BiConsumer<WriteBuffer, Object>[] componentWriters = new BiConsumer[components.length];
     @SuppressWarnings("unchecked")
     Function<ByteBuffer, Object>[] componentReaders = new Function[components.length];
+    @SuppressWarnings("unchecked")
+    Function<Object, Integer>[] componentSizes = new Function[components.length];
 
     IntStream.range(0, components.length).forEach(i -> {
       RecordComponent component = components[i];
@@ -51,16 +54,19 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
       componentTypes[i] = TypeStructure.analyze(genericType);
 
       // Build writer and reader chains
-      BiConsumer<WriteBuffer, Object> typeChain = Writers.buildWriterChain(componentTypes[i]);
-      componentWriters[i] = createComponentExtractor(componentAccessors[i], typeChain);
+      BiConsumer<WriteBuffer, Object> writeChain = Writers.buildWriterChain(componentTypes[i]);
+      componentWriters[i] = createExtractThenWrite(componentAccessors[i], writeChain);
       componentReaders[i] = Readers.buildReaderChain(componentTypes[i]);
+      // Create size function for the component
+      Function<Object, Integer> sizeChain = Readers.buildSizeChain(componentTypes[i]);
+      componentSizes[i] = createExtractThenSize(componentAccessors[i], sizeChain);
     });
 
     return new RecordReflection<>(constructor, componentAccessors, componentTypes,
-        componentWriters, componentReaders);
+        componentWriters, componentReaders, componentSizes);
   }
 
-  static BiConsumer<WriteBuffer, Object> createComponentExtractor(
+  static BiConsumer<WriteBuffer, Object> createExtractThenWrite(
       MethodHandle accessor,
       BiConsumer<WriteBuffer, Object> delegate) {
     return (buf, record) -> {
@@ -82,6 +88,26 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     };
   }
 
+  static Function<Object, Integer> createExtractThenSize(
+      MethodHandle accessor,
+      Function<Object, Integer>  delegate) {
+    return (obj) -> {
+      Objects.requireNonNull(obj);
+      try {
+        Object componentValue = accessor.invokeWithArguments(obj);
+        if (componentValue == null) {
+          LOGGER.finer(() -> "Size NULL component - returning 1");
+          return 1; // NULL marker size
+        } else {
+          return delegate.apply(componentValue);
+        }
+      } catch (Throwable e) {
+        throw new RuntimeException("Failed to extract component", e);
+      }
+    };
+  }
+
+
   @SuppressWarnings("unchecked")
   R deserialize(ByteBuffer buffer) throws Throwable {
     Object[] components = new Object[componentReaders.length];
@@ -93,6 +119,18 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     for (BiConsumer<WriteBuffer, Object> writer : componentWriters) {
       writer.accept(writeBuffer, record);
     }
+  }
+
+  /// This is pessimistic size calculation in that it does not attempt to compute all variable length types rather it takes a worst case
+  int maxSize(R record) {
+    if( record == null) {
+      return 1;
+    }
+    int size = 0;
+    for (Function<Object,Integer> sizer : componentSizes) {
+      size += sizer.apply(record);
+    }
+    return size;
   }
 }
 
@@ -310,10 +348,26 @@ final class Writers {
         buffer.put(bytes);
       }
       case int[] integers -> {
-        buffer.put(Constants.INTEGER.marker());
-        ZigZagEncoding.putInt(buffer, Array.getLength(value));
-        for (int i : integers) {
-          buffer.putInt(i);
+        final var length = Array.getLength(value);
+        final var sampleLength = Math.min(length, 32);
+        final var sampleSize = IntStream.range(0, sampleLength)
+            .map(i -> ZigZagEncoding.sizeOf(integers[i]))
+            .sum();
+        final var sampleAverageSize = sampleSize / sampleLength;
+        if( sampleAverageSize < 4) {
+          LOGGER.fine(() -> "Writing INTEGER_VAR array - position=" + buffer.position() + " length=" + length);
+          buffer.put(Constants.INTEGER_VAR.marker());
+          ZigZagEncoding.putInt(buffer, length);
+          for (int i : integers) {
+            ZigZagEncoding.putInt(buffer, i);
+          }
+        } else {
+          LOGGER.fine(() -> "Writing INTEGER array - position=" + buffer.position() + " length=" + length);
+          buffer.put(Constants.INTEGER.marker());
+          ZigZagEncoding.putInt(buffer, length);
+          for (int i : integers) {
+            buffer.putInt(i);
+          }
         }
       }
       default -> throw new IllegalArgumentException("Unsupported array type: " + value.getClass());
@@ -577,6 +631,13 @@ final class Readers {
         Arrays.setAll(integers, i -> buffer.getInt());
         return integers;
       }
+      case Constants.INTEGER_VAR -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read Integer Array len=" + length);
+        int[] integers = new int[length];
+        Arrays.setAll(integers, i -> ZigZagEncoding.getInt(buffer));
+        return integers;
+      }
       default -> throw new IllegalStateException("Unsupported array type marker: " + arrayTypeMarker);
     }
   };
@@ -686,5 +747,112 @@ final class Readers {
     }
 
     return reader;
+  }
+
+  public static Function<Object, Integer> buildSizeChain(TypeStructure componentType) {
+    final var tags = componentType.tags();
+    if (tags == null || tags.isEmpty()) {
+      throw new IllegalArgumentException("Type structure.tags() must have at least one tag: " + tags);
+    }
+    // Reverse the tags to process from right to left
+    final var tagsIterator = tags.reversed().iterator();
+    // To handle maps we need to look at the prior two tags in reverse order
+    List<Function<Object, Integer>> sizeFunctions = new ArrayList<>(tags.size());
+
+    // Start with the leaf (rightmost) size function
+    Function<Object, Integer> sizeFunction = createLeafSizeFunction(tagsIterator.next());
+    sizeFunctions.add(sizeFunction);
+
+    // Build chain from right to left (reverse order)
+    while (tagsIterator.hasNext()) {
+      final Function<Object, Integer> delegateToSizeFunction = sizeFunction; // final required for lambda capture
+      Tag preceedingTag = tagsIterator.next();
+      sizeFunction = switch (preceedingTag) {
+        case LIST -> createDelegatingListSizeFunction(delegateToSizeFunction);
+        case OPTIONAL -> createDelegatingOptionalSizeFunction(delegateToSizeFunction);
+        case MAP -> createMapSizeFunction(sizeFunctions.getLast(), sizeFunctions.get(sizeFunctions.size() - 2));
+        default -> createLeafSizeFunction(preceedingTag);
+      };
+      sizeFunctions.add(sizeFunction);
+    }
+
+    // There is no need to null check as the extractor will return 1 for null values
+    return sizeFunction;
+  }
+
+  static Function<Object, Integer> createDelegatingListSizeFunction(Function<Object, Integer> delegateToSizeFunction) {
+    return (obj) -> 4;
+  }
+
+  static Function<Object, Integer> createDelegatingOptionalSizeFunction(Function<Object, Integer> delegateToSizeFunction) {
+    return (obj) -> 3;
+  }
+
+  static Function<Object, Integer> createMapSizeFunction(Function<Object, Integer> last, Function<Object, Integer> objectIntegerFunction) {
+    return (obj) -> 2;
+  }
+
+  static Function<Object, Integer> INTEGER_SIZE = (object) ->
+      1 + Math.min(Integer.BYTES, ZigZagEncoding.sizeOf((Integer) object));
+
+  static Function<Object, Integer> LONG_SIZE = (object) ->
+      1 + Math.min(Integer.BYTES, ZigZagEncoding.sizeOf((Integer) object));
+
+  static Function<Object, Integer> STRING_SIZE = (object) ->{
+    if (object == null) {
+      return 1; // NULL marker size
+    }
+    String s = (String) object;
+    return 1 + ZigZagEncoding.sizeOf(s.length()) + s.codePoints()
+        .map(cp -> {
+          if (cp < 128) {
+            return 1;
+          } else if (cp < 2048) {
+            return 2;
+          } else if (cp < 65536) {
+            return 3;
+          } else {
+            return 4;
+          }
+        }).sum();
+  };
+
+  static Function<Object, Integer> ARRAY_SIZE = (value) ->{
+    if (value == null) {
+      return 1; // NULL marker size
+    }
+    return 1 + switch (value) {
+      case byte[] arr -> {
+        int length = arr.length;
+        yield  1 + ZigZagEncoding.sizeOf(length) + length;
+      }
+      case boolean[] booleans -> {
+        int length = booleans.length;
+        yield 1 + ZigZagEncoding.sizeOf(length) + length / 8 ; // BitSet size in bytes
+      }
+      case int[] integers -> {
+        int length = integers.length;
+        yield 1 + ZigZagEncoding.sizeOf(length) + length * Integer.BYTES;
+      }
+      default -> throw new AssertionError("not implemented for type: " + value.getClass());
+    };
+  };
+
+  static Function<Object, Integer> createLeafSizeFunction(Tag leafTag) {
+    LOGGER.fine(() -> "Creating size function for tag: " + leafTag);
+    return switch (leafTag) {
+      case BOOLEAN ->  (ignored) -> Byte.BYTES + 1; // 1 for the type marker;
+      case BYTE -> (ignored) -> Byte.BYTES + 1; // 1 for the type marker
+      case SHORT ->  (ignored) -> Short.BYTES + 1; // 1 for the type marker;;;
+      case CHARACTER -> (ignored) -> Character.BYTES + 1; // 1 for the type marker;;
+      case INTEGER -> INTEGER_SIZE;
+      case LONG -> LONG_SIZE;
+      case FLOAT -> (ignored) -> Float.BYTES + 1; // 1 for the type marker
+      case DOUBLE -> (ignored) -> Double.BYTES + 1; // 1 for the type marker;
+      case STRING -> STRING_SIZE;
+      case UUID ->  (ignored) -> 2 * Long.BYTES + 1; // 1 for the type marker;;
+      case ARRAY -> ARRAY_SIZE;
+      default -> throw new IllegalArgumentException("No leaf writer for tag: " + leafTag);
+    };
   }
 }

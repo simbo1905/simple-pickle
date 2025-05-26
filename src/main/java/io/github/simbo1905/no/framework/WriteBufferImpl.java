@@ -163,6 +163,7 @@ class WriteBufferImpl implements WriteBuffer {
   public String toString() {
     return "WriteBufferImpl{" +
         "offsetMap=" + offsetMap +
+        ", buffer=" + buffer +
         '}';
   }
 }

@@ -73,10 +73,10 @@ public class MachineryTests {
   public record MapRecord(Map<Integer, String> mapping) {
   }
 
-  public record ArrayBooleanRecord(boolean[] bools) {
+  public record ArrayBooleanRecord(boolean[] booleans) {
   }
 
-  public record ArrayIntRecord(int[] bools) {
+  public record ArrayIntRecord(int[] integers) {
   }
 
   public record ArrayBytes(byte[] bytes) {
@@ -132,10 +132,10 @@ public class MachineryTests {
     RecordReflection<WrapperRecord> reflection = RecordReflection.analyze(WrapperRecord.class);
 
     WrapperRecord testRecord = new WrapperRecord(
-        Boolean.TRUE, Byte.valueOf((byte) 127), Short.valueOf((short) 32767),
-        Character.valueOf('A'), Integer.valueOf(Integer.MAX_VALUE),
-        Long.valueOf(Long.MAX_VALUE), Float.valueOf(3.14f),
-        Double.valueOf(Math.PI)
+        Boolean.TRUE, (byte) 127, (short) 32767,
+        'A', Integer.MAX_VALUE,
+        Long.MAX_VALUE, 3.14f,
+        Math.PI
     );
 
     WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
@@ -193,7 +193,7 @@ public class MachineryTests {
   }
 
   @Test
-  void testListAnalysis() throws Throwable {
+  void testListAnalysis() {
     // public record ListRecord(List<String> items) {}
     RecordComponent[] components = ListRecord.class.getRecordComponents();
     // Analyze type structure
@@ -206,7 +206,7 @@ public class MachineryTests {
   }
 
   @Test
-  void testMapAnalysis() throws Throwable {
+  void testMapAnalysis() {
     // public record MapRecord(Map<Integer, String> mapping) {}
     RecordComponent[] components = MapRecord.class.getRecordComponents();
     // Analyze type structure
@@ -264,7 +264,7 @@ public class MachineryTests {
     ByteBuffer readBuffer = writeBuffer.flip();
     ArrayBooleanRecord deserializedRecord = reflection.deserialize(readBuffer);
 
-    assertArrayEquals(testRecord.bools(), deserializedRecord.bools());
+    assertArrayEquals(testRecord.booleans(), deserializedRecord.booleans());
   }
 
   @Test
@@ -278,7 +278,7 @@ public class MachineryTests {
     ByteBuffer readBuffer = writeBuffer.flip();
     ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
 
-    assertArrayEquals(testRecord.bools(), deserializedRecord.bools());
+    assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
   }
 
   @Test
@@ -286,13 +286,81 @@ public class MachineryTests {
     RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
 
     ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{Integer.MAX_VALUE, Integer.MIN_VALUE});
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+
+    int size = reflection.maxSize(testRecord);
+
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
     ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
 
-    assertArrayEquals(testRecord.bools(), deserializedRecord.bools());
+    assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
+  }
+
+  @Test
+  void testSmallVarIntArray() throws Throwable {
+    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+
+    ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{1, 2});
+
+    int size = reflection.maxSize(testRecord);
+
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+    reflection.serialize(writeBuffer, testRecord);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
+
+    assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
+  }
+
+
+  @Test
+  void testLargeVarIntArray() throws Throwable {
+    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+
+    int[] integers = new int[1000];
+    for (int i = 0; i < integers.length; i++) {
+      integers[i] = i * 1000; // Write in a way that is better suited for varint encoding
+    }
+
+    ArrayIntRecord testRecord = new ArrayIntRecord( integers );
+
+    int size = reflection.maxSize(testRecord);
+
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+    reflection.serialize(writeBuffer, testRecord);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
+
+    assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
+  }
+
+  @Test
+  void testLargeIntArray() throws Throwable {
+    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+
+    Random random = new Random(1234315135L);
+
+    int[] integers = new int[1000];
+    for (int i = 0; i < integers.length; i++) {
+      integers[i] = random.nextInt();
+    }
+
+    ArrayIntRecord testRecord = new ArrayIntRecord( integers );
+
+    int size = reflection.maxSize(testRecord);
+
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+
+    reflection.serialize(writeBuffer, testRecord);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
+
+    assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
   }
 
   public record UUIDRecord(UUID uuid) {
@@ -304,7 +372,10 @@ public class MachineryTests {
 
     UUID testUUID = new UUID(12343535L, 9876543210L);
     UUIDRecord testRecord = new UUIDRecord(testUUID);
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+
+    int size = reflection.maxSize(testRecord);
+
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
