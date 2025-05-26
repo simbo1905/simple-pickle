@@ -321,9 +321,10 @@ final class Writers {
     buffer.putLong(uuid.getLeastSignificantBits());
   };
 
+  public static final int SAMPLE_SIZE = 32;
   static final BiConsumer<WriteBuffer, Object> ARRAY_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing ARRAY - position=" + buffer.position() + " length=" + value);
+    LOGGER.fine(() -> "Writing ARRAY - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.ARRAY.marker());
     switch (value) {
       case byte[] arr -> {
@@ -349,12 +350,13 @@ final class Writers {
       }
       case int[] integers -> {
         final var length = Array.getLength(value);
-        final var sampleLength = Math.min(length, 32);
+        final var sampleLength = Math.min(length, SAMPLE_SIZE);
         final var sampleSize = IntStream.range(0, sampleLength)
             .map(i -> ZigZagEncoding.sizeOf(integers[i]))
             .sum();
         final var sampleAverageSize = sampleSize / sampleLength;
-        if( sampleAverageSize < 4) {
+        // Here we we must be saving one byte per integer to justify the encoding cost
+        if( sampleAverageSize < Integer.BYTES - 1) {
           LOGGER.fine(() -> "Writing INTEGER_VAR array - position=" + buffer.position() + " length=" + length);
           buffer.put(Constants.INTEGER_VAR.marker());
           ZigZagEncoding.putInt(buffer, length);
@@ -367,6 +369,32 @@ final class Writers {
           ZigZagEncoding.putInt(buffer, length);
           for (int i : integers) {
             buffer.putInt(i);
+          }
+        }
+      }
+      case long[] longs -> {
+        final var length = Array.getLength(value);
+        final var sampleLength = Math.min(length, SAMPLE_SIZE);
+        final var sampleSize = IntStream.range(0, sampleLength)
+            .map(i -> ZigZagEncoding.sizeOf(longs[i]))
+            .sum();
+        final var sampleAverageSize = sampleSize / sampleLength;
+        // Require 1 byte saving if we sampled the whole array.
+        // Require 2 byte saving if we did not sample the whole array as it is large.
+        if( ( length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) ||
+            (length > SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
+          LOGGER.fine(() -> "Writing LONG_VAR array - position=" + buffer.position() + " length=" + length);
+          buffer.put(Constants.LONG_VAR.marker());
+          ZigZagEncoding.putInt(buffer, length);
+          for (long i : longs) {
+            ZigZagEncoding.putLong(buffer, i);
+          }
+        } else {
+          LOGGER.fine(() -> "Writing LONG array - position=" + buffer.position() + " length=" + length);
+          buffer.put(Constants.LONG.marker());
+          ZigZagEncoding.putInt(buffer, length);
+          for (long i : longs) {
+            buffer.putLong(i);
           }
         }
       }
@@ -411,6 +439,7 @@ final class Writers {
       LOGGER.fine(() -> "Writing MAP - position=" + buffer.position() + " size=" + map.size());
       buffer.put(Constants.MAP.marker());
       ZigZagEncoding.putInt(buffer, map.size());
+      // FIXME this wastes two bytes for each entry better to linearize the keys and values to save 2 * size bytes
       for (Map.Entry<?, ?> entry : map.entrySet()) {
         keyDelegate.accept(buf, entry.getKey());
         valueDelegate.accept(buf, entry.getValue());
@@ -638,6 +667,20 @@ final class Readers {
         Arrays.setAll(integers, i -> ZigZagEncoding.getInt(buffer));
         return integers;
       }
+      case Constants.LONG -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read LONG Array len=" + length);
+        long[] longs = new long[length];
+        Arrays.setAll(longs, i -> buffer.getLong());
+        return longs;
+      }
+      case Constants.LONG_VAR -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read LONG_VAR Array len=" + length);
+        long[] longs = new long[length];
+        Arrays.setAll(longs, i -> ZigZagEncoding.getLong(buffer));
+        return longs;
+      }
       default -> throw new IllegalStateException("Unsupported array type marker: " + arrayTypeMarker);
     }
   };
@@ -833,6 +876,10 @@ final class Readers {
       case int[] integers -> {
         int length = integers.length;
         yield 1 + ZigZagEncoding.sizeOf(length) + length * Integer.BYTES;
+      }
+      case long[] longs -> {
+        int length = longs.length;
+        yield 1 + ZigZagEncoding.sizeOf(length) + length * Long.BYTES;
       }
       default -> throw new AssertionError("not implemented for type: " + value.getClass());
     };

@@ -79,6 +79,9 @@ public class MachineryTests {
   public record ArrayIntRecord(int[] integers) {
   }
 
+  public record ArrayLongRecord(long[] longs) {
+  }
+
   public record ArrayBytes(byte[] bytes) {
   }
 
@@ -346,6 +349,7 @@ public class MachineryTests {
 
     int[] integers = new int[1000];
     for (int i = 0; i < integers.length; i++) {
+      // random longs will flip a load of bits so be too large for varint encoding
       integers[i] = random.nextInt();
     }
 
@@ -361,6 +365,55 @@ public class MachineryTests {
     ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
+  }
+
+  @Test
+  void testLargeLongArray() throws Throwable {
+    RecordReflection<ArrayLongRecord> reflection = RecordReflection.analyze(ArrayLongRecord.class);
+
+    Random random = new Random(1234315135L);
+
+    long[] longs = new long[128];
+    for (int i = 0; i < longs.length; i++) {
+      // random longs will flip a load of bits so be too large for varint encoding
+      longs[i] = random.nextLong();
+    }
+
+    ArrayLongRecord testRecord = new ArrayLongRecord( longs );
+
+    int size = reflection.maxSize(testRecord);
+
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+
+    reflection.serialize(writeBuffer, testRecord);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    ArrayLongRecord deserializedRecord = reflection.deserialize(readBuffer);
+
+    assertArrayEquals(testRecord.longs(), deserializedRecord.longs());
+  }
+
+  @Test
+  void testLargeVarLongArray() throws Throwable {
+    RecordReflection<ArrayLongRecord> reflection = RecordReflection.analyze(ArrayLongRecord.class);
+
+    long[] longs = new long[128];
+    for (int i = 0; i < longs.length; i++) {
+      longs[i] = i * 1000L; // Write in a way that is better suited for varlong encoding
+    }
+
+    ArrayLongRecord testRecord = new ArrayLongRecord( longs );
+
+    int size = reflection.maxSize(testRecord);
+
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+
+    reflection.serialize(writeBuffer, testRecord);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    ArrayLongRecord deserializedRecord = reflection.deserialize(readBuffer);
+
+    assertArrayEquals(testRecord.longs(), deserializedRecord.longs());
   }
 
   public record UUIDRecord(UUID uuid) {
