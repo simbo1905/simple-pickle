@@ -19,7 +19,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
                                           Function<ByteBuffer, Object>[] componentReaders,
                                           Function<Object, Integer>[] componentSizes) {
 
-  static <R extends Record> RecordReflection<R> analyze(Class<R> recordClass) throws Throwable {
+  static <R extends Record> RecordReflection<R> analyze(Class<R> recordClass) {
     RecordComponent[] components = recordClass.getRecordComponents();
     MethodHandles.Lookup lookup = MethodHandles.lookup();
 
@@ -27,8 +27,15 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     Class<?>[] parameterTypes = Arrays.stream(components)
         .map(RecordComponent::getType)
         .toArray(Class<?>[]::new);
-    Constructor<?> constructorHandle = recordClass.getDeclaredConstructor(parameterTypes);
-    MethodHandle constructor = lookup.unreflectConstructor(constructorHandle);
+
+    Constructor<?> constructorHandle;
+    MethodHandle constructor;
+    try {
+      constructorHandle = recordClass.getDeclaredConstructor(parameterTypes);
+      constructor = lookup.unreflectConstructor(constructorHandle);
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      throw new RuntimeException(e);
+    }
 
     // Component accessors and type analysis
     MethodHandle[] componentAccessors = new MethodHandle[components.length];
@@ -179,19 +186,22 @@ enum Tag {
 }
 
 // TODO delete this and just use an array of tags
-record TypeStructure(List<Tag> tags) {
-  TypeStructure(List<Tag> tags) {
+record TypeStructure(List<Tag> tags, List<Type> types) {
+  TypeStructure(List<Tag> tags, List<Type> types) {
     this.tags = Collections.unmodifiableList(tags);
+    this.types = Collections.unmodifiableList(types);
   }
 
   static TypeStructure analyze(Type type) {
     List<Tag> tags = new ArrayList<>();
+    List<Type> types = new ArrayList<>();
     Type current = type;
     // TODO this is ugly can be made more stream oriented
     while (true) {
       if (current instanceof Class<?> clazz) {
         tags.add(Tag.fromClass(clazz));
-        return new TypeStructure(tags);
+        types.add(clazz);
+        return new TypeStructure(tags, types);
       }
 
       if (current instanceof ParameterizedType paramType) {
@@ -201,6 +211,7 @@ record TypeStructure(List<Tag> tags) {
         if (rawType instanceof Class<?> rawClass) {
           Tag tag = Tag.fromClass(rawClass);
           tags.add(tag);
+          types.add(rawClass);
 
           // For containers, continue with the first type argument
           if (tag == Tag.LIST || tag == OPTIONAL) {
@@ -212,6 +223,7 @@ record TypeStructure(List<Tag> tags) {
             final var keyType = typeArgs[0];
             if (keyType instanceof Class<?> keyClass) {
               tags.add(Tag.fromClass(keyClass));
+              types.add(keyClass);
             } else {
               throw new IllegalArgumentException("Unsupported map key type must be simple value type: " + keyType);
             }
@@ -231,6 +243,7 @@ record TypeStructure(List<Tag> tags) {
       if (current instanceof GenericArrayType arrayType) {
         tags.add(Tag.ARRAY);
         current = arrayType.getGenericComponentType();
+        types.add(current);
         continue;
       }
 
@@ -277,16 +290,29 @@ final class Writers {
 
   static final BiConsumer<WriteBuffer, Object> INTEGER_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing INTEGER - position=" + buffer.position() + " value=" + value);
-    buffer.put(Constants.INTEGER.marker()); // TODO zigzag encode
-    buffer.putInt((Integer) value);
+    final Integer intValue = (Integer) value;
+    LOGGER.fine(() -> "Writing INTEGER - position=" + buffer.position() + " value=" + intValue);
+    if( ZigZagEncoding.sizeOf( intValue) < Integer.BYTES ){
+      buffer.put(Constants.INTEGER_VAR.marker());
+      ZigZagEncoding.putInt(buffer, intValue);
+    } else {
+      buffer.put(Constants.INTEGER.marker());
+      buffer.putInt(intValue);
+    }
   };
 
   static final BiConsumer<WriteBuffer, Object> LONG_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing LONG - position=" + buffer.position() + " value=" + value);
-    buffer.put(Constants.LONG.marker()); // TODO zigzag encode
-    buffer.putLong((Long) value);
+    final Long longValue = (Long) value;
+    LOGGER.fine(() -> "Writing LONG - position=" + buffer.position() + " value=" + longValue);
+
+    if( ZigZagEncoding.sizeOf( longValue) < Long.BYTES ){
+      buffer.put(Constants.LONG_VAR.marker());
+      ZigZagEncoding.putLong(buffer, longValue);
+    } else {
+      buffer.put(Constants.LONG.marker());
+      buffer.putLong((Long) value);
+    }
   };
 
   static final BiConsumer<WriteBuffer, Object> FLOAT_WRITER = (buf, value) -> {
@@ -308,7 +334,7 @@ final class Writers {
     LOGGER.fine(() -> "Writing STRING - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.STRING.marker());
     byte[] bytes = ((String) value).getBytes();
-    buffer.putInt(bytes.length); // TODO zigzag encode
+    ZigZagEncoding.putInt(buffer, bytes.length);
     buffer.put(bytes);
   };
 
@@ -554,23 +580,33 @@ final class Readers {
   static final Function<ByteBuffer, Object> INTEGER_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading INTEGER - position=" + buffer.position());
     byte marker = buffer.get();
-    if (marker != Constants.INTEGER.marker()) {
-      throw new IllegalStateException("Expected INTEGER marker but got: " + marker);
+    if (marker == Constants.INTEGER_VAR.marker()) {
+      int value = ZigZagEncoding.getInt(buffer);
+      LOGGER.finer(() -> "Read Integer (ZigZag): " + value);
+      return value;
+    } else if (marker == Constants.INTEGER.marker()) {
+      int value = buffer.getInt();
+      LOGGER.finer(() -> "Read Integer: " + value);
+      return value;
+    } else {
+      throw new IllegalStateException("Expected INTEGER or INTEGER_VAR marker but got: " + marker);
     }
-    int value = buffer.getInt();
-    LOGGER.finer(() -> "Read Integer: " + value);
-    return value;
   };
 
   static final Function<ByteBuffer, Object> LONG_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading LONG - position=" + buffer.position());
     byte marker = buffer.get();
-    if (marker != Constants.LONG.marker()) {
-      throw new IllegalStateException("Expected LONG marker but got: " + marker);
+    if (marker == Constants.LONG_VAR.marker()) {
+      long value = ZigZagEncoding.getLong(buffer);
+      LOGGER.finer(() -> "Read Long (ZigZag): " + value);
+      return value;
+    } else if (marker == Constants.LONG.marker()) {
+      long value = buffer.getLong();
+      LOGGER.finer(() -> "Read Long: " + value);
+      return value;
+    } else {
+      throw new IllegalStateException("Expected LONG or LONG_VAR marker but got: " + marker);
     }
-    long value = buffer.getLong();
-    LOGGER.finer(() -> "Read Long: " + value);
-    return value;
   };
 
   static final Function<ByteBuffer, Object> FLOAT_READER = (buffer) -> {
@@ -601,7 +637,7 @@ final class Readers {
     if (marker != Constants.STRING.marker()) {
       throw new IllegalStateException("Expected STRING marker but got: " + marker);
     }
-    int length = buffer.getInt();
+    int length = ZigZagEncoding.getInt(buffer);
     byte[] bytes = new byte[length];
     buffer.get(bytes);
     String value = new String(bytes);

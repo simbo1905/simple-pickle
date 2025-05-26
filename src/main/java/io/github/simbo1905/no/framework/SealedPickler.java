@@ -85,4 +85,17 @@ class SealedPickler<S> implements Pickler<S> {
       throw new RuntimeException("Failed to deserialize " + name.name() + " : " + t.getMessage(), t);
     }
   }
+
+  @Override
+  public WriteBuffer allocateSufficient(S record) {
+    Objects.requireNonNull(record, "record");
+    if( !record.getClass().isRecord()) {
+      throw new IllegalArgumentException("Expected a record type but got " + record.getClass().getName());
+    }
+    final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(record.getClass());
+    if (pickler == null) {
+      throw new IllegalStateException("No pickler found for " + record.getClass());
+    }
+    return Companion.sizeOfWithPickler(pickler, record);
+  }
 }

@@ -91,6 +91,8 @@ public interface Pickler<T> {
     return (Pickler<S>) Companion.REGISTRY.get(sealedClass);
   }
 
+  /// Allocates a buffer that is large enough to hold the serialized record. This method does not
+  WriteBuffer allocateSufficient(T record);
 }
 
 record InternedName(String name) {

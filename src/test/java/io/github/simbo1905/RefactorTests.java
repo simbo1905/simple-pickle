@@ -590,7 +590,7 @@ public class RefactorTests {
     final var dogPickler = forRecord(Dog.class);
 
     // When serializing and deserializing
-    final var writeBuffer = WriteBuffer.of(1024);
+    final WriteBuffer writeBuffer =  dogPickler.allocateSufficient(dog);
     dogPickler.serialize(writeBuffer, dog);
     final var readBuffer = ReadBuffer.wrap(writeBuffer.flip());
     final var deserializedDog = dogPickler.deserialize(readBuffer);

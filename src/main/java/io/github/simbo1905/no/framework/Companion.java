@@ -300,8 +300,16 @@ class Companion {
   @SuppressWarnings({"unchecked", "rawtypes"})
   static void serializeWithPickler(WriteBufferImpl buf, Pickler<?> pickler, Object object) {
     // Since we know at runtime that pickler is a RecordPickler and object is the right type
-    ((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
+    //((RecordPickler) pickler).serializeWithMap(buf, (Record) object, true);
   }
+
+  /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  static WriteBuffer sizeOfWithPickler(Pickler<?> pickler, Object object) {
+    // Since we know at runtime that pickler is a RecordPickler and object is the right type
+    return ((RecordPickler) pickler).allocateSufficient((Record) object);
+  }
+
 
   /// Writes types into a buffer recursively. This is used to write out the components of a record.
   /// In order to prevent infinite loops the caller of the method must look up the pickler of any
@@ -418,18 +426,7 @@ class Companion {
           }).sum();
       case Enum<?> e -> maxSizeOf(e.getClass().getName()) + maxSizeOf(e.name());
       case Record r -> {
-        // TODO this works but feels a little hacky
-        RecordPickler<?> pickler = (RecordPickler<?>) REGISTRY.get(r.getClass());
-        yield Arrays.stream(pickler.componentAccessors)
-            .map(a -> {
-              try {
-                return a.invokeWithArguments(r);
-              } catch (Throwable e) {
-                throw new RuntimeException(e);
-              }
-            })
-            .mapToInt(Companion::maxSizeOf)
-            .sum();
+        yield -1;
       }
       case null -> 0;
       case Optional<?> o when o.isEmpty() -> 1;
