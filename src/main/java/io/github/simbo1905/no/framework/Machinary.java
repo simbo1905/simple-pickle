@@ -13,6 +13,7 @@ import java.util.stream.IntStream;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.Tag.MAP;
 import static io.github.simbo1905.no.framework.Tag.OPTIONAL;
+
 record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle[] componentAccessors,
                                           TypeStructure[] componentTypes,
                                           BiConsumer<WriteBuffer, Object>[] componentWriters,
@@ -95,6 +96,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     }
   }
 }
+
 enum Tag {
   // Primitive types
   BOOLEAN(boolean.class, Boolean.class),
@@ -138,10 +140,10 @@ enum Tag {
   }
 }
 
-record TypeStructure(List<Tag> tags, Type leafType) {
-  TypeStructure(List<Tag> tags, Type leafType) {
+// TODO delete this and just use an array of tags
+record TypeStructure(List<Tag> tags) {
+  TypeStructure(List<Tag> tags) {
     this.tags = Collections.unmodifiableList(tags);
-    this.leafType = leafType;
   }
 
   static TypeStructure analyze(Type type) {
@@ -151,7 +153,7 @@ record TypeStructure(List<Tag> tags, Type leafType) {
     while (true) {
       if (current instanceof Class<?> clazz) {
         tags.add(Tag.fromClass(clazz));
-        return new TypeStructure(tags, current);
+        return new TypeStructure(tags);
       }
 
       if (current instanceof ParameterizedType paramType) {
@@ -169,8 +171,18 @@ record TypeStructure(List<Tag> tags, Type leafType) {
           }
 
           if (tag == MAP) {
+            final var keyType = typeArgs[0];
+            if (keyType instanceof Class<?> keyClass) {
+              tags.add(Tag.fromClass(keyClass));
+            } else {
+              throw new IllegalArgumentException("Unsupported map key type must be simple value type: " + keyType);
+            }
+            final var valueType = typeArgs[1];
+            if (!(valueType instanceof Class<?>)) {
+              throw new IllegalArgumentException("Unsupported map value type must be simple value type: " + valueType);
+            }
             // For maps, we need special handling - for now just take value type
-            current = typeArgs[1];
+            current = valueType;
             continue;
           }
         }
@@ -199,74 +211,74 @@ final class Writers {
 
   static final BiConsumer<WriteBuffer, Object> BOOLEAN_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing BOOLEAN - position=" +buffer.position() + " value=" + value);
+    LOGGER.fine(() -> "Writing BOOLEAN - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.BOOLEAN.marker());
     buffer.put(((Boolean) value) ? (byte) 1 : (byte) 0);
   };
 
   static final BiConsumer<WriteBuffer, Object> BYTE_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing BOOLEAN - position=" +buffer.position() + " value=" + value);
+    LOGGER.fine(() -> "Writing BOOLEAN - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.BYTE.marker());
     buffer.put((Byte) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> SHORT_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing SHORT - position=" +buffer.position() + " value=" + value);
+    LOGGER.fine(() -> "Writing SHORT - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.SHORT.marker());
     buffer.putShort((Short) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> CHAR_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing CHARACTER - position=" +buffer.position() + " value=" + value);
+    LOGGER.fine(() -> "Writing CHARACTER - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.CHARACTER.marker());
     buffer.putChar((Character) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> INTEGER_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing INTEGER - position=" +buffer.position() + " value=" + value);
-    buffer.put(Constants.INTEGER.marker());
+    LOGGER.fine(() -> "Writing INTEGER - position=" + buffer.position() + " value=" + value);
+    buffer.put(Constants.INTEGER.marker()); // TODO zigzag encode
     buffer.putInt((Integer) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> LONG_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing LONG - position=" +buffer.position() + " value=" + value);
-    buffer.put(Constants.LONG.marker());
+    LOGGER.fine(() -> "Writing LONG - position=" + buffer.position() + " value=" + value);
+    buffer.put(Constants.LONG.marker()); // TODO zigzag encode
     buffer.putLong((Long) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> FLOAT_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing FLOAT - position=" +buffer.position() + " value=" + value);
+    LOGGER.fine(() -> "Writing FLOAT - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.FLOAT.marker());
     buffer.putFloat((Float) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> DOUBLE_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing DOUBLE - position=" +buffer.position() + " value=" + value);
+    LOGGER.fine(() -> "Writing DOUBLE - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.DOUBLE.marker());
     buffer.putDouble((Double) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> STRING_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing STRING - position=" +buffer.position() + " value=" + value);
+    LOGGER.fine(() -> "Writing STRING - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.STRING.marker());
     byte[] bytes = ((String) value).getBytes();
-    buffer.putInt(bytes.length);
+    buffer.putInt(bytes.length); // TODO zigzag encode
     buffer.put(bytes);
   };
 
   static final BiConsumer<WriteBuffer, Object> ARRAY_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf, value);
-    LOGGER.fine(() -> "Writing ARRAY - position=" +buffer.position() + " length=" + value);
+    LOGGER.fine(() -> "Writing ARRAY - position=" + buffer.position() + " length=" + value);
     buffer.put(Constants.ARRAY.marker());
-    switch (value){
+    switch (value) {
       case byte[] arr -> {
         buffer.put(Constants.BYTE.marker());
         ZigZagEncoding.putInt(buffer, Array.getLength(value));
@@ -288,29 +300,38 @@ final class Writers {
         LOGGER.finer(() -> "Writing BitSet bytes in big endian order: " + Arrays.toString(bytes));
         buffer.put(bytes);
       }
+      case int[] integers -> {
+        buffer.put(Constants.INTEGER.marker());
+        ZigZagEncoding.putInt(buffer, Array.getLength(value));
+        for (int i : integers) {
+          buffer.putInt(i);
+        }
+      }
       default -> throw new IllegalArgumentException("Unsupported array type: " + value.getClass());
     }
   };
 
   // Container writers
-  static BiConsumer<WriteBuffer, Optional<?>> createOptionalWriter(BiConsumer<WriteBuffer, Object> delegate) {
-    return (buf, optional) -> {
-      ByteBuffer buffer = byteBuffer(buf, optional);
+  static BiConsumer<WriteBuffer, Object> createDelegatingOptionalWriter(BiConsumer<WriteBuffer, Object> delegate) {
+    return (buf, obj) -> {
+      ByteBuffer buffer = byteBuffer(buf, obj);
+      Optional<?> optional = (Optional<?>) obj;
       if (optional.isEmpty()) {
-        LOGGER.fine(() -> "Writing OPTIONAL_EMPTY - position=" +buffer.position());
+        LOGGER.fine(() -> "Writing OPTIONAL_EMPTY - position=" + buffer.position());
         buffer.put(Constants.OPTIONAL_EMPTY.marker());
       } else {
-        LOGGER.fine(() -> "Writing OPTIONAL_OF - position=" +buffer.position() + " value=" + optional.get());
+        LOGGER.fine(() -> "Writing OPTIONAL_OF - position=" + buffer.position() + " value=" + optional.get());
         buffer.put(Constants.OPTIONAL_OF.marker());
         delegate.accept(buf, optional.get());
       }
     };
   }
 
-  static BiConsumer<WriteBuffer, List<?>> createListWriter(BiConsumer<WriteBuffer, Object> delegate) {
-    return (buf, list) -> {
-      ByteBuffer buffer = byteBuffer(buf, list);
-      LOGGER.fine(() -> "Writing LIST - position=" +buffer.position() + " size=" + list.size());
+  static BiConsumer<WriteBuffer, Object> createDelegatingListWriter(BiConsumer<WriteBuffer, Object> delegate) {
+    return (buf, obj) -> {
+      ByteBuffer buffer = byteBuffer(buf, obj);
+      List<?> list = (List<?>) obj;
+      LOGGER.fine(() -> "Writing LIST - position=" + buffer.position() + " size=" + list.size());
       buffer.put(Constants.LIST.marker());
       buffer.putInt(list.size());
       for (Object item : list) {
@@ -319,13 +340,14 @@ final class Writers {
     };
   }
 
-  static BiConsumer<WriteBuffer, Map<?, ?>> createMapWriter(BiConsumer<WriteBuffer, Object> keyDelegate,
+  static BiConsumer<WriteBuffer, Object> createMapWriter(BiConsumer<WriteBuffer, Object> keyDelegate,
                                                             BiConsumer<WriteBuffer, Object> valueDelegate) {
-    return (buf, map) -> {
-      ByteBuffer buffer = byteBuffer(buf, map);
-      LOGGER.fine(() -> "Writing MAP - position=" +buffer.position() + " size=" + map.size());
+    return (buf, obj) -> {
+      ByteBuffer buffer = byteBuffer(buf, obj);
+      Map<?,?> map = (Map<?, ?>) obj;
+      LOGGER.fine(() -> "Writing MAP - position=" + buffer.position() + " size=" + map.size());
       buffer.put(Constants.MAP.marker());
-      buffer.putInt(map.size());
+      ZigZagEncoding.putInt(buffer, map.size());
       for (Map.Entry<?, ?> entry : map.entrySet()) {
         keyDelegate.accept(buf, entry.getKey());
         valueDelegate.accept(buf, entry.getValue());
@@ -345,9 +367,37 @@ final class Writers {
     // Reverse the tags to process from right to left
     Iterator<Tag> reversedTags = tags.reversed().iterator();
 
+    List<BiConsumer<WriteBuffer, Object>> writers = new ArrayList<>(tags.size());
+
     // Start with the leaf (rightmost) writer
     Tag rightmostTag = reversedTags.next();
-    BiConsumer<WriteBuffer, Object> writer = switch (rightmostTag) {
+    BiConsumer<WriteBuffer, Object> writer = createLeafWriter(rightmostTag);
+    writers.add(writer);
+
+    // For nested collection or option types we Build chain from right to left (reverse order)
+    while (reversedTags.hasNext()) {
+      final BiConsumer<WriteBuffer, Object> lastWriter = writer; // final required for lambda capture
+      Tag tag = reversedTags.next();
+      writer = switch (tag) {
+        case LIST -> createDelegatingListWriter(lastWriter);
+        case OPTIONAL -> createDelegatingOptionalWriter(lastWriter);
+        case MAP -> {
+          // As we are going in reverse order we have to flip the last two writers
+          final var keyDelegate = writers.getLast();
+          final var valueDelegate = writers.get(writers.size() - 2);
+          yield createMapWriter(keyDelegate, valueDelegate);
+        }
+        default -> createLeafWriter(tag);
+      };
+      writers.add(writer);
+    }
+
+    return writer;
+  }
+
+  static BiConsumer<WriteBuffer, Object> createLeafWriter(Tag leafTag) {
+    LOGGER.fine(() -> "Creating leaf writer for tag: " + leafTag);
+    return switch (leafTag) {
       case BOOLEAN -> BOOLEAN_WRITER;
       case BYTE -> BYTE_WRITER;
       case SHORT -> SHORT_WRITER;
@@ -358,24 +408,8 @@ final class Writers {
       case DOUBLE -> DOUBLE_WRITER;
       case STRING -> STRING_WRITER;
       case ARRAY -> ARRAY_WRITER;
-      default -> throw new IllegalArgumentException("No leaf writer for tag: " + rightmostTag);
+      default -> throw new IllegalArgumentException("No leaf writer for tag: " + leafTag);
     };
-
-    // For nested collection or option types we Build chain from right to left (reverse order)
-    while (reversedTags.hasNext()) {
-      Tag tag = reversedTags.next();
-      BiConsumer<WriteBuffer, Object> currentWriter = writer;
-      writer = switch (tag) {
-        case LIST -> (buf, obj) ->
-            createListWriter(currentWriter).accept(buf, (List<?>) obj);
-        case OPTIONAL -> (buf, obj) ->
-            createOptionalWriter(currentWriter).accept(buf, (Optional<?>) obj);
-        case MAP -> throw new UnsupportedOperationException("Map writer chain not yet implemented");
-        default -> throw new IllegalArgumentException("Unsupported container tag: " + tag);
-      };
-    }
-
-    return writer;
   }
 }
 
@@ -489,7 +523,7 @@ final class Readers {
       throw new IllegalStateException("Expected ARRAY marker but got: " + marker);
     }
     byte arrayTypeMarker = buffer.get();
-    switch(Constants.fromMarker(arrayTypeMarker)){
+    switch (Constants.fromMarker(arrayTypeMarker)) {
       case Constants.BYTE -> {
         int length = ZigZagEncoding.getInt(buffer);
         byte[] bytes = new byte[length];
@@ -513,12 +547,19 @@ final class Readers {
         });
         return booleans;
       }
+      case Constants.INTEGER -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read Integer Array len=" + length);
+        int[] integers = new int[length];
+        Arrays.setAll(integers, i -> buffer.getInt());
+        return integers;
+      }
       default -> throw new IllegalStateException("Unsupported array type marker: " + arrayTypeMarker);
     }
   };
 
   // Container readers
-  static Function<ByteBuffer, Optional<?>> createOptionalReader(Function<ByteBuffer, Object> delegate) {
+  static Function<ByteBuffer, Object> createDelegatingOptionalReader(Function<ByteBuffer, Object> delegate) {
     return (buffer) -> {
       LOGGER.fine(() -> "Reading OPTIONAL - position=" + buffer.position());
       byte marker = buffer.get();
@@ -535,7 +576,7 @@ final class Readers {
     };
   }
 
-  static Function<ByteBuffer, List<?>> createListReader(Function<ByteBuffer, Object> delegate) {
+  static Function<ByteBuffer, Object> createDelegatingListReader(Function<ByteBuffer, Object> delegate) {
     return (buffer) -> {
       LOGGER.fine(() -> "Reading LIST - position=" + buffer.position());
       byte marker = buffer.get();
@@ -550,16 +591,17 @@ final class Readers {
     };
   }
 
-  static Function<ByteBuffer, Map<?, ?>> createMapReader(Function<ByteBuffer, Object> keyDelegate,
-                                                         Function<ByteBuffer, Object> valueDelegate) {
+  static Function<ByteBuffer, Object> createMapReader(Function<ByteBuffer, Object> keyDelegate,
+                                                      Function<ByteBuffer, Object> valueDelegate) {
     return (buffer) -> {
-      LOGGER.fine(() -> "Reading MAP - position=" + buffer.position());
-      byte marker = buffer.get();
+      Objects.requireNonNull(buffer);
+      final var initialPosition = buffer.position();
+      final var marker = buffer.get();
       if (marker != Constants.MAP.marker()) {
-        throw new IllegalStateException("Expected MAP marker but got: " + marker);
+        throw new IllegalStateException("Expected MAP marker at position=" + initialPosition + " but got: " + marker);
       }
-      int size = buffer.getInt();
-      LOGGER.fine(() -> "Reading Map with " + size + " entries");
+      int size = ZigZagEncoding.getInt(buffer);
+      LOGGER.fine(() -> "Reading MAP - position=" + initialPosition + " size=" + size);
       Map<Object, Object> map = new LinkedHashMap<>(size);
       IntStream.range(0, size)
           .forEach(i -> {
@@ -572,7 +614,8 @@ final class Readers {
   }
 
   // Get base reader for a tag
-  static Function<ByteBuffer, Object> innerReader(Tag tag) {
+  static Function<ByteBuffer, Object> createLeafReader(Tag tag) {
+    LOGGER.fine(() -> "Creating leaf reader for tag: " + tag);
     return switch (tag) {
       case BOOLEAN -> BOOLEAN_READER::apply;
       case BYTE -> BYTE_READER::apply;
@@ -583,30 +626,39 @@ final class Readers {
       case FLOAT -> FLOAT_READER::apply;
       case DOUBLE -> DOUBLE_READER::apply;
       case STRING -> STRING_READER::apply;
-      case ARRAY -> ARRAY_READER::apply;
+      case ARRAY -> ARRAY_READER;
       default -> throw new IllegalArgumentException("No base reader for tag: " + tag);
     };
   }
 
   // Build reader chain from type structure
   static Function<ByteBuffer, Object> buildReaderChain(TypeStructure structure) {
+    Objects.requireNonNull(structure);
+    final var tags = structure.tags();
+    if (tags == null || tags.isEmpty()) {
+      throw new IllegalArgumentException("Type structure.tags() must have at least one tag: " + tags);
+    }
     // Reverse the tags to process from right to left
-    final var tagsIterator = structure.tags().reversed().iterator();
+    final var tagsIterator = tags.reversed().iterator();
+    // To handle maps we need to look at the prior two tags in reverse order
+    List<Function<ByteBuffer, Object>> readers = new ArrayList<>(tags.size());
 
     // Start with the leaf (rightmost) reader
-    Function<ByteBuffer, Object> reader = innerReader(tagsIterator.next());
+    Function<ByteBuffer, Object> reader = createLeafReader(tagsIterator.next());
+    readers.add(reader);
 
     // Build chain from right to left (reverse order)
     while (tagsIterator.hasNext()) {
-      Tag tag = tagsIterator.next();
-      Function<ByteBuffer, Object> currentReader = reader;
-
-      reader = switch (tag) {
-        case LIST -> (buffer) -> createListReader(currentReader).apply(buffer);
-        case OPTIONAL -> (buffer) -> createOptionalReader(currentReader).apply(buffer);
-        case MAP -> throw new UnsupportedOperationException("Map reader chain not yet implemented");
-        default -> throw new IllegalArgumentException("Unsupported container tag: " + tag);
+      final Function<ByteBuffer, Object> delegateToReader = reader; // final required for lambda capture
+      Tag preceedingTag = tagsIterator.next();
+      reader = switch (preceedingTag) {
+        case LIST -> createDelegatingListReader(delegateToReader);
+        case OPTIONAL -> createDelegatingOptionalReader(delegateToReader);
+        case MAP -> // as we are going in reverse order it is
+            createMapReader(readers.getLast(), readers.get(readers.size() - 2));
+        default -> createLeafReader(preceedingTag);
       };
+      readers.add(reader);
     }
 
     return reader;

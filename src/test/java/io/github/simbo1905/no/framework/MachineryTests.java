@@ -3,6 +3,8 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -11,6 +13,7 @@ import java.util.logging.Formatter;
 import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MachineryTests {
@@ -48,18 +51,36 @@ public class MachineryTests {
   }
 
   // Records for testing
-  public record DeepDouble(List<List<Optional<Double>>> deepDoubles) {}
+  public record DeepDouble(List<List<Optional<Double>>> deepDoubles) {
+  }
+
   public record PrimitiveRecord(boolean boolValue, byte byteValue, short shortValue,
-                                       char charValue, int intValue, long longValue,
-                                       float floatValue, double doubleValue) {}
+                                char charValue, int intValue, long longValue,
+                                float floatValue, double doubleValue) {
+  }
+
   public record WrapperRecord(Boolean boolValue, Byte byteValue, Short shortValue,
-                                     Character charValue, Integer intValue, Long longValue,
-                                     Float floatValue, Double doubleValue) {}
-  public record OptionalRecord(Optional<String> maybeValue) {}
-  public record ListRecord(List<String> items) {}
-  public record MapRecord(Map<String, Integer> mapping) {}
-  public record ArrayRecord(boolean[] bools) {}
-  public record ArrayBytes(byte[] bytes) {}
+                              Character charValue, Integer intValue, Long longValue,
+                              Float floatValue, Double doubleValue) {
+  }
+
+  public record OptionalRecord(Optional<String> maybeValue) {
+  }
+
+  public record ListRecord(List<String> items) {
+  }
+
+  public record MapRecord(Map<Integer, String> mapping) {
+  }
+
+  public record ArrayBooleanRecord(boolean[] bools) {
+  }
+
+  public record ArrayIntRecord(int[] bools) {
+  }
+
+  public record ArrayBytes(byte[] bytes) {
+  }
 
   @Test
   void testDeepNestedTypes() throws Throwable {
@@ -92,7 +113,7 @@ public class MachineryTests {
     RecordReflection<PrimitiveRecord> reflection = RecordReflection.analyze(PrimitiveRecord.class);
 
     PrimitiveRecord testRecord = new PrimitiveRecord(
-        true, (byte)127, (short)32767, 'A',
+        true, (byte) 127, (short) 32767, 'A',
         Integer.MAX_VALUE, Long.MAX_VALUE,
         3.14f, Math.PI
     );
@@ -111,7 +132,7 @@ public class MachineryTests {
     RecordReflection<WrapperRecord> reflection = RecordReflection.analyze(WrapperRecord.class);
 
     WrapperRecord testRecord = new WrapperRecord(
-        Boolean.TRUE, Byte.valueOf((byte)127), Short.valueOf((short)32767),
+        Boolean.TRUE, Byte.valueOf((byte) 127), Short.valueOf((short) 32767),
         Character.valueOf('A'), Integer.valueOf(Integer.MAX_VALUE),
         Long.valueOf(Long.MAX_VALUE), Float.valueOf(3.14f),
         Double.valueOf(Math.PI)
@@ -172,16 +193,44 @@ public class MachineryTests {
   }
 
   @Test
-  void testMapTypes() throws Throwable {
-    RecordReflection<MapRecord> reflection = RecordReflection.analyze(MapRecord.class);
+  void testListAnalysis() throws Throwable {
+    // public record ListRecord(List<String> items) {}
+    RecordComponent[] components = ListRecord.class.getRecordComponents();
+    // Analyze type structure
+    Type genericType = components[0].getGenericType();
+    TypeStructure typeStructure = TypeStructure.analyze(genericType);
+    assertThat(typeStructure).isNotNull();
+    assertThat(typeStructure.tags().size()).isEqualTo(2);
+    assertThat(typeStructure.tags().get(0)).isEqualTo(Tag.LIST);
+    assertThat(typeStructure.tags().get(1)).isEqualTo(Tag.STRING);
+  }
 
-    Map<String, Integer> map = new LinkedHashMap<>();
-    map.put("one", 1);
-    map.put("two", 2);
-    map.put("three", 3);
+  @Test
+  void testMapAnalysis() throws Throwable {
+    // public record MapRecord(Map<Integer, String> mapping) {}
+    RecordComponent[] components = MapRecord.class.getRecordComponents();
+    // Analyze type structure
+    Type genericType = components[0].getGenericType();
+    TypeStructure typeStructure = TypeStructure.analyze(genericType);
+    assertThat(typeStructure).isNotNull();
+    assertThat(typeStructure.tags().size()).isEqualTo(3);
+    assertThat(typeStructure.tags().get(0)).isEqualTo(Tag.MAP);
+    assertThat(typeStructure.tags().get(1)).isEqualTo(Tag.INTEGER);
+    assertThat(typeStructure.tags().get(2)).isEqualTo(Tag.STRING);
+  }
+
+  @Test
+  void testMapTypes() throws Throwable {
+
+    Map<Integer, String> map = new LinkedHashMap<>();
+    map.put(1, "one");
+    map.put(2, "two");
+    map.put(3, "three");
 
     MapRecord testRecord = new MapRecord(map);
     WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+
+    RecordReflection<MapRecord> reflection = RecordReflection.analyze(MapRecord.class);
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -201,19 +250,47 @@ public class MachineryTests {
     ByteBuffer readBuffer = writeBuffer.flip();
     ArrayBytes deserializedRecord = reflection.deserialize(readBuffer);
 
-    assertArrayEquals(testRecord.bytes  (), deserializedRecord.bytes());
+    assertArrayEquals(testRecord.bytes(), deserializedRecord.bytes());
   }
 
   @Test
   void testArrayBoolean() throws Throwable {
-    RecordReflection<ArrayRecord> reflection = RecordReflection.analyze(ArrayRecord.class);
+    RecordReflection<ArrayBooleanRecord> reflection = RecordReflection.analyze(ArrayBooleanRecord.class);
 
-    ArrayRecord testRecord = new ArrayRecord(new boolean[] {true, false, true});
+    ArrayBooleanRecord testRecord = new ArrayBooleanRecord(new boolean[]{true, false, true});
     WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ArrayBooleanRecord deserializedRecord = reflection.deserialize(readBuffer);
+
+    assertArrayEquals(testRecord.bools(), deserializedRecord.bools());
+  }
+
+  @Test
+  void testArrayVarInt() throws Throwable {
+    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+
+    ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{1, 2});
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    reflection.serialize(writeBuffer, testRecord);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
+
+    assertArrayEquals(testRecord.bools(), deserializedRecord.bools());
+  }
+
+  @Test
+  void testArrayInt() throws Throwable {
+    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+
+    ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{Integer.MAX_VALUE, Integer.MIN_VALUE});
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    reflection.serialize(writeBuffer, testRecord);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.bools(), deserializedRecord.bools());
   }
