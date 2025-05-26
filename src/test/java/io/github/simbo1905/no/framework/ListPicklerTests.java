@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.logging.*;
 import java.util.stream.IntStream;
 
@@ -52,6 +53,42 @@ public class ListPicklerTests {
     ListRecord {
       list = List.copyOf(list);
     }
+  }
+
+  public record DeepDouble(List<List<Optional<Double>>> deepDoubles){}
+
+  @Test
+  void testDeepDoubleList() {
+    // Create a record with a deep list of optional doubles
+    DeepDouble original = new DeepDouble(
+        List.of(
+            List.of(Optional.of(1.0), Optional.empty(), Optional.of(3.0)),
+            List.of(Optional.empty(), Optional.of(5.0))
+        )
+    );
+
+    // Get a pickler for the record
+    Pickler<DeepDouble> pickler = Pickler.forRecord(DeepDouble.class);
+
+    // Calculate size and allocate buffer
+    var buffer = WriteBuffer.of(1024);
+
+    // Serialize
+    pickler.serialize(buffer, original);
+
+    // Flip the buffer to prepare for reading
+    var buf = ReadBuffer.wrap(buffer.flip());
+
+    // Deserialize
+    DeepDouble deserialized = pickler.deserialize(buf);
+
+    // Verify the deep list structure
+    assertEquals(original.deepDoubles().size(), deserialized.deepDoubles().size());
+    IntStream.range(0, original.deepDoubles().size())
+        .forEach(i -> assertEquals(original.deepDoubles().get(i).size(), deserialized.deepDoubles().get(i).size()));
+
+    // Verify buffer is fully consumed
+    assertFalse(buffer.hasRemaining());
   }
 
   @Test
