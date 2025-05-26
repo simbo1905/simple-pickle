@@ -133,8 +133,7 @@ enum Tag {
       }
     }
     // Special case for arrays
-    if (Arrays.class.equals(clazz)) return ARRAY;
-
+    if (clazz.isArray()) return ARRAY;
     throw new IllegalArgumentException("Unsupported class: " + clazz.getName());
   }
 }
