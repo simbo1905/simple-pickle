@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.logging.*;
 import java.util.logging.Formatter;
@@ -47,17 +48,18 @@ public class MachineryTests {
   }
 
   // Records for testing
-  public static record DeepDouble(List<List<Optional<Double>>> deepDoubles) {}
-  public static record PrimitiveRecord(boolean boolValue, byte byteValue, short shortValue,
+  public record DeepDouble(List<List<Optional<Double>>> deepDoubles) {}
+  public record PrimitiveRecord(boolean boolValue, byte byteValue, short shortValue,
                                        char charValue, int intValue, long longValue,
                                        float floatValue, double doubleValue) {}
-  public static record WrapperRecord(Boolean boolValue, Byte byteValue, Short shortValue,
+  public record WrapperRecord(Boolean boolValue, Byte byteValue, Short shortValue,
                                      Character charValue, Integer intValue, Long longValue,
                                      Float floatValue, Double doubleValue) {}
-  public static record OptionalRecord(Optional<String> maybeValue) {}
-  public static record ListRecord(List<String> items) {}
-  public static record MapRecord(Map<String, Integer> mapping) {}
-  public static record ArrayRecord(int[] numbers) {}
+  public record OptionalRecord(Optional<String> maybeValue) {}
+  public record ListRecord(List<String> items) {}
+  public record MapRecord(Map<String, Integer> mapping) {}
+  public record ArrayRecord(boolean[] bools) {}
+  public record ArrayBytes(byte[] bytes) {}
 
   @Test
   void testDeepNestedTypes() throws Throwable {
@@ -189,17 +191,31 @@ public class MachineryTests {
   }
 
   @Test
-  void testArrayTypes() throws Throwable {
+  void testArrayBytes() throws Throwable {
+    RecordReflection<ArrayBytes> reflection = RecordReflection.analyze(ArrayBytes.class);
+
+    ArrayBytes testRecord = new ArrayBytes("hello".getBytes(StandardCharsets.UTF_8));
+    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    reflection.serialize(writeBuffer, testRecord);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    ArrayBytes deserializedRecord = reflection.deserialize(readBuffer);
+
+    assertArrayEquals(testRecord.bytes  (), deserializedRecord.bytes());
+  }
+
+  @Test
+  void testArrayBoolean() throws Throwable {
     RecordReflection<ArrayRecord> reflection = RecordReflection.analyze(ArrayRecord.class);
 
-    ArrayRecord testRecord = new ArrayRecord(new int[] {1, 2, 3, 4, 5});
+    ArrayRecord testRecord = new ArrayRecord(new boolean[] {true, false, true});
     WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
     ArrayRecord deserializedRecord = reflection.deserialize(readBuffer);
 
-    assertArrayEquals(testRecord.numbers(), deserializedRecord.numbers());
+    assertArrayEquals(testRecord.bools(), deserializedRecord.bools());
   }
 
   static boolean deepEquals(Object a, Object b) {

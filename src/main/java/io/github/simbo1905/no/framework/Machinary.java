@@ -262,6 +262,36 @@ final class Writers {
     buffer.put(bytes);
   };
 
+  static final BiConsumer<WriteBuffer, Object> ARRAY_WRITER = (buf, value) -> {
+    ByteBuffer buffer = byteBuffer(buf, value);
+    LOGGER.fine(() -> "Writing ARRAY - position=" +buffer.position() + " length=" + value);
+    buffer.put(Constants.ARRAY.marker());
+    switch (value){
+      case byte[] arr -> {
+        buffer.put(Constants.BYTE.marker());
+        ZigZagEncoding.putInt(buffer, Array.getLength(value));
+        buffer.put(arr);
+      }
+      case boolean[] booleans -> {
+        buffer.put(Constants.BOOLEAN.marker());
+        int length = booleans.length;
+        LOGGER.finer(() -> "Writing BOOLEAN array length=" + length);
+        ZigZagEncoding.putInt(buffer, length);
+        BitSet bitSet = new BitSet(length);
+        // Create a BitSet and flip bits to try where necessary
+        IntStream.range(0, length)
+            .filter(i -> booleans[i])
+            .forEach(bitSet::set);
+        byte[] bytes = bitSet.toByteArray();
+        LOGGER.finer(() -> "Writing BitSet bytes length=" + bytes.length);
+        ZigZagEncoding.putInt(buffer, bytes.length);
+        LOGGER.finer(() -> "Writing BitSet bytes in big endian order: " + Arrays.toString(bytes));
+        buffer.put(bytes);
+      }
+      default -> throw new IllegalArgumentException("Unsupported array type: " + value.getClass());
+    }
+  };
+
   // Container writers
   static BiConsumer<WriteBuffer, Optional<?>> createOptionalWriter(BiConsumer<WriteBuffer, Object> delegate) {
     return (buf, optional) -> {
@@ -327,6 +357,7 @@ final class Writers {
       case FLOAT -> FLOAT_WRITER;
       case DOUBLE -> DOUBLE_WRITER;
       case STRING -> STRING_WRITER;
+      case ARRAY -> ARRAY_WRITER;
       default -> throw new IllegalArgumentException("No leaf writer for tag: " + rightmostTag);
     };
 
@@ -451,6 +482,41 @@ final class Readers {
     return value;
   };
 
+  static final Function<ByteBuffer, Object> ARRAY_READER = (buffer) -> {
+    LOGGER.fine(() -> "Reading ARRAY - position=" + buffer.position());
+    byte marker = buffer.get();
+    if (marker != Constants.ARRAY.marker()) {
+      throw new IllegalStateException("Expected ARRAY marker but got: " + marker);
+    }
+    byte arrayTypeMarker = buffer.get();
+    switch(Constants.fromMarker(arrayTypeMarker)){
+      case Constants.BYTE -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        LOGGER.finer(() -> "Read Byte Array len=" + bytes.length);
+        return bytes;
+      }
+      case Constants.BOOLEAN -> {
+        int boolLength = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read Boolean Array len=" + boolLength);
+        boolean[] booleans = new boolean[boolLength];
+        int bytesLength = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read BetSet byte Array len=" + bytesLength);
+        byte[] bytes = new byte[bytesLength];
+        buffer.get(bytes);
+        LOGGER.finer(() -> "Read BitSet bytes: " + Arrays.toString(bytes));
+        BitSet bitSet = BitSet.valueOf(bytes);
+        IntStream.range(0, boolLength).forEach(i -> {
+          LOGGER.finer(() -> "Read BitSet " + i + "=" + bitSet.get(i));
+          booleans[i] = bitSet.get(i);
+        });
+        return booleans;
+      }
+      default -> throw new IllegalStateException("Unsupported array type marker: " + arrayTypeMarker);
+    }
+  };
+
   // Container readers
   static Function<ByteBuffer, Optional<?>> createOptionalReader(Function<ByteBuffer, Object> delegate) {
     return (buffer) -> {
@@ -517,6 +583,7 @@ final class Readers {
       case FLOAT -> FLOAT_READER::apply;
       case DOUBLE -> DOUBLE_READER::apply;
       case STRING -> STRING_READER::apply;
+      case ARRAY -> ARRAY_READER::apply;
       default -> throw new IllegalArgumentException("No base reader for tag: " + tag);
     };
   }
