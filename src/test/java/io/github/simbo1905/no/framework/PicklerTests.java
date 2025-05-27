@@ -98,7 +98,7 @@ public class PicklerTests {
     Pickler<Employee> pickler = Pickler.forRecord(Employee.class);
 
     // Serialize the record with nested records
-    final var buffer = WriteBuffer.allocateSufficient(employee);
+    final var buffer = pickler.allocateSufficient(employee);
     pickler.serialize(buffer, employee);
 
     int bytesWritten = buffer.position();
@@ -136,7 +136,7 @@ public class PicklerTests {
     Pickler<Department> pickler = Pickler.forRecord(Department.class);
 
     // Serialize the record with nested records
-    final var buffer = WriteBuffer.allocateSufficient(department);
+    final var buffer = pickler.allocateSufficient(department);
     pickler.serialize(buffer, department);
 
     var buf = ReadBuffer.wrap(buffer.flip()); // Prepare buffer for reading
@@ -171,7 +171,7 @@ public class PicklerTests {
     Pickler<NestedArrayExample> pickler = Pickler.forRecord(NestedArrayExample.class);
 
     // Serialize the record
-    final var buffer = WriteBuffer.of(1024);
+    final var buffer = pickler.allocate(1024);
     pickler.serialize(buffer, original);
 
     var buf = ReadBuffer.wrap(buffer.flip()); // Prepare buffer for reading
@@ -194,7 +194,7 @@ public class PicklerTests {
     Pickler<Shape> pickler = Pickler.forSealedInterface(Shape.class);
 
     // Test circle
-    final var circleBuffer = WriteBuffer.of(1024);
+    final var circleBuffer = pickler.allocate(1024);
     pickler.serialize(circleBuffer, circle);
     assertFalse(circleBuffer.hasRemaining());
     var buf = ReadBuffer.wrap(circleBuffer.flip());
@@ -205,7 +205,7 @@ public class PicklerTests {
     assertEquals(5.0, ((Circle) deserializedCircle).radius());
 
     // Test rectangle
-    final var rectangleBuffer = WriteBuffer.allocateSufficient(rectangle);
+    final var rectangleBuffer = pickler.allocateSufficient(rectangle);
     pickler.serialize(rectangleBuffer, rectangle);
     assertFalse(rectangleBuffer.hasRemaining());
     buf = ReadBuffer.wrap(rectangleBuffer.flip());
@@ -217,7 +217,7 @@ public class PicklerTests {
     assertEquals(6.0, ((Rectangle) deserializedRectangle).height());
 
     // Test triangle
-    final var triangleBuffer = WriteBuffer.allocateSufficient(triangle);
+    final var triangleBuffer = pickler.allocateSufficient(triangle);
     pickler.serialize(triangleBuffer, triangle);
     assertFalse(triangleBuffer.hasRemaining());
     buf = ReadBuffer.wrap(triangleBuffer.flip());
@@ -243,7 +243,7 @@ public class PicklerTests {
     Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
 
     // Test dog serialization/deserialization
-    final var dogBuffer = WriteBuffer.of(1024);
+    final var dogBuffer = pickler.allocate(1024);
     pickler.serialize(dogBuffer, dog);
     int bytesWritten = dogBuffer.position();
     var buf = ReadBuffer.wrap(dogBuffer.flip());
@@ -255,7 +255,7 @@ public class PicklerTests {
     assertEquals(3, ((Dog) deserializedDog).age());
 
     // Test cat serialization/deserialization
-    final var catBuffer = WriteBuffer.of(1024);
+    final var catBuffer = pickler.allocate(1024);
     pickler.serialize(catBuffer, cat);
     assertFalse(catBuffer.hasRemaining());
     buf = ReadBuffer.wrap(catBuffer.flip());
@@ -267,7 +267,7 @@ public class PicklerTests {
     assertTrue(((Cat) deserializedCat).purrs());
 
     // Test eagle serialization/deserialization
-    final var eagleBuffer = WriteBuffer.allocateSufficient(eagle);
+    final var eagleBuffer = pickler.allocateSufficient(eagle);
     pickler.serialize(eagleBuffer, eagle);
     assertFalse(eagleBuffer.hasRemaining());
     buf = ReadBuffer.wrap(eagleBuffer.flip());
@@ -278,7 +278,7 @@ public class PicklerTests {
     assertEquals(2.1, ((Eagle) deserializedEagle).wingspan());
 
     // Test penguin serialization/deserialization
-    final var penguinBuffer = WriteBuffer.allocateSufficient(penguin);
+    final var penguinBuffer = pickler.allocateSufficient(penguin);
     pickler.serialize(penguinBuffer, penguin);
     assertFalse(penguinBuffer.hasRemaining());
     buf = ReadBuffer.wrap(penguinBuffer.flip());
@@ -289,7 +289,7 @@ public class PicklerTests {
     assertTrue(((Penguin) deserializedPenguin).canSwim());
 
     // Test alicorn serialization/deserialization
-    final var alicornBuffer = WriteBuffer.allocateSufficient(alicorn);
+    final var alicornBuffer = pickler.allocateSufficient(alicorn);
     pickler.serialize(alicornBuffer, alicorn);
     assertFalse(alicornBuffer.hasRemaining());
     buf = ReadBuffer.wrap(alicornBuffer.flip());
@@ -313,7 +313,7 @@ public class PicklerTests {
         new Peek()
     };
 
-    var buffer = WriteBuffer.allocateSufficient(1024);
+    var buffer = commandPickler.allocate(1024);
 
     for (StackCommand command : commands) {
       commandPickler.serialize(buffer, command);
@@ -332,7 +332,7 @@ public class PicklerTests {
 
     Pickler<StackResponse> responsePickler = Pickler.forSealedInterface(StackResponse.class);
 
-    buffer = WriteBuffer.allocateSufficient(1024);
+    buffer = responsePickler.allocate(1024);
     for (StackResponse response : responses) {
       responsePickler.serialize(buffer, response);
 
@@ -345,7 +345,7 @@ public class PicklerTests {
     // Simulate a client-server interaction
     // Client sends a Push command
     StackCommand clientCommand = new Push("important-data");
-    final var commandBuffer = WriteBuffer.of(1024);
+    final var commandBuffer = responsePickler.allocate(1024);
     commandPickler.serialize(commandBuffer, clientCommand);
     var buf = ReadBuffer.wrap(commandBuffer.flip());
 
@@ -356,7 +356,7 @@ public class PicklerTests {
 
     // Server sends back a success response
     StackResponse serverResponse = new Success(Optional.of("operation successful"));
-    final var responseBuffer = WriteBuffer.of(1024);
+    final var responseBuffer = responsePickler.allocate(1024);
     responsePickler.serialize(responseBuffer, serverResponse);
     buf = ReadBuffer.wrap(responseBuffer.flip());
 
@@ -407,7 +407,7 @@ public class PicklerTests {
 
     // Calculate size and allocate buffer
 
-    final var buffer = WriteBuffer.allocateSufficient(original);
+    final var buffer = pickler.allocateSufficient(original);
 
     // Serialize
     pickler.serialize(buffer, original);
@@ -471,7 +471,7 @@ public class PicklerTests {
 
     // Calculate size and allocate buffer
     //
-    final var buffer = WriteBuffer.of(1024);
+    final var buffer = pickler.allocate(1024);
 
     // Serialize
     pickler.serialize(buffer, original);
@@ -511,7 +511,7 @@ public class PicklerTests {
     Pickler<OptionalEnumRecord> pickler = Pickler.forRecord(OptionalEnumRecord.class);
 
     // Calculate size and allocate buffer
-    final var buffer = WriteBuffer.allocateSufficient(original);
+    final var buffer = pickler.allocateSufficient(original);
 
     // Serialize
     pickler.serialize(buffer, original);
@@ -564,7 +564,7 @@ public class PicklerTests {
 
     // Get a pickler for the record
     Pickler<MixedRecord> pickler = Pickler.forRecord(MixedRecord.class);
-    final var buffer = WriteBuffer.of(1024);
+    final var buffer = pickler.allocate(1024);
     LOGGER.info("Starting size calculation: ");
     LOGGER.info("Starting serialization");
     pickler.serialize(buffer, original);

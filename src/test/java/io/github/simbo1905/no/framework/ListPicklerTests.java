@@ -71,7 +71,7 @@ public class ListPicklerTests {
     Pickler<DeepDouble> pickler = Pickler.forRecord(DeepDouble.class);
 
     // Calculate size and allocate buffer
-    var buffer = WriteBuffer.of(1024);
+    var buffer = pickler.allocate(1024);
 
     // Serialize
     pickler.serialize(buffer, original);
@@ -109,7 +109,7 @@ public class ListPicklerTests {
     Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
 
     // Calculate size and allocate buffer
-    var buffer = WriteBuffer.of(1024);
+    var buffer = pickler.allocate(1024);
 
     // Serialize
     pickler.serialize(buffer, original);

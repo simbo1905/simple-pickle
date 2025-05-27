@@ -22,7 +22,7 @@ public class TreeDemo {
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
 // Allocate a buffer to hold just the root node
-    final var buffer = WriteBuffer.of(1024);
+    final var buffer = pickler.allocateSufficient(originalRoot);
 
 // Serialize only the root node (which should include the entire graph)
     pickler.serialize(buffer, originalRoot);

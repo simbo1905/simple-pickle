@@ -71,14 +71,8 @@ public class MorePicklerTests {
     // Get a pickler for the Animal sealed interface
     final var pickler = Pickler.forSealedInterface(Animal.class);
 
-    // Calculate worst case buffer size needed using streams
-    final var totalSize = Arrays.stream(originalAnimals)
-        .map(WriteBuffer::allocateSufficient)
-        .mapToInt(WriteBuffer::remaining)
-        .sum();
-
     // Allocate a single buffer to hold all animals
-    final var buffer = WriteBuffer.allocateSufficient(totalSize);
+    final var buffer = pickler.allocateSufficient(originalAnimals);
 
     // Serialize all animals into the buffer using streams
     Arrays.stream(originalAnimals).forEach(animal -> pickler.serialize(buffer, animal));
@@ -162,16 +156,8 @@ public class MorePicklerTests {
     // Get a pickler for the TreeNode sealed interface
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
-    // Calculate worst case buffer size needed using streams
-    final var totalSize = Arrays.stream(originalNodes)
-        .map(WriteBuffer::allocateSufficient)
-        .mapToInt(WriteBuffer::remaining)
-        .sum();
-
-    LOGGER.fine(() -> "Total size is " + totalSize);
-    LOGGER.fine(() -> "Allocating buffer with size: " + totalSize);
-    // Allocate a single buffer to hold all nodes
-    final var buffer = WriteBuffer.of(totalSize);
+    // Allocate a single buffer to hold all animals
+    final var buffer = pickler.allocateSufficient(originalNodes);
 
     // Serialize all nodes into the buffer
     Arrays.stream(originalNodes).forEach(node -> {
@@ -249,7 +235,7 @@ public class MorePicklerTests {
 
     // Calculate buffer size needed for the entire chain
     // Allocate a buffer to hold the entire chain
-    var buffer = WriteBuffer.allocateSufficient(link2);
+    var buffer = pickler.allocateSufficient(link2);
     // Serialize the entire chain
     pickler.serialize(buffer, link2);
     assertFalse(buffer.hasRemaining());
@@ -295,7 +281,7 @@ public class MorePicklerTests {
     }
 
     // Allocate a buffer to hold the entire chain
-    var buffer = WriteBuffer.allocateSufficient(chained);
+    var buffer = pickler.allocateSufficient(chained);
     // Serialize the entire chain
     pickler.serialize(buffer, chained);
     assertFalse(buffer.hasRemaining());
@@ -358,7 +344,7 @@ public class MorePicklerTests {
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
     
     // Allocate a buffer to hold just the root node
-    var buffer = WriteBuffer.allocateSufficient(originalRoot);
+    var buffer = pickler.allocateSufficient(originalRoot);
     
     // Serialize only the root node (which should include the entire graph)
     pickler.serialize(buffer, originalRoot);
@@ -417,7 +403,7 @@ public class MorePicklerTests {
         java.util.Optional.of("Magic 🦄")
     );
 
-    var buffer = WriteBuffer.allocateSufficient(original);
+    var buffer = pickler.allocateSufficient(original);
     pickler.serialize(buffer, original);
     var buf = ReadBuffer.wrap(buffer.flip());
 

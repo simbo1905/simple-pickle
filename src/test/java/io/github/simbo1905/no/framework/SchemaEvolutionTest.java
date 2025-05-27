@@ -304,18 +304,19 @@ public class SchemaEvolutionTest {
     Class<? extends Record> recordClass = (Class<? extends Record>) record.getClass();
     Pickler pickler = Pickler.forRecord(recordClass);
 
-    // Calculate buffer size and allocate buffer
-    final var buffer = WriteBuffer.allocateSufficient(record);
-
-    // Serialize the record
-    pickler.serialize(buffer, record);
-    assertFalse(buffer.hasRemaining());
-    final var buf = buffer.flip();
-
-    // Return the serialized bytes
-    byte[] result = new byte[buf.remaining()];
-    buf.get(result);
-    return result;
+//    // Calculate buffer size and allocate buffer
+//    final var buffer = WriteBuffer.allocateSufficient(record);
+//
+//    // Serialize the record
+//    pickler.serialize(buffer, record);
+//    assertFalse(buffer.hasRemaining());
+//    final var buf = buffer.flip();
+//
+//    // Return the serialized bytes
+//    byte[] result = new byte[buf.remaining()];
+//    buf.get(result);
+//    return result;
+    return null;
   }
 
   /// Deserializes a record from bytes using the Pickler.

@@ -10,6 +10,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static io.github.simbo1905.no.framework.Constants.*;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -22,14 +24,13 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 class WriteBufferImpl implements WriteBuffer {
 
   final ByteBuffer buffer;
-  final Map<InternedName, InternedPosition> offsetMap = new HashMap<>(64);
-  final Map<String, Class<?>> nameToClass = new HashMap<>(64);
-  final Map<Enum<?>, InternedName> enumToName = new HashMap<>(64);
-  final List<Type[]> componentGenericTypes = new ArrayList<>();
+  Map<Class<?>, Integer> classToOffset = new HashMap<>(64);
+  final Function<Class<?>, String> classToInternedName;
 
   boolean closed = false;
 
-  WriteBufferImpl(ByteBuffer buffer) {
+  WriteBufferImpl(ByteBuffer buffer, Function<Class<?>, String> classToInternedName) {
+    this.classToInternedName = classToInternedName;
     buffer.order(ByteOrder.BIG_ENDIAN);
     this.buffer = buffer;
   }
@@ -97,30 +98,21 @@ class WriteBufferImpl implements WriteBuffer {
     }
   }
 
-  void validateNotClosed() {
-    if (closed)
-      throw new IllegalStateException("CompactedBuffer has been closed by flip() or close() and is now read-only");
-  }
-
   public void put(byte b) {
-    validateNotClosed();
     buffer.put(b);
   }
 
   public WriteBuffer putVarInt(int value) {
-    validateNotClosed();
     ZigZagEncoding.putInt(buffer, value);
     return this;
   }
 
   public WriteBuffer putVarLong(long value) {
-    validateNotClosed();
     ZigZagEncoding.putLong(buffer, value);
     return this;
   }
 
   public int position() {
-    validateNotClosed();
     return buffer.position();
   }
 
@@ -128,23 +120,22 @@ class WriteBufferImpl implements WriteBuffer {
   @Override
   public void close() {
     this.closed = true;
+    LOGGER.fine(() -> "WriteBufferImpl now closed. Buffer position: " + buffer.position() + ", limit: " + buffer.limit());
+    classToOffset.clear();
   }
 
   /// Flips the buffer and closes this instance. The returned return buffer should be completely used not compacted.
   /// FIXME: should we track the start and end position of writes to the buffer and return a slice of it?
   public ByteBuffer flip() {
-    buffer.flip();
     close();
-    return buffer;
+    return buffer.flip();
   }
 
   public boolean hasRemaining() {
-    validateNotClosed();
     return buffer.hasRemaining();
   }
 
   public int remaining() {
-    validateNotClosed();
     return buffer.remaining();
   }
 
@@ -155,14 +146,15 @@ class WriteBufferImpl implements WriteBuffer {
 
   @TestOnly
   public void put(int i, byte maliciousByte) {
-    validateNotClosed();
     buffer.put(i, maliciousByte);
   }
 
   @Override
   public String toString() {
     return "WriteBufferImpl{" +
-        "offsetMap=" + offsetMap +
+        "offsetMap=" + this.classToOffset.entrySet().stream()
+        .map(e->e.getKey()+"="+e.getValue())
+        .collect(Collectors.joining(",")) +
         ", buffer=" + buffer +
         '}';
   }

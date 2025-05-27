@@ -3,6 +3,7 @@
 
 package io.github.simbo1905.no.framework;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
@@ -15,6 +16,8 @@ import static io.github.simbo1905.no.framework.Companion.manufactureRecordPickle
 
 public interface Pickler<T> {
   java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(Pickler.class.getName());
+
+ WriteBuffer wrap(ByteBuffer buf);
 
   /// Recursively loads the components reachable through record into the buffer into the [WriteBuffer].
   /// A packed buffer is a wrapper around a byte buffer that tracks the position of class names or
@@ -81,6 +84,7 @@ public interface Pickler<T> {
               // Double cast required to satisfy compiler
               @SuppressWarnings("unchecked")
               Class<? extends Record> recordCls = (Class<? extends Record>) e.getValue();
+              LOGGER.fine(()-> "Manufacturing pickler for record: " + recordCls.getName());
               return (Pickler<S>) manufactureRecordPickler(classesByShortName, recordCls, e.getKey());
             }
         ));
@@ -93,6 +97,10 @@ public interface Pickler<T> {
 
   /// Allocates a buffer that is large enough to hold the serialized record. This method does not
   WriteBuffer allocateSufficient(T record);
+
+  WriteBuffer allocateSufficient(T[] record);
+
+  WriteBuffer allocate(int i);
 }
 
 record InternedName(String name) {

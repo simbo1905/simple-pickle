@@ -9,6 +9,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ import java.util.stream.IntStream;
 import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
 import static io.github.simbo1905.no.framework.Constants.INTERNED_NAME;
 
+@SuppressWarnings("unused")
 final class RecordPickler2<R extends Record> implements Pickler<R> {
   final MethodHandle[] componentAccessors;
   final Type[][] componentGenericTypes;
@@ -138,7 +140,7 @@ final class RecordPickler2<R extends Record> implements Pickler<R> {
     final var buffer = ((WriteBufferImpl) buf);
     if (writeName) {
       // If we are being asked to write out our record class name by a sealed pickler then we so now
-      buffer.offsetMap.put(internedName, new InternedPosition(buffer.position()));
+      //buffer.offsetMap.put(internedName, new InternedPosition(buffer.position()));
       WriteBufferImpl.write(buffer.buffer, internedName);
     }
     Object[] components = new Object[componentAccessors.length];
@@ -185,6 +187,11 @@ final class RecordPickler2<R extends Record> implements Pickler<R> {
   }
 
   @Override
+  public WriteBuffer wrap(ByteBuffer buf) {
+    return null;
+  }
+
+  @Override
   public int serialize(WriteBuffer buffer, R object) {
     // Validations
     Objects.requireNonNull(buffer);
@@ -199,9 +206,9 @@ final class RecordPickler2<R extends Record> implements Pickler<R> {
     // Ensure java native endian writes
     buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     // Initialize the state tracking the offsets of the record class names
-    buf.enumToName.putAll(enumToName);
-    buf.nameToClass.putAll(nameToClass);
-    buf.componentGenericTypes.addAll(Arrays.stream(componentGenericTypes).toList());
+//    buf.enumToName.putAll(enumToName);
+//    buf.nameToClass.putAll(nameToClass);
+//    buf.componentGenericTypes.addAll(Arrays.stream(componentGenericTypes).toList());
     // Write the all the components
     serializeWithMap(buffer, object, false);
     return buffer.position() - startPos;
@@ -229,6 +236,16 @@ final class RecordPickler2<R extends Record> implements Pickler<R> {
 
   @Override
   public WriteBuffer allocateSufficient(R record) {
+    return null;
+  }
+
+  @Override
+  public WriteBuffer allocateSufficient(R[] record) {
+    throw new AssertionError("allocateSufficient(R[]) is not implemented for RecordPickler2");
+  }
+
+  @Override
+  public WriteBuffer allocate(int i) {
     return null;
   }
 

@@ -99,7 +99,7 @@ public class MachineryTests {
     );
 
     // Serialize
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     // Deserialize
@@ -109,6 +109,21 @@ public class MachineryTests {
     // Verify equality
     assertTrue(deepEquals(testRecord.deepDoubles(), deserializedRecord.deepDoubles()));
     assertEquals(testRecord, deserializedRecord);
+  }
+
+  static boolean deepEquals(Object a, Object b) {
+    if (a == null || b == null) return a == b;
+
+    if (a instanceof List<?> listA && b instanceof List<?> listB) {
+      return listA.size() == listB.size() && IntStream.range(0, listA.size())
+          .allMatch(i -> deepEquals(listA.get(i), listB.get(i)));
+    }
+
+    if (a instanceof Optional<?> optA && b instanceof Optional<?> optB) {
+      return optA.equals(optB);
+    }
+
+    return a.equals(b);
   }
 
   @Test
@@ -121,7 +136,7 @@ public class MachineryTests {
         3.14f, Math.PI
     );
 
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -141,7 +156,7 @@ public class MachineryTests {
         Math.PI
     );
 
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -156,7 +171,7 @@ public class MachineryTests {
 
     // Test with a value
     OptionalRecord withValue = new OptionalRecord(Optional.of("Hello World"));
-    WriteBufferImpl writeBuffer1 = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer1 = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer1, withValue);
     ByteBuffer readBuffer1 = writeBuffer1.flip();
     OptionalRecord deserializedWithValue = reflection.deserialize(readBuffer1);
@@ -164,7 +179,7 @@ public class MachineryTests {
 
     // Test empty optional
     OptionalRecord withoutValue = new OptionalRecord(Optional.empty());
-    WriteBufferImpl writeBuffer2 = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer2 = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer2, withoutValue);
     ByteBuffer readBuffer2 = writeBuffer2.flip();
     OptionalRecord deserializedWithoutValue = reflection.deserialize(readBuffer2);
@@ -176,7 +191,7 @@ public class MachineryTests {
     RecordReflection<ListRecord> reflection = RecordReflection.analyze(ListRecord.class);
 
     ListRecord testRecord = new ListRecord(List.of("one", "two", "three"));
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -186,7 +201,7 @@ public class MachineryTests {
 
     // Test empty list
     ListRecord emptyList = new ListRecord(Collections.emptyList());
-    WriteBufferImpl writeBuffer2 = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer2 = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer2, emptyList);
 
     ByteBuffer readBuffer2 = writeBuffer2.flip();
@@ -231,7 +246,7 @@ public class MachineryTests {
     map.put(3, "three");
 
     MapRecord testRecord = new MapRecord(map);
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
 
     RecordReflection<MapRecord> reflection = RecordReflection.analyze(MapRecord.class);
     reflection.serialize(writeBuffer, testRecord);
@@ -247,7 +262,7 @@ public class MachineryTests {
     RecordReflection<ArrayBytes> reflection = RecordReflection.analyze(ArrayBytes.class);
 
     ArrayBytes testRecord = new ArrayBytes("hello".getBytes(StandardCharsets.UTF_8));
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -261,7 +276,7 @@ public class MachineryTests {
     RecordReflection<ArrayBooleanRecord> reflection = RecordReflection.analyze(ArrayBooleanRecord.class);
 
     ArrayBooleanRecord testRecord = new ArrayBooleanRecord(new boolean[]{true, false, true});
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -275,7 +290,7 @@ public class MachineryTests {
     RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
 
     ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{1, 2});
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(1024);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -292,7 +307,7 @@ public class MachineryTests {
 
     int size = reflection.maxSize(testRecord);
 
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -309,7 +324,7 @@ public class MachineryTests {
 
     int size = reflection.maxSize(testRecord);
 
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -332,7 +347,7 @@ public class MachineryTests {
 
     int size = reflection.maxSize(testRecord);
 
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -357,7 +372,7 @@ public class MachineryTests {
 
     int size = reflection.maxSize(testRecord);
 
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
 
     reflection.serialize(writeBuffer, testRecord);
 
@@ -383,7 +398,7 @@ public class MachineryTests {
 
     int size = reflection.maxSize(testRecord);
 
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
 
     reflection.serialize(writeBuffer, testRecord);
 
@@ -406,7 +421,7 @@ public class MachineryTests {
 
     int size = reflection.maxSize(testRecord);
 
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
 
     reflection.serialize(writeBuffer, testRecord);
 
@@ -428,7 +443,7 @@ public class MachineryTests {
 
     int size = reflection.maxSize(testRecord);
 
-    WriteBufferImpl writeBuffer = (WriteBufferImpl) WriteBuffer.of(size);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
     reflection.serialize(writeBuffer, testRecord);
 
     ByteBuffer readBuffer = writeBuffer.flip();
@@ -437,18 +452,33 @@ public class MachineryTests {
     assertEquals(testUUID, deserialized.uuid());
   }
 
-  static boolean deepEquals(Object a, Object b) {
-    if (a == null || b == null) return a == b;
+  public record LinkedRecord(LinkedRecord next, String value) {}
 
-    if (a instanceof List<?> listA && b instanceof List<?> listB) {
-      return listA.size() == listB.size() && IntStream.range(0, listA.size())
-          .allMatch(i -> deepEquals(listA.get(i), listB.get(i)));
-    }
+  @Test
+  public void testLinkedRecord() throws Throwable {
+    RecordReflection<LinkedRecord> reflection = RecordReflection.analyze(LinkedRecord.class);
 
-    if (a instanceof Optional<?> optA && b instanceof Optional<?> optB) {
-      return optA.equals(optB);
-    }
+    // Create a linked record structure
+    LinkedRecord record3 = new LinkedRecord(null, "three");
+    LinkedRecord record2 = new LinkedRecord(record3, "two");
+    LinkedRecord record1 = new LinkedRecord(record2, "one");
 
-    return a.equals(b);
+    WriteBufferImpl writeBuffer = new WriteBufferImpl(
+        ByteBuffer.allocate(1024),
+        (cls) -> reflection.classToInternedName().get(cls)
+    );
+
+    reflection.serialize(writeBuffer, record1);
+
+    ByteBuffer readBuffer = writeBuffer.flip();
+    LinkedRecord deserialized = reflection.deserialize(readBuffer);
+
+    // Verify the structure
+    assertEquals("one", deserialized.value());
+    assertNotNull(deserialized.next());
+    assertEquals("two", deserialized.next().value());
+    assertNotNull(deserialized.next().next());
+    assertEquals("three", deserialized.next().next().value());
+    assertNull(deserialized.next().next().next());
   }
 }

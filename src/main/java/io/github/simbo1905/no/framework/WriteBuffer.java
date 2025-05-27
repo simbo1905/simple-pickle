@@ -4,6 +4,7 @@ package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.function.Function;
 
 import static io.github.simbo1905.no.framework.Companion.maxSizeOf;
 
@@ -22,19 +23,7 @@ public interface WriteBuffer extends AutoCloseable {
 
   WriteBuffer putVarLong(long value);
 
-  static WriteBuffer wrap(ByteBuffer buffer) {
-    return new WriteBufferImpl(buffer);
-  }
-
-  static WriteBuffer of(int size) {
-    return new WriteBufferImpl(ByteBuffer.allocate(size));
-  }
-
-  static WriteBuffer allocateSufficient(Object record) {
-    return WriteBuffer.of(maxSizeOf(record));
-  }
-
-  static WriteBuffer allocateSufficient(Object[] records) {
-    return WriteBuffer.of(Arrays.stream(records).mapToInt(Companion::maxSizeOf).sum());
+  static WriteBuffer wrap(ByteBuffer buffer, Function<Class<?>, String> classToInternedName) {
+    return new WriteBufferImpl(buffer, classToInternedName);
   }
 }

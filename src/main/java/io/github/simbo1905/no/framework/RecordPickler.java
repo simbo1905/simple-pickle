@@ -2,6 +2,7 @@ package io.github.simbo1905.no.framework;
 
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,13 +33,13 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     final RecordComponent[] components = recordClass.getRecordComponents();
     reflection = RecordReflection.analyze(recordClass);
     
-    TypeStructure[] componentTypes = new TypeStructure[components.length];
-    IntStream.range(0, components.length).forEach(i -> {
-          RecordComponent component = components[i];
-          // Analyze type structure
-          Type genericType = component.getGenericType();
-          componentTypes[i] = TypeStructure.analyze(genericType);
-        });
+//    TypeStructure[] componentTypes = new TypeStructure[components.length];
+//    IntStream.range(0, components.length).forEach(i -> {
+//          RecordComponent component = components[i];
+//          // Analyze type structure
+//          Type genericType = component.getGenericType();
+//          componentTypes[i] = TypeStructure.analyze(genericType).with(recordClass);
+//        });
 
     // Get parameter types for the canonical constructor
     Class<?>[] parameterTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
@@ -73,6 +74,17 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
         .collect(Collectors.toMap(e -> e.getValue().name(), Map.Entry::getKey));
   }
 
+  // TODO get this right
+  public String classToInternedName(Class<?> type){
+    Objects.requireNonNull(type);
+    return null;
+  }
+
+  @Override
+  public WriteBuffer wrap(ByteBuffer buf) {
+    return new WriteBufferImpl(buf, this::classToInternedName);
+  }
+
   @Override
   public int serialize(WriteBuffer buffer, R object) {
     // Validations
@@ -87,9 +99,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     final var startPos = buf.position();
     // Ensure java native endian writes
     buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-    // Initialize the state tracking the offsets of the record class names
-    buf.enumToName.putAll(enumToName);
-    buf.nameToClass.putAll(nameToClass);
     this.reflection.serialize(buf, object);
     return buffer.position() - startPos;
   }
@@ -116,8 +125,22 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
 
   @Override
   public WriteBuffer allocateSufficient(R record) {
+    Objects.requireNonNull(record, "Record must not be null");
     int maxSize = reflection.maxSize(record);
-    return WriteBuffer.of(maxSize);
+    return new WriteBufferImpl(ByteBuffer.allocate(maxSize), this::classToInternedName);
+  }
+
+  @Override
+  public WriteBuffer allocateSufficient(R[] record) {
+    int totalSize = Arrays.stream(record)
+            .mapToInt(reflection::maxSize)
+            .sum();
+    return new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
+  }
+
+  @Override
+  public WriteBuffer allocate(int totalSize) {
+    return new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
   }
 
   public R deserializeWithMap(ReadBufferImpl buf, boolean writeName) throws Throwable {

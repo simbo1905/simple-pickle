@@ -3,10 +3,13 @@
 
 package io.github.simbo1905.no.framework;
 
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
 import static io.github.simbo1905.no.framework.Constants.*;
@@ -88,7 +91,7 @@ class SealedPickler<S> implements Pickler<S> {
 
   @Override
   public WriteBuffer allocateSufficient(S record) {
-    Objects.requireNonNull(record, "record");
+    Objects.requireNonNull(record, "record must not be null");
     if( !record.getClass().isRecord()) {
       throw new IllegalArgumentException("Expected a record type but got " + record.getClass().getName());
     }
@@ -96,6 +99,45 @@ class SealedPickler<S> implements Pickler<S> {
     if (pickler == null) {
       throw new IllegalStateException("No pickler found for " + record.getClass());
     }
-    return Companion.sizeOfWithPickler(pickler, record);
+    final int size = Companion.sizeOfWithPickler(pickler, record);
+    return new WriteBufferImpl(ByteBuffer.allocate(size), this::classToInternedName);
   }
+
+  @Override
+  public WriteBuffer allocateSufficient(S[] records) {
+    Objects.requireNonNull(records, "records must not be null");
+    Arrays.stream(records).filter(r -> r != null && !r.getClass().isRecord())
+        .findAny()
+        .ifPresent(r -> {
+          throw new IllegalArgumentException("Expected all records to be of record type but got " + r.getClass().getName());
+        });
+
+    RecordPickler<?>[] picklers =
+        Arrays.stream(records)
+            .map(i -> (RecordPickler<?>) subPicklers.get(i.getClass()))
+            .toArray(RecordPickler<?>[]::new);
+
+    int sumSize = IntStream.range(0, picklers.length)
+        .map(i -> Companion.sizeOfWithPickler(picklers[i], records[i]))
+        .sum();
+
+    return new WriteBufferImpl(ByteBuffer.allocate(sumSize), this::classToInternedName);
+  }
+
+  @Override
+  public WriteBuffer allocate(int size) {
+    return new WriteBufferImpl(ByteBuffer.allocate(size), this::classToInternedName);
+  }
+
+  // TODO get this right
+  public String classToInternedName(Class<?> type){
+    Objects.requireNonNull(type);
+    return "";
+  }
+
+  @Override
+  public WriteBuffer wrap(ByteBuffer buf) {
+    return new WriteBufferImpl(buf, this::classToInternedName);
+  }
+
 }

@@ -49,7 +49,7 @@ public class PublicApiDemo {
     Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
     // TODO: fix the allocateSufficient of WriteBuffer
 
-    final var buffer = WriteBuffer.of(1024);
+    final var buffer = pickler.allocate(1024);
 
     buffer.putVarInt(animals.size());
 

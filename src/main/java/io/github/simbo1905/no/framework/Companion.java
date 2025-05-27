@@ -305,9 +305,9 @@ class Companion {
 
   /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
   @SuppressWarnings({"unchecked", "rawtypes"})
-  static WriteBuffer sizeOfWithPickler(Pickler<?> pickler, Object object) {
+  static int sizeOfWithPickler(Pickler<?> pickler, Object object) {
     // Since we know at runtime that pickler is a RecordPickler and object is the right type
-    return ((RecordPickler) pickler).allocateSufficient((Record) object);
+    return ((RecordPickler) pickler).reflection.maxSize((Record) object);
   }
 
 
@@ -318,87 +318,7 @@ class Companion {
   /// @param object the class of the record
   /// @throws IllegalStateException if the buffer is closed
   static void recursiveWrite(final int componentIndex, final WriteBufferImpl buf, final Object object) {
-    final var buffer = buf.buffer;
-    switch (object) {
-      case null -> WriteBufferImpl.writeNull(buffer);
-      case Integer i -> write(buffer, i);
-      case Long l -> write(buffer, l);
-      case Short s -> write(buffer, s);
-      case Byte b -> WriteBufferImpl.write(buffer, b);
-      case Double d -> write(buffer, d);
-      case Float f -> write(buffer, f);
-      case Character ch -> WriteBufferImpl.write(buffer, ch);
-      case Boolean b -> WriteBufferImpl.write(buffer, b);
-      case String s -> WriteBufferImpl.write(buffer, s);
-      case InternedName t -> WriteBufferImpl.write(buffer, t);
-      case InternedOffset t -> WriteBufferImpl.write(buffer, t);
-      case Optional<?> o -> {
-        if (o.isEmpty()) {
-          LOGGER.finer(() -> "write(empty) - position=" + buffer.position());
-          buffer.put(Constants.OPTIONAL_EMPTY.marker());
-        } else {
-          LOGGER.finer(() -> "write(optional) - position=" + buffer.position());
-          buffer.put(Constants.OPTIONAL_OF.marker());
-          recursiveWrite(componentIndex, buf, o.get());
-        }
-      }
-      case List<?> l -> {
-        LOGGER.finer(() -> "write(list) - " +
-            " position=" + buffer.position() +
-            " size=" + ZigZagEncoding.sizeOf(l.size())
-        );
-        buffer.put(Constants.LIST.marker());
-        final Type[] componentTypes = buf.componentGenericTypes.get(componentIndex);
-        assert componentTypes != null && componentTypes.length == 1 : "componentGenericTypes must contain at least one type";
-        final var internedName = new InternedName(componentTypes[0].getTypeName());
-        // FIXME: this should write the interned name of an interned offset
-        recursiveWrite(componentIndex, buf, internedName);
-        ZigZagEncoding.putInt(buffer, l.size());
-        for (Object item : l) {
-          recursiveWrite(componentIndex, buf, item);
-        }
-      }
-      case Map<?, ?> m -> {
-        LOGGER.finer(() -> "write(map) - size=" + ZigZagEncoding.sizeOf(m.size()) + " position=" + buffer.position());
-        buffer.put(Constants.MAP.marker());
-        ZigZagEncoding.putInt(buffer, m.size());
-        for (Map.Entry<?, ?> entry : m.entrySet()) {
-          recursiveWrite(componentIndex, buf, entry.getKey());
-          recursiveWrite(componentIndex, buf, entry.getValue());
-        }
-      }
-      case Enum<?> e -> {
-        LOGGER.finer(() -> "write(enum) - enumToName=" + buf.enumToName.get(e) + " position=" + buffer.position());
-        buf.buffer.put(Constants.ENUM.marker());
-        InternedName name = buf.enumToName.get(e);
-        if (buf.offsetMap.containsKey(name)) {
-          final var internedPosition = buf.offsetMap.get(name);
-          final var internedOffset = internedPosition.offset(buffer.position());
-          Companion.recursiveWrite(componentIndex, buf, internedOffset);
-        } else {
-          buf.offsetMap.computeIfAbsent(name, (x) -> new InternedPosition(buffer.position()));
-          Companion.recursiveWrite(componentIndex, buf, name);
-        }
-      }
-      // TODO zigzag compress long[] and int[]
-      case Object a when a.getClass().isArray() -> {
-        LOGGER.finer(() -> "write(array) - size=" + ZigZagEncoding.sizeOf(Array.getLength(a)) + " position=" + buffer.position());
-        buffer.put(Constants.ARRAY.marker());
-        // FIXME: this reflection should be done at pickler creation time
-        final var internedName = new InternedName(a.getClass().getComponentType().getName());
-        // FIXME: this should write the interned name of an interned offset
-        recursiveWrite(componentIndex, buf, internedName);
-        int length = Array.getLength(a);
-        ZigZagEncoding.putInt(buffer, length);
-        // FIXME: we would know at pickler creation time that this is a byte[] or int[] and take the shortcut
-        if (byte.class.equals(a.getClass().getComponentType())) {
-          buffer.put((byte[]) a);
-        } else {
-          IntStream.range(0, length).forEach(i -> recursiveWrite(componentIndex, buf, Array.get(a, i)));
-        }
-      }
-      default -> throw new IllegalStateException("Unexpected value: " + object);
-    }
+// replaced with Reflections
   }
 
   static int maxSizeOf(Object object) {

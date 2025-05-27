@@ -1,5 +1,7 @@
 package io.github.simbo1905.no.framework;
 
+import org.jetbrains.annotations.NotNull;
+
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.*;
@@ -9,15 +11,19 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.Tag.*;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle[] componentAccessors,
                                           TypeStructure[] componentTypes,
                                           BiConsumer<WriteBuffer, Object>[] componentWriters,
                                           Function<ByteBuffer, Object>[] componentReaders,
-                                          Function<Object, Integer>[] componentSizes) {
+                                          Function<Object, Integer>[] componentSizes,
+                                          Map<Class<?>,String> classToInternedName,
+                                          Map<String, Class<?>> shortNameToClass) {
 
   static <R extends Record> RecordReflection<R> analyze(Class<R> recordClass) {
     RecordComponent[] components = recordClass.getRecordComponents();
@@ -58,23 +64,74 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
 
       // Analyze type structure
       Type genericType = component.getGenericType();
-      componentTypes[i] = TypeStructure.analyze(genericType);
+      componentTypes[i] = TypeStructure.analyze(genericType).with(recordClass);
 
       // Build writer and reader chains
       BiConsumer<WriteBuffer, Object> writeChain = Writers.buildWriterChain(componentTypes[i]);
-      componentWriters[i] = createExtractThenWrite(componentAccessors[i], writeChain);
+      componentWriters[i] = componentExtractWithNullGuardAndDelegate(componentAccessors[i], writeChain);
+
       componentReaders[i] = Readers.buildReaderChain(componentTypes[i]);
       // Create size function for the component
       Function<Object, Integer> sizeChain = Readers.buildSizeChain(componentTypes[i]);
       componentSizes[i] = createExtractThenSize(componentAccessors[i], sizeChain);
     });
 
+    // Here we find all the types that are used in the record components including nested types.
+    final Set<Class<?>> allClasses = Arrays.stream(componentTypes)
+        .flatMap(typeStructure -> typeStructure.types().stream())
+        .collect(Collectors.toSet());
+
+    // Here we split off what are the java.lang or java.util core classes from the host application classes.
+    final var partitionByIsJavaCoreClass = allClasses.stream()
+        .collect(Collectors.partitioningBy(cls -> cls.getName().startsWith("java.")));
+
+    // Here we try to find a common prefix for all application classes and shorten all application classes.
+    // This works well for records all being in the same package or being static nested records of a class.
+    final Map<Class<?>,String> applicationShortClassNames = partitionByIsJavaCoreClass.get(false).stream()
+        .collect(Collectors.toMap(
+            cls -> cls,
+            cls -> cls.getName().substring(
+                allClasses.stream()
+                    .map(Class::getName)
+                    .reduce((a, b) ->
+                        !a.isEmpty() && !b.isEmpty() ?
+                            a.substring(0,
+                                IntStream.range(0, Math.min(a.length(), b.length()))
+                                    .filter(i -> a.charAt(i) != b.charAt(i))
+                                    .findFirst()
+                                    .orElse(Math.min(a.length(), b.length()))) : "")
+                    .orElse("").length())));
+
+    // Here we replace java.l.String with j.l.String in a generic way the core packages using regular expressions
+    final Map<Class<?>, String> javaShortClassNames = partitionByIsJavaCoreClass.get(true).stream()
+        .collect(Collectors.toMap(
+            cls -> cls,
+            cls -> cls.getName().replaceAll("\\bjava\\.", "j.").replaceAll("\\.([a-z])[a-z]*", ".$1")));
+
+    final Map<Class<?>, String> classToShortName = Stream.concat(
+        applicationShortClassNames.entrySet().stream(),
+        javaShortClassNames.entrySet().stream()
+    ).collect(Collectors.toUnmodifiableMap(
+        Map.Entry::getKey,
+        Map.Entry::getValue
+    ));
+
+    // invert the map to get class to interned name
+    final Map<String, Class<?>> shortNameToClass = classToShortName.entrySet().stream()
+        .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+
+    //noinspection
     return new RecordReflection<>(constructor, componentAccessors, componentTypes,
-        componentWriters, componentReaders, componentSizes);
+        componentWriters, componentReaders, componentSizes, classToShortName, shortNameToClass);
   }
 
-  static BiConsumer<WriteBuffer, Object> createExtractThenWrite(
-      MethodHandle accessor,
+
+  /// This method returns a function that when passed our record will call a direct method handle accessor
+  /// and perform a null check guard. If the component is null it will write a NULL marker to the buffer.
+  /// If the component is not null it will delegate to the provided chain of writers which deal with nested
+  /// data structures.
+  static BiConsumer<WriteBuffer, Object> componentExtractWithNullGuardAndDelegate(
+      MethodHandle directMethodHandleAccessor,
       BiConsumer<WriteBuffer, Object> delegate) {
     return (buf, record) -> {
       Objects.requireNonNull(buf);
@@ -82,7 +139,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
       WriteBufferImpl bufImpl = (WriteBufferImpl) buf;
       ByteBuffer buffer = bufImpl.buffer;
       try {
-        Object componentValue = accessor.invokeWithArguments(record);
+        Object componentValue = directMethodHandleAccessor.invokeWithArguments(record);
         if (componentValue == null) {
           buffer.put(Constants.NULL.marker());
           LOGGER.fine(() -> "Writing NULL component");
@@ -97,7 +154,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
 
   static Function<Object, Integer> createExtractThenSize(
       MethodHandle accessor,
-      Function<Object, Integer>  delegate) {
+      Function<Object, Integer> delegate) {
     return (obj) -> {
       Objects.requireNonNull(obj);
       try {
@@ -130,11 +187,11 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
 
   /// This is pessimistic size calculation in that it does not attempt to compute all variable length types rather it takes a worst case
   int maxSize(R record) {
-    if( record == null) {
+    if (record == null) {
       return 1;
     }
     int size = 0;
-    for (Function<Object,Integer> sizer : componentSizes) {
+    for (Function<Object, Integer> sizer : componentSizes) {
       size += sizer.apply(record);
     }
     return size;
@@ -162,7 +219,9 @@ enum Tag {
   ENUM(Enum.class),
   ARRAY(Arrays.class), // Arrays don't have a single class use Arrays.class as a marker
   RECORD(Record.class),
-  UUID(java.util.UUID.class);
+  UUID(java.util.UUID.class),
+  SAME_TYPE(Record.class) // Special tag for self-referencing records, used in TypeStructure analysis
+  ;
 
   final Class<?>[] supportedClasses;
 
@@ -179,22 +238,44 @@ enum Tag {
         }
       }
     }
-    // Special case for arrays
+    // Special case for arrays and records
     if (clazz.isArray()) return ARRAY;
+    if (clazz.isRecord()) return RECORD;
+    // The only thing can be a sealed interface is a record
+    if (clazz.isInterface() && clazz.isSealed()) return RECORD;
     throw new IllegalArgumentException("Unsupported class: " + clazz.getName());
   }
 }
 
 // TODO delete this and just use an array of tags
-record TypeStructure(List<Tag> tags, List<Type> types) {
-  TypeStructure(List<Tag> tags, List<Type> types) {
+record TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recoredClass) {
+  TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recoredClass) {
+    Objects.requireNonNull(tags);
+    Objects.requireNonNull(types);
+    this.recoredClass = recoredClass;
+    if( recoredClass != null && types.contains(recoredClass)) {
+      Tag[] arrayTags = tags.toArray(Tag[]::new);
+      Class<?>[] arrayTypes = types.toArray(Class<?>[]::new);
+      IntStream.range(0, arrayTags.length)
+          .filter(i -> recoredClass.equals(arrayTypes[i]))
+          .forEach(i -> arrayTags[i] = SAME_TYPE);
+      tags = Arrays.asList(arrayTags);
+      types = Arrays.asList(arrayTypes);
+    }
     this.tags = Collections.unmodifiableList(tags);
     this.types = Collections.unmodifiableList(types);
+  }
+  TypeStructure(List<Tag> tags, List<Class<?>> types) {
+    this(tags, types, null);
+  }
+
+  TypeStructure with(Class<?> recoredClass) {
+    return new TypeStructure(tags, types, recoredClass);
   }
 
   static TypeStructure analyze(Type type) {
     List<Tag> tags = new ArrayList<>();
-    List<Type> types = new ArrayList<>();
+    List<Class<?>> types = new ArrayList<>();
     Type current = type;
     // TODO this is ugly can be made more stream oriented
     while (true) {
@@ -243,7 +324,11 @@ record TypeStructure(List<Tag> tags, List<Type> types) {
       if (current instanceof GenericArrayType arrayType) {
         tags.add(Tag.ARRAY);
         current = arrayType.getGenericComponentType();
-        types.add(current);
+        if( current instanceof Class<?> clazz){
+          types.add(clazz);
+        } else {
+          tags.add(null);
+        }
         continue;
       }
 
@@ -253,46 +338,53 @@ record TypeStructure(List<Tag> tags, List<Type> types) {
 }
 
 final class Writers {
-  static ByteBuffer byteBuffer(WriteBuffer buf, Object value) {
-    Objects.requireNonNull(buf);
-    Objects.requireNonNull(value);
-    WriteBufferImpl bufImpl = (WriteBufferImpl) buf;
+  static ByteBuffer byteBuffer(WriteBuffer buf) {
+    WriteBufferImpl bufImpl = writeBufferImpl(buf);
     return bufImpl.buffer;
   }
 
+  private static @NotNull WriteBufferImpl writeBufferImpl(WriteBuffer buf) {
+    Objects.requireNonNull(buf);
+    WriteBufferImpl bufImpl = (WriteBufferImpl) buf;
+    if (bufImpl.closed) {
+      throw new IllegalStateException("WriteBuffer is closed");
+    }
+    return bufImpl;
+  }
+
   static final BiConsumer<WriteBuffer, Object> BOOLEAN_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing BOOLEAN - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.BOOLEAN.marker());
     buffer.put(((Boolean) value) ? (byte) 1 : (byte) 0);
   };
 
   static final BiConsumer<WriteBuffer, Object> BYTE_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing BOOLEAN - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.BYTE.marker());
     buffer.put((Byte) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> SHORT_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing SHORT - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.SHORT.marker());
     buffer.putShort((Short) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> CHAR_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing CHARACTER - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.CHARACTER.marker());
     buffer.putChar((Character) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> INTEGER_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     final Integer intValue = (Integer) value;
     LOGGER.fine(() -> "Writing INTEGER - position=" + buffer.position() + " value=" + intValue);
-    if( ZigZagEncoding.sizeOf( intValue) < Integer.BYTES ){
+    if (ZigZagEncoding.sizeOf(intValue) < Integer.BYTES) {
       buffer.put(Constants.INTEGER_VAR.marker());
       ZigZagEncoding.putInt(buffer, intValue);
     } else {
@@ -302,11 +394,11 @@ final class Writers {
   };
 
   static final BiConsumer<WriteBuffer, Object> LONG_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     final Long longValue = (Long) value;
     LOGGER.fine(() -> "Writing LONG - position=" + buffer.position() + " value=" + longValue);
 
-    if( ZigZagEncoding.sizeOf( longValue) < Long.BYTES ){
+    if (ZigZagEncoding.sizeOf(longValue) < Long.BYTES) {
       buffer.put(Constants.LONG_VAR.marker());
       ZigZagEncoding.putLong(buffer, longValue);
     } else {
@@ -316,21 +408,21 @@ final class Writers {
   };
 
   static final BiConsumer<WriteBuffer, Object> FLOAT_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing FLOAT - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.FLOAT.marker());
     buffer.putFloat((Float) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> DOUBLE_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing DOUBLE - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.DOUBLE.marker());
     buffer.putDouble((Double) value);
   };
 
   static final BiConsumer<WriteBuffer, Object> STRING_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing STRING - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.STRING.marker());
     byte[] bytes = ((String) value).getBytes();
@@ -339,7 +431,7 @@ final class Writers {
   };
 
   static final BiConsumer<WriteBuffer, Object> UUID_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing ENUM - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.UUID.marker());
     java.util.UUID uuid = (java.util.UUID) value;
@@ -347,9 +439,64 @@ final class Writers {
     buffer.putLong(uuid.getLeastSignificantBits());
   };
 
+  static BiConsumer<WriteBuffer, Object> DELEGATING_RECORD_WRITER = (buf, value) -> {
+    final var writeBufferImpl = Writers.writeBufferImpl(buf);
+    final var buffer = writeBufferImpl.buffer;
+    LOGGER.fine(() -> "Writing RECORD - position=" + buffer.position() + " class=" + value.getClass().getSimpleName());
+    buffer.put(Constants.RECORD.marker());
+
+    // Check if we've seen this class before
+    Integer offset = writeBufferImpl.classToOffset.get(value.getClass());
+    if (offset != null) {
+      // We've seen this class before, write a negative reference
+      int reference = ~offset;
+      ZigZagEncoding.putInt(buffer, reference); // Using bitwise complement for negative reference
+    } else {
+      // First time seeing this class, write the short named
+      final var internedName = writeBufferImpl.classToInternedName.apply(value.getClass());
+      byte[] classNameBytes = internedName.getBytes(UTF_8);
+      int classNameLength = classNameBytes.length;
+
+      // Store current position before writing
+      int currentPosition = buffer.position();
+
+      // Write positive length and class name
+      buffer.putInt(classNameLength);
+      buffer.put(classNameBytes);
+
+      // Store the position where we wrote this class
+      writeBufferImpl.classToOffset.put(value.getClass(), currentPosition);
+    }
+
+    if (value instanceof Record record) {
+      @SuppressWarnings("unchecked")
+      RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
+      // Serialize the record using the pickler
+      nestedPickler.serialize(buf, record);
+    } else {
+      throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
+    }
+  };
+
+  static BiConsumer<WriteBuffer, Object> DELEGATING_SAME_TYPE_WRITER = (buf, value) -> {
+    final var writeBufferImpl = Writers.writeBufferImpl(buf);
+    final var buffer = writeBufferImpl.buffer;
+    LOGGER.fine(() -> "Writing RECORD - position=" + buffer.position() + " class=" + value.getClass().getSimpleName());
+    buffer.put(Constants.SAME_TYPE.marker());
+    if (value instanceof Record record) {
+      @SuppressWarnings("unchecked")
+      RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
+      // Serialize the record using the pickler
+      nestedPickler.serialize(buf, record);
+    } else {
+      throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
+    }
+  };
+
   public static final int SAMPLE_SIZE = 32;
+
   static final BiConsumer<WriteBuffer, Object> ARRAY_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf, value);
+    ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing ARRAY - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.ARRAY.marker());
     switch (value) {
@@ -382,7 +529,7 @@ final class Writers {
             .sum();
         final var sampleAverageSize = sampleSize / sampleLength;
         // Here we we must be saving one byte per integer to justify the encoding cost
-        if( sampleAverageSize < Integer.BYTES - 1) {
+        if (sampleAverageSize < Integer.BYTES - 1) {
           LOGGER.fine(() -> "Writing INTEGER_VAR array - position=" + buffer.position() + " length=" + length);
           buffer.put(Constants.INTEGER_VAR.marker());
           ZigZagEncoding.putInt(buffer, length);
@@ -407,7 +554,7 @@ final class Writers {
         final var sampleAverageSize = sampleSize / sampleLength;
         // Require 1 byte saving if we sampled the whole array.
         // Require 2 byte saving if we did not sample the whole array as it is large.
-        if( ( length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) ||
+        if ((length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) ||
             (length > SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
           LOGGER.fine(() -> "Writing LONG_VAR array - position=" + buffer.position() + " length=" + length);
           buffer.put(Constants.LONG_VAR.marker());
@@ -431,7 +578,7 @@ final class Writers {
   // Container writers
   static BiConsumer<WriteBuffer, Object> createDelegatingOptionalWriter(BiConsumer<WriteBuffer, Object> delegate) {
     return (buf, obj) -> {
-      ByteBuffer buffer = byteBuffer(buf, obj);
+      ByteBuffer buffer = byteBuffer(buf);
       Optional<?> optional = (Optional<?>) obj;
       if (optional.isEmpty()) {
         LOGGER.fine(() -> "Writing OPTIONAL_EMPTY - position=" + buffer.position());
@@ -446,7 +593,7 @@ final class Writers {
 
   static BiConsumer<WriteBuffer, Object> createDelegatingListWriter(BiConsumer<WriteBuffer, Object> delegate) {
     return (buf, obj) -> {
-      ByteBuffer buffer = byteBuffer(buf, obj);
+      ByteBuffer buffer = byteBuffer(buf);
       List<?> list = (List<?>) obj;
       LOGGER.fine(() -> "Writing LIST - position=" + buffer.position() + " size=" + list.size());
       buffer.put(Constants.LIST.marker());
@@ -458,10 +605,10 @@ final class Writers {
   }
 
   static BiConsumer<WriteBuffer, Object> createMapWriter(BiConsumer<WriteBuffer, Object> keyDelegate,
-                                                            BiConsumer<WriteBuffer, Object> valueDelegate) {
+                                                         BiConsumer<WriteBuffer, Object> valueDelegate) {
     return (buf, obj) -> {
-      ByteBuffer buffer = byteBuffer(buf, obj);
-      Map<?,?> map = (Map<?, ?>) obj;
+      ByteBuffer buffer = byteBuffer(buf);
+      Map<?, ?> map = (Map<?, ?>) obj;
       LOGGER.fine(() -> "Writing MAP - position=" + buffer.position() + " size=" + map.size());
       buffer.put(Constants.MAP.marker());
       ZigZagEncoding.putInt(buffer, map.size());
@@ -475,6 +622,9 @@ final class Writers {
 
   // Build writer chain from type structure
   static BiConsumer<WriteBuffer, Object> buildWriterChain(TypeStructure structure) {
+
+
+
     List<Tag> tags = structure.tags();
     if (tags.isEmpty()) {
       throw new IllegalArgumentException("Type structure must have at least one tag");
@@ -527,6 +677,10 @@ final class Writers {
       case STRING -> STRING_WRITER;
       case ARRAY -> ARRAY_WRITER;
       case UUID -> UUID_WRITER;
+      case RECORD -> DELEGATING_RECORD_WRITER;
+      case SAME_TYPE ->
+          // we must avoid an infinite loop by doing lazily looking up the current record pickler to delegate to self
+          (buf, value) -> DELEGATING_SAME_TYPE_WRITER.accept(buf, value);
       default -> throw new IllegalArgumentException("No leaf writer for tag: " + leafTag);
     };
   }
@@ -658,6 +812,34 @@ final class Readers {
     return value;
   };
 
+  static final Function<ByteBuffer, Object> RECORD_READER = (buffer) -> {
+    LOGGER.fine(() -> "Reading RECORD - position=" + buffer.position());
+    byte marker = buffer.get();
+    if (marker != Constants.RECORD.marker()) {
+      throw new IllegalStateException("Expected RECORD marker but got: " + marker);
+    }
+    return null; // TODO resolve the interned name and deserialize the record
+  };
+
+  @SuppressWarnings("unchecked")
+  static Function<ByteBuffer, Object> recordSameTypeReader(Class<?> recordClass) {
+    RecordPickler<Record> nestedPickler;
+    if( recordClass != null && recordClass.isRecord()) {
+      Class<? extends Record> typedRecordClass = (Class<? extends Record>) recordClass;
+      nestedPickler = (RecordPickler<Record>) Pickler.forRecord(typedRecordClass);
+    } else {
+      throw new IllegalArgumentException("Expected a Record class but got: " + recordClass);
+    }
+    return (buffer) -> {
+      LOGGER.fine(() -> "Reading SELF_TYPE - position=" + buffer.position());
+      byte marker = buffer.get();
+      if (marker != Constants.SAME_TYPE.marker()) {
+        throw new IllegalStateException("Expected RECORD marker but got: " + marker);
+      }
+      return nestedPickler.deserialize(ReadBuffer.wrap(buffer));
+    };
+  }
+
   static final Function<ByteBuffer, Object> ARRAY_READER = (buffer) -> {
     LOGGER.fine(() -> "Reading ARRAY - position=" + buffer.position());
     byte marker = buffer.get();
@@ -777,7 +959,7 @@ final class Readers {
   }
 
   // Get base reader for a tag
-  static Function<ByteBuffer, Object> createLeafReader(Tag tag) {
+  static Function<ByteBuffer, Object> createLeafReader(Class<?> recordClass, Tag tag) {
     LOGGER.fine(() -> "Creating leaf reader for tag: " + tag);
     return switch (tag) {
       case BOOLEAN -> BOOLEAN_READER;
@@ -791,6 +973,10 @@ final class Readers {
       case STRING -> STRING_READER;
       case ARRAY -> ARRAY_READER;
       case UUID -> UUID_READER;
+      case RECORD -> RECORD_READER;
+      case SAME_TYPE ->
+        // we must avoid an infinite loop by doing lazily looking up the current record pickler to delegate to self
+          (buf) -> recordSameTypeReader(recordClass).apply(buf);
       default -> throw new IllegalArgumentException("No base reader for tag: " + tag);
     };
   }
@@ -808,7 +994,7 @@ final class Readers {
     List<Function<ByteBuffer, Object>> readers = new ArrayList<>(tags.size());
 
     // Start with the leaf (rightmost) reader
-    Function<ByteBuffer, Object> reader = createLeafReader(tagsIterator.next());
+    Function<ByteBuffer, Object> reader = createLeafReader(structure.recoredClass(), tagsIterator.next());
     readers.add(reader);
 
     // Build chain from right to left (reverse order)
@@ -820,7 +1006,7 @@ final class Readers {
         case OPTIONAL -> createDelegatingOptionalReader(delegateToReader);
         case MAP -> // as we are going in reverse order it is
             createMapReader(readers.getLast(), readers.get(readers.size() - 2));
-        default -> createLeafReader(preceedingTag);
+        default -> createLeafReader(structure.recoredClass(), preceedingTag);
       };
       readers.add(reader);
     }
@@ -877,7 +1063,7 @@ final class Readers {
   static Function<Object, Integer> LONG_SIZE = (object) ->
       1 + Math.min(Integer.BYTES, ZigZagEncoding.sizeOf((Integer) object));
 
-  static Function<Object, Integer> STRING_SIZE = (object) ->{
+  static Function<Object, Integer> STRING_SIZE = (object) -> {
     if (object == null) {
       return 1; // NULL marker size
     }
@@ -896,18 +1082,18 @@ final class Readers {
         }).sum();
   };
 
-  static Function<Object, Integer> ARRAY_SIZE = (value) ->{
+  static Function<Object, Integer> ARRAY_SIZE = (value) -> {
     if (value == null) {
       return 1; // NULL marker size
     }
     return 1 + switch (value) {
       case byte[] arr -> {
         int length = arr.length;
-        yield  1 + ZigZagEncoding.sizeOf(length) + length;
+        yield 1 + ZigZagEncoding.sizeOf(length) + length;
       }
       case boolean[] booleans -> {
         int length = booleans.length;
-        yield 1 + ZigZagEncoding.sizeOf(length) + length / 8 ; // BitSet size in bytes
+        yield 1 + ZigZagEncoding.sizeOf(length) + length / 8; // BitSet size in bytes
       }
       case int[] integers -> {
         int length = integers.length;
@@ -921,20 +1107,46 @@ final class Readers {
     };
   };
 
+  static Function<Object, Integer> DELEGATING_RECORD_SIZE = (value) -> {
+    if (value == null) {
+      return 1; // NULL marker size
+    }
+    if (!(value instanceof Record record)) {
+      throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
+    }
+    @SuppressWarnings("unchecked")
+    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
+    return 1; // FIXME what here?
+  };
+
+  static Function<Object, Integer> DELEGATING_SAME_TYPE_SIZE = (value) -> {
+    if (value == null) {
+      return 1; // NULL marker size
+    }
+    if (!(value instanceof Record record)) {
+      throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
+    }
+    @SuppressWarnings("unchecked")
+    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
+    return 1; // FIXME what here?
+  };
+
   static Function<Object, Integer> createLeafSizeFunction(Tag leafTag) {
     LOGGER.fine(() -> "Creating size function for tag: " + leafTag);
     return switch (leafTag) {
-      case BOOLEAN ->  (ignored) -> Byte.BYTES + 1; // 1 for the type marker;
+      case BOOLEAN -> (ignored) -> Byte.BYTES + 1; // 1 for the type marker;
       case BYTE -> (ignored) -> Byte.BYTES + 1; // 1 for the type marker
-      case SHORT ->  (ignored) -> Short.BYTES + 1; // 1 for the type marker;;;
+      case SHORT -> (ignored) -> Short.BYTES + 1; // 1 for the type marker;;;
       case CHARACTER -> (ignored) -> Character.BYTES + 1; // 1 for the type marker;;
       case INTEGER -> INTEGER_SIZE;
       case LONG -> LONG_SIZE;
       case FLOAT -> (ignored) -> Float.BYTES + 1; // 1 for the type marker
       case DOUBLE -> (ignored) -> Double.BYTES + 1; // 1 for the type marker;
       case STRING -> STRING_SIZE;
-      case UUID ->  (ignored) -> 2 * Long.BYTES + 1; // 1 for the type marker;;
+      case UUID -> (ignored) -> 2 * Long.BYTES + 1; // 1 for the type marker;;
       case ARRAY -> ARRAY_SIZE;
+      case RECORD -> DELEGATING_RECORD_SIZE;
+      case SAME_TYPE -> DELEGATING_SAME_TYPE_SIZE; // SELF_TYPE is treated as a record
       default -> throw new IllegalArgumentException("No leaf writer for tag: " + leafTag);
     };
   }

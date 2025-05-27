@@ -54,7 +54,7 @@ class SecurityTests {
     final var original = new Good("safe_value");
 
     // 3. Serialize the instance
-    final var buffer = WriteBuffer.allocateSufficient(original);
+    final var buffer = pickler.allocateSufficient(original);
     pickler.serialize(buffer, original);
     var buf = buffer.flip(); // Prepare for reading/manipulation
 
@@ -89,7 +89,7 @@ class SecurityTests {
     final var original = new Good("safe_value");
 
     // 3. Serialize the instance
-    final var buffer = WriteBuffer.allocateSufficient(original);
+    final var buffer = pickler.allocateSufficient(original);
     pickler.serialize(buffer, original);
     buffer.flip(); // Prepare for reading/manipulation
 
