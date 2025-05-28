@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -523,12 +524,8 @@ final class Writers {
       }
       case int[] integers -> {
         final var length = Array.getLength(value);
-        final var sampleLength = Math.min(length, SAMPLE_SIZE);
-        final var sampleSize = IntStream.range(0, sampleLength)
-            .map(i -> ZigZagEncoding.sizeOf(integers[i]))
-            .sum();
-        final var sampleAverageSize = sampleSize / sampleLength;
-        // Here we we must be saving one byte per integer to justify the encoding cost
+        final var sampleAverageSize = length > 0 ?  estimateAverageSizeInt(integers, length) : 1;
+        // Here we must be saving one byte per integer to justify the encoding cost
         if (sampleAverageSize < Integer.BYTES - 1) {
           LOGGER.fine(() -> "Writing INTEGER_VAR array - position=" + buffer.position() + " length=" + length);
           buffer.put(Constants.INTEGER_VAR.marker());
@@ -547,11 +544,7 @@ final class Writers {
       }
       case long[] longs -> {
         final var length = Array.getLength(value);
-        final var sampleLength = Math.min(length, SAMPLE_SIZE);
-        final var sampleSize = IntStream.range(0, sampleLength)
-            .map(i -> ZigZagEncoding.sizeOf(longs[i]))
-            .sum();
-        final var sampleAverageSize = sampleSize / sampleLength;
+        final var sampleAverageSize = length > 0 ? estimateAverageSizeLong(longs, length) : 1;
         // Require 1 byte saving if we sampled the whole array.
         // Require 2 byte saving if we did not sample the whole array as it is large.
         if ((length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) ||
@@ -571,9 +564,95 @@ final class Writers {
           }
         }
       }
+      case float[] floats -> {
+        final var length = Array.getLength(value);
+        LOGGER.fine(() -> "Writing FLOAT array - position=" + buffer.position() + " length=" + length);
+        buffer.put(Constants.FLOAT.marker());
+        ZigZagEncoding.putInt(buffer, length);
+        for (float f : floats) {
+          buffer.putFloat(f);
+        }
+      }
+      case double[] doubles -> {
+        final var length = Array.getLength(value);
+        LOGGER.fine(() -> "Writing DOUBLE array - position=" + buffer.position() + " length=" + length);
+        buffer.put(Constants.DOUBLE.marker());
+        ZigZagEncoding.putInt(buffer, length);
+        for (double d : doubles) {
+          buffer.putDouble(d);
+        }
+      }
+      case String[] strings -> {
+        final var length = Array.getLength(value);
+        LOGGER.fine(() -> "Writing STRING array - position=" + buffer.position() + " length=" + length);
+        buffer.put(Constants.STRING.marker());
+        ZigZagEncoding.putInt(buffer, length);
+        for (String s : strings) {
+          byte[] bytes = s.getBytes(UTF_8);
+          ZigZagEncoding.putInt(buffer, bytes.length);
+          buffer.put(bytes);
+        }
+      }
+      case UUID[] uuids -> {
+        final var length = Array.getLength(value);
+        LOGGER.fine(() -> "Writing UUID array - position=" + buffer.position() + " length=" + length);
+        buffer.put(Constants.UUID.marker());
+        ZigZagEncoding.putInt(buffer, length);
+        for (UUID uuid : uuids) {
+          buffer.putLong(uuid.getMostSignificantBits());
+          buffer.putLong(uuid.getLeastSignificantBits());
+        }
+      }
+      case Record[] records -> {
+        final var length = Array.getLength(value);
+        LOGGER.fine(() -> "Writing RECORD array - position=" + buffer.position() + " length=" + length);
+        buffer.put(Constants.RECORD.marker());
+        ZigZagEncoding.putInt(buffer, length);
+        for (Record record : records) {
+          @SuppressWarnings("unchecked")
+          RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
+          nestedPickler.serialize(buf, record);
+        }
+      }
+      case short[] shorts -> {
+        final var length = Array.getLength(value);
+        LOGGER.fine(() -> "Writing SHORT array - position=" + buffer.position() + " length=" + length);
+        buffer.put(Constants.SHORT.marker());
+        ZigZagEncoding.putInt(buffer, length);
+        for (short s : shorts) {
+          buffer.putShort(s);
+        }
+      }
+      case char[] chars -> {
+        final var length = Array.getLength(value);
+        LOGGER.fine(() -> "Writing CHARACTER array - position=" + buffer.position() + " length=" + length);
+        buffer.put(Constants.CHARACTER.marker());
+        ZigZagEncoding.putInt(buffer, length);
+        for (char c : chars) {
+          buffer.putChar(c);
+        }
+      }
       default -> throw new IllegalArgumentException("Unsupported array type: " + value.getClass());
     }
   };
+
+  private static int estimateAverageSizeLong(long[] longs, int length) {
+    final var sampleLength = Math.min(length, SAMPLE_SIZE);
+    final var sampleSize = IntStream.range(0, sampleLength)
+        .map(i -> ZigZagEncoding.sizeOf(longs[i]))
+        .sum();
+    final var sampleAverageSize = sampleSize / sampleLength;
+    return sampleAverageSize;
+  }
+
+  private static int estimateAverageSizeInt(int[] integers, int length) {
+    final var sampleLength = Math.min(length, SAMPLE_SIZE);
+    final var sampleSize = IntStream.range(0, sampleLength)
+        .map(i -> ZigZagEncoding.sizeOf(integers[i]))
+        .sum();
+    final var sampleAverageSize = sampleSize / sampleLength;
+    return sampleAverageSize;
+  }
 
   // Container writers
   static BiConsumer<WriteBuffer, Object> createDelegatingOptionalWriter(BiConsumer<WriteBuffer, Object> delegate) {
@@ -848,13 +927,6 @@ final class Readers {
     }
     byte arrayTypeMarker = buffer.get();
     switch (Constants.fromMarker(arrayTypeMarker)) {
-      case Constants.BYTE -> {
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        LOGGER.finer(() -> "Read Byte Array len=" + bytes.length);
-        return bytes;
-      }
       case Constants.BOOLEAN -> {
         int boolLength = ZigZagEncoding.getInt(buffer);
         LOGGER.finer(() -> "Read Boolean Array len=" + boolLength);
@@ -870,6 +942,33 @@ final class Readers {
           booleans[i] = bitSet.get(i);
         });
         return booleans;
+      }
+      case Constants.BYTE -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        LOGGER.finer(() -> "Read Byte Array len=" + bytes.length);
+        return bytes;
+      }
+      case Constants.SHORT -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read Short Array len=" + length);
+        short[] shorts = new short[length];
+        IntStream.range(0, length)
+            .forEach(i -> {
+              shorts[i] = buffer.getShort();
+            });
+        return shorts;
+      }
+      case Constants.CHARACTER -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read Character Array len=" + length);
+        char[] chars = new char[length];
+        IntStream.range(0, length)
+            .forEach(i -> {
+              chars[i] = buffer.getChar();
+            });
+        return chars;
       }
       case Constants.INTEGER -> {
         int length = ZigZagEncoding.getInt(buffer);
@@ -898,6 +997,55 @@ final class Readers {
         long[] longs = new long[length];
         Arrays.setAll(longs, i -> ZigZagEncoding.getLong(buffer));
         return longs;
+      }
+      case Constants.FLOAT -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read FLOAT Array len=" + length);
+        float[] floats = new float[length];
+        IntStream.range(0, length)
+            .forEach(i -> floats[i] = buffer.getFloat());
+        return floats;
+      }
+      case Constants.DOUBLE -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read DOUBLE Array len=" + length);
+        double[] doubles = new double[length];
+        IntStream.range(0, length)
+            .forEach(i -> doubles[i] = buffer.getDouble());
+        return doubles;
+      }
+      case Constants.STRING -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read STRING Array len=" + length);
+        String[] strings = new String[length];
+        IntStream.range(0, length).forEach(i -> {
+          int strLength = ZigZagEncoding.getInt(buffer);
+          byte[] bytes = new byte[strLength];
+          buffer.get(bytes);
+          strings[i] = new String(bytes, UTF_8);
+        });
+        return strings;
+      }
+      case Constants.UUID -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read UUID Array len=" + length);
+        UUID[] uuids = new UUID[length];
+        IntStream.range(0, length).forEach(i -> {
+          long mostSigBits = buffer.getLong();
+          long leastSigBits = buffer.getLong();
+          uuids[i] = new UUID(mostSigBits, leastSigBits);
+        });
+        return uuids;
+      }
+      case Constants.RECORD -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read RECORD Array len=" + length);
+        Record[] records = new Record[length];
+        IntStream.range(0, length).forEach(i -> {
+          // TODO resolve the interned name and deserialize the record
+          records[i] = null; // nestedPickler.deserialize(ReadBuffer.wrap(buffer));
+        });
+        return records;
       }
       default -> throw new IllegalStateException("Unsupported array type marker: " + arrayTypeMarker);
     }

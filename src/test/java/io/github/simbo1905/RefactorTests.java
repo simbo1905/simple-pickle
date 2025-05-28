@@ -901,12 +901,17 @@ public class RefactorTests {
   void testEmptyArrays() {
     // Create a record with empty arrays
     final var original = new ArrayExample(
-        new int[]{},
-        new String[]{},
-        new boolean[]{},
-        new Person[]{},
-        new Integer[]{},
-        new Object[]{}
+        new boolean[0],
+        new byte[0],
+        new short[0],
+        new char[0],
+        new int[0],
+        new long[0],
+        new float[0],
+        new double[0],
+        new String[0],
+        new UUID[0],
+        new Person[0]
     );
 
     Pickler<ArrayExample> pickler = Pickler.forRecord(ArrayExample.class);
@@ -964,12 +969,30 @@ public class RefactorTests {
    * @param actual The actual array record
    */
   void assertArrayRecordEquals(ArrayExample expected, ArrayExample actual) {
-    assertArrayEquals(expected.intArray(), actual.intArray());
-    assertArrayEquals(expected.stringArray(), actual.stringArray());
+    /*
+             new boolean[0],
+        new byte[0],
+        new Short[0],
+        new Character[0],
+        new int[0],
+        new long[0],
+        new float[0],
+        new double[0],
+        new String[0],
+        new Integer[0],
+        new Person[0]
+
+     */
     assertArrayEquals(expected.booleanArray(), actual.booleanArray());
+    assertArrayEquals(expected.byteArray(), actual.byteArray());
+    assertArrayEquals(expected.shortArray(), actual.shortArray());
+    assertArrayEquals(expected.charArray(), actual.charArray());
+    assertArrayEquals(expected.intArray(), actual.intArray());
+    assertArrayEquals(expected.longArray(), actual.longArray());
+    assertArrayEquals(expected.floatArray(), actual.floatArray(), 0.0f);
+    assertArrayEquals(expected.doubleArray(), actual.doubleArray(), 0.0);
+    assertArrayEquals(expected.stringArray(), actual.stringArray());
     assertDeepArrayEquals(expected.personArray(), actual.personArray());
-    assertArrayEquals(expected.boxedIntArray(), actual.boxedIntArray());
-    assertDeepArrayEquals(expected.mixedArray(), actual.mixedArray());
   }
 
   /**
