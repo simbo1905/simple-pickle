@@ -4,3 +4,4 @@ target/
 .aider*
 benchmark/.vscode/
 .claude/
+CLAUDE.md
