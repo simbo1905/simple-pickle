@@ -91,13 +91,32 @@ class SealedPickler<S> implements Pickler<S> {
   }
 
   @Override
-  public WriteBuffer allocate(int size) {
+  public WriteBuffer allocateForWriting(int size) {
     // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
     throw new UnsupportedOperationException("SealedPickler does not support allocate");
   }
 
   @Override
-  public WriteBuffer wrap(ByteBuffer buf) {
+  public WriteBuffer wrapForWriting(ByteBuffer buf) {
+    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
+    throw new UnsupportedOperationException("SealedPickler does not support allocate");
+  }
+
+  @Override
+  public int maxSizeOf(S record) {
+    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
+    throw new UnsupportedOperationException("SealedPickler does not support allocate");
+  }
+
+  @Override
+  public ReadBuffer allocateForReading(int size) {
+    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
+    throw new UnsupportedOperationException("SealedPickler does not support allocate");
+
+  }
+
+  @Override
+  public ReadBuffer wrapForReading(ByteBuffer buf) {
     // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
     throw new UnsupportedOperationException("SealedPickler does not support allocate");
   }

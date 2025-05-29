@@ -2,7 +2,6 @@ package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
 import io.github.simbo1905.no.framework.ReadBuffer;
-import io.github.simbo1905.no.framework.WriteBuffer;
 import org.junit.jupiter.api.Assertions;
 
 import java.util.Arrays;
@@ -49,7 +48,7 @@ public class PublicApiDemo {
     Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
     // TODO: fix the allocateSufficient of WriteBuffer
 
-    final var buffer = pickler.allocate(1024);
+    final var buffer = pickler.allocateForWriting(1024);
 
     buffer.putVarInt(animals.size());
 
@@ -58,7 +57,7 @@ public class PublicApiDemo {
     }
 
     // Prepare the buffer for reading
-    try (final var buf = ReadBuffer.wrap(buffer.flip())) {
+    try (final var buf = pickler.wrapForReading(buffer.flip())) {
 
       final int size = buf.getVarInt();
 

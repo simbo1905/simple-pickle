@@ -2,7 +2,6 @@ package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
 import io.github.simbo1905.no.framework.ReadBuffer;
-import io.github.simbo1905.no.framework.WriteBuffer;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
@@ -22,13 +21,13 @@ public class TreeDemo {
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
 // Allocate a buffer to hold just the root node
-    final var buffer = pickler.allocateSufficient(originalRoot);
+    final var buffer = pickler.allocateForWriting(pickler.maxSizeOf(originalRoot));
 
 // Serialize only the root node (which should include the entire graph)
     pickler.serialize(buffer, originalRoot);
 
 // Prepare buffer for reading
-    final var buf = ReadBuffer.wrap(buffer.flip());
+    final ReadBuffer buf = pickler.wrapForReading(buffer.flip());
 
 // Deserialize the root node (which will reconstruct the entire graph)
     final var deserializedRoot = pickler.deserialize(buf);

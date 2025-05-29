@@ -71,13 +71,13 @@ public class ListPicklerTests {
     Pickler<DeepDouble> pickler = Pickler.forRecord(DeepDouble.class);
 
     // Calculate size and allocate buffer
-    var buffer = pickler.allocate(1024);
+    var buffer = pickler.allocateForWriting(1024);
 
     // Serialize
     pickler.serialize(buffer, original);
 
     // Flip the buffer to prepare for reading
-    var buf = ReadBuffer.wrap(buffer.flip());
+    var buf = pickler.wrapForReading(buffer.flip());
 
     // Deserialize
     DeepDouble deserialized = pickler.deserialize(buf);
@@ -109,13 +109,13 @@ public class ListPicklerTests {
     Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
 
     // Calculate size and allocate buffer
-    var buffer = pickler.allocate(1024);
+    var buffer = pickler.allocateForWriting(1024);
 
     // Serialize
     pickler.serialize(buffer, original);
 
     // Flip the buffer to prepare for reading
-    var buf = ReadBuffer.wrap(buffer.flip());
+    var buf = pickler.wrapForReading(buffer.flip());
 
     // Deserialize
     NestedListRecord deserialized = pickler.deserialize(buf);

@@ -12,22 +12,6 @@ public interface ReadBuffer extends AutoCloseable {
     return new ReadBufferImpl(ByteBuffer.wrap(bytes), internedNameToClass);
   }
 
-  @Deprecated // TODO: Remove - these methods use reflection and violate no-reflection principle
-  static ReadBuffer wrap(ByteBuffer buf) {
-    return new ReadBufferImpl(buf, name -> {
-      try {
-        return Class.forName(name);
-      } catch (ClassNotFoundException e) {
-        throw new RuntimeException(e);
-      }
-    });
-  }
-
-  @Deprecated // TODO: Remove - these methods use reflection and violate no-reflection principle
-  static ReadBuffer wrap(byte[] bytes) {
-    return wrap(ByteBuffer.wrap(bytes));
-  }
-
   boolean isClosed();
 
   int getVarInt();

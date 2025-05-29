@@ -17,7 +17,6 @@ import static io.github.simbo1905.no.framework.Companion.manufactureRecordPickle
 public interface Pickler<T> {
   java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(Pickler.class.getName());
 
-
   /// Recursively loads the components reachable through record into the buffer into the [WriteBuffer].
   /// A packed buffer is a wrapper around a byte buffer that tracks the position of class names or
   /// enum strings to deduplicate them. Once the buffer is flipped it is no longer usable. You should
@@ -94,8 +93,12 @@ public interface Pickler<T> {
     return (Pickler<S>) Companion.REGISTRY.get(sealedClass);
   }
 
-  WriteBuffer allocate(int size);
-  WriteBuffer wrap(ByteBuffer buf);
+  int maxSizeOf(T record);
+  WriteBuffer allocateForWriting(int size);
+  WriteBuffer wrapForWriting(ByteBuffer buf);
+
+  ReadBuffer allocateForReading(int size);
+  ReadBuffer wrapForReading(ByteBuffer buf);
 }
 
 record InternedName(String name) {

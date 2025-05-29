@@ -326,7 +326,7 @@ public class SchemaEvolutionTest {
   /// @return The deserialized record instance
   @SuppressWarnings({"unchecked"})
   public static Object deserializeRecord(Class<?> recordClass, byte[] bytes) {
-    final var buf = ReadBuffer.wrap(ByteBuffer.wrap(bytes));
+    final ReadBuffer buf = null; // pickler.wrapForReading(ByteBuffer.wrap(bytes));
     return Pickler.forRecord((Class<? extends Record>) recordClass).deserialize(buf);
   }
 

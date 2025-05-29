@@ -1181,7 +1181,7 @@ final class Readers {
         Record[] records = new Record[length];
         IntStream.range(0, length).forEach(i -> {
           // TODO resolve the interned name and deserialize the record
-          records[i] = null; // nestedPickler.deserialize(ReadBuffer.wrap(buffer));
+          records[i] = null; // nestedPickler.deserialize(pickler.wrapForReading(buffer));
         });
         return records;
       }

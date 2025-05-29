@@ -1,7 +1,6 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Objects;
 
 final class RecordPickler<R extends Record> implements Pickler<R> {
@@ -40,8 +39,13 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   }
 
   @Override
-  public WriteBuffer wrap(ByteBuffer buf) {
+  public WriteBuffer wrapForWriting(ByteBuffer buf) {
     return new WriteBufferImpl(buf, this::classToInternedName);
+  }
+
+  @Override
+  public ReadBuffer allocateForReading(int size) {
+    return new ReadBufferImpl(ByteBuffer.allocate(size), this::internedNameToClass);
   }
 
   public ReadBuffer wrapForReading(ByteBuffer buf) {
@@ -87,7 +91,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   }
 
   @Override
-  public WriteBuffer allocate(int totalSize) {
+  public WriteBuffer allocateForWriting(int totalSize) {
     WriteBufferImpl buffer = new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
     buffer.parentReflection = this.reflection;
     return buffer;
@@ -120,7 +124,8 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     return reflection.deserialize(buf);
   }
 
-  int maxSizeOf(R record) {
+  @Override
+  public int maxSizeOf(R record) {
     return reflection.maxSize(record);
   }
 }
