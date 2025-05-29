@@ -87,25 +87,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   }
 
   @Override
-  public WriteBuffer allocateSufficient(R record) {
-    Objects.requireNonNull(record, "Record must not be null");
-    int maxSize = reflection.maxSize(record);
-    WriteBufferImpl buffer = new WriteBufferImpl(ByteBuffer.allocate(maxSize), this::classToInternedName);
-    buffer.parentReflection = this.reflection;
-    return buffer;
-  }
-
-  @Override
-  public WriteBuffer allocateSufficient(R[] record) {
-    int totalSize = Arrays.stream(record)
-            .mapToInt(reflection::maxSize)
-            .sum();
-    WriteBufferImpl buffer = new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
-    buffer.parentReflection = this.reflection;
-    return buffer;
-  }
-
-  @Override
   public WriteBuffer allocate(int totalSize) {
     WriteBufferImpl buffer = new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
     buffer.parentReflection = this.reflection;

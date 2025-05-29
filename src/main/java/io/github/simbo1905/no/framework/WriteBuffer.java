@@ -3,11 +3,9 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.function.Function;
 
-import static io.github.simbo1905.no.framework.Companion.maxSizeOf;
-
+@SuppressWarnings("UnusedReturnValue") // TODO use in tests
 public interface WriteBuffer extends AutoCloseable {
   int position();
 

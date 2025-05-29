@@ -237,7 +237,6 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     };
   }
 
-
   @SuppressWarnings("unchecked")
   R deserialize(ReadBufferImpl readBuffer) throws Throwable {
     Object[] components = new Object[componentReaders.length];
@@ -309,16 +308,16 @@ enum Tag {
   }
 }
 
-record TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recoredClass) {
-  TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recoredClass) {
+record TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recordClass) {
+  TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recordClass) {
     Objects.requireNonNull(tags);
     Objects.requireNonNull(types);
-    this.recoredClass = recoredClass;
-    if( recoredClass != null && types.contains(recoredClass)) {
+    this.recordClass = recordClass;
+    if( recordClass != null && types.contains(recordClass)) {
       Tag[] arrayTags = tags.toArray(Tag[]::new);
       Class<?>[] arrayTypes = types.toArray(Class<?>[]::new);
       IntStream.range(0, arrayTags.length)
-          .filter(i -> recoredClass.equals(arrayTypes[i]))
+          .filter(i -> recordClass.equals(arrayTypes[i]))
           .forEach(i -> arrayTags[i] = SAME_TYPE);
       tags = Arrays.asList(arrayTags);
       types = Arrays.asList(arrayTypes);
@@ -402,7 +401,7 @@ record TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recoredClass
     return "TypeStructure{" +
         "tags=" + tags +
         ", types=" + types +
-        ", recoredClass=" + recoredClass +
+        ", recordClass=" + recordClass +
         '}';
   }
 }
@@ -1287,7 +1286,7 @@ final class Readers {
     List<Function<ReadBufferImpl, Object>> readers = new ArrayList<>(tags.size());
 
     // Start with the leaf (rightmost) reader
-    Function<ReadBufferImpl, Object> reader = createLeafReader(structure.recoredClass(), tagsIterator.next());
+    Function<ReadBufferImpl, Object> reader = createLeafReader(structure.recordClass(), tagsIterator.next());
     readers.add(reader);
 
     // Build chain from right to left (reverse order)
@@ -1299,7 +1298,7 @@ final class Readers {
         case OPTIONAL -> createDelegatingOptionalReader(delegateToReader);
         case MAP -> // as we are going in reverse order it is
             createMapReader(readers.getLast(), readers.get(readers.size() - 2));
-        default -> createLeafReader(structure.recoredClass(), preceedingTag);
+        default -> createLeafReader(structure.recordClass(), preceedingTag);
       };
       readers.add(reader);
     }

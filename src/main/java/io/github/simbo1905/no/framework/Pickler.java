@@ -17,7 +17,6 @@ import static io.github.simbo1905.no.framework.Companion.manufactureRecordPickle
 public interface Pickler<T> {
   java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(Pickler.class.getName());
 
- WriteBuffer wrap(ByteBuffer buf);
 
   /// Recursively loads the components reachable through record into the buffer into the [WriteBuffer].
   /// A packed buffer is a wrapper around a byte buffer that tracks the position of class names or
@@ -69,11 +68,11 @@ public interface Pickler<T> {
     @SuppressWarnings("unchecked") final Map<String, Class<?>> classesByShortName =
         Arrays.stream(subclasses)
             .map(cls -> (Class<? extends Record>) cls) // Safe due to validateSealedRecordHierarchy
-        .collect(Collectors.toMap(
-            cls -> cls.getName().substring(commonPrefixLength),
-                cls -> cls
-            )
-        );
+            .collect(Collectors.toMap(
+                    cls -> cls.getName().substring(commonPrefixLength),
+                    cls -> cls
+                )
+            );
 
     @SuppressWarnings("unchecked")
     Map<Class<? extends S>, Pickler<? extends S>> picklersByClass = classesByShortName.entrySet().stream()
@@ -84,7 +83,7 @@ public interface Pickler<T> {
               // Double cast required to satisfy compiler
               @SuppressWarnings("unchecked")
               Class<? extends Record> recordCls = (Class<? extends Record>) e.getValue();
-              LOGGER.fine(()-> "Manufacturing pickler for record: " + recordCls.getName());
+              LOGGER.fine(() -> "Manufacturing pickler for record: " + recordCls.getName());
               return (Pickler<S>) manufactureRecordPickler(classesByShortName, recordCls, e.getKey());
             }
         ));
@@ -95,12 +94,8 @@ public interface Pickler<T> {
     return (Pickler<S>) Companion.REGISTRY.get(sealedClass);
   }
 
-  /// Allocates a buffer that is large enough to hold the serialized record. This method does not
-  WriteBuffer allocateSufficient(T record);
-
-  WriteBuffer allocateSufficient(T[] record);
-
-  WriteBuffer allocate(int i);
+  WriteBuffer allocate(int size);
+  WriteBuffer wrap(ByteBuffer buf);
 }
 
 record InternedName(String name) {
@@ -118,14 +113,3 @@ record InternedOffset(int offset) {
   }
 }
 
-record InternedPosition(int position) {
-  InternedPosition {
-    if (position < 0) {
-      throw new IllegalArgumentException("Position must be non-negative");
-    }
-  }
-
-  Object offset(int position) {
-    return new InternedOffset(position() - position);
-  }
-}

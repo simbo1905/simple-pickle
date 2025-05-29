@@ -91,54 +91,14 @@ class SealedPickler<S> implements Pickler<S> {
   }
 
   @Override
-  public WriteBuffer allocateSufficient(S record) {
-    Objects.requireNonNull(record, "record must not be null");
-    if( !record.getClass().isRecord()) {
-      throw new IllegalArgumentException("Expected a record type but got " + record.getClass().getName());
-    }
-    final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(record.getClass());
-    if (pickler == null) {
-      throw new IllegalStateException("No pickler found for " + record.getClass());
-    }
-    final int size = Companion.sizeOfWithPickler(pickler, record);
-    return new WriteBufferImpl(ByteBuffer.allocate(size), this::classToInternedName);
-  }
-
-  @Override
-  public WriteBuffer allocateSufficient(S[] records) {
-    Objects.requireNonNull(records, "records must not be null");
-    Arrays.stream(records).filter(r -> r != null && !r.getClass().isRecord())
-        .findAny()
-        .ifPresent(r -> {
-          throw new IllegalArgumentException("Expected all records to be of record type but got " + r.getClass().getName());
-        });
-
-    RecordPickler<?>[] picklers =
-        Arrays.stream(records)
-            .map(i -> (RecordPickler<?>) subPicklers.get(i.getClass()))
-            .toArray(RecordPickler<?>[]::new);
-
-    int sumSize = IntStream.range(0, picklers.length)
-        .map(i -> Companion.sizeOfWithPickler(picklers[i], records[i]))
-        .sum();
-
-    return new WriteBufferImpl(ByteBuffer.allocate(sumSize), this::classToInternedName);
-  }
-
-  @Override
   public WriteBuffer allocate(int size) {
-    return new WriteBufferImpl(ByteBuffer.allocate(size), this::classToInternedName);
-  }
-
-  // TODO get this right
-  public String classToInternedName(Class<?> type){
-    Objects.requireNonNull(type);
-    return "";
+    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
+    throw new UnsupportedOperationException("SealedPickler does not support allocate");
   }
 
   @Override
   public WriteBuffer wrap(ByteBuffer buf) {
-    return new WriteBufferImpl(buf, this::classToInternedName);
+    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
+    throw new UnsupportedOperationException("SealedPickler does not support allocate");
   }
-
 }
