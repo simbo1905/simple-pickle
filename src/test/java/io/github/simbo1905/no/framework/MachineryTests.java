@@ -17,6 +17,12 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MachineryTests {
+  
+  // Helper method to create RecordPickler for tests
+  private static <R extends Record> RecordPickler<R> createPickler(Class<R> recordClass) {
+    return new RecordPickler<>(recordClass);
+  }
+  
   @BeforeAll
   static void setupLogging() {
     final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
@@ -87,8 +93,8 @@ public class MachineryTests {
 
   @Test
   void testDeepNestedTypes() throws Throwable {
-    // Analyze the record structure
-    RecordReflection<DeepDouble> reflection = RecordReflection.analyze(DeepDouble.class);
+    // Create pickler
+    RecordPickler<DeepDouble> pickler = createPickler(DeepDouble.class);
 
     // Create test data
     DeepDouble testRecord = new DeepDouble(
@@ -99,12 +105,12 @@ public class MachineryTests {
     );
 
     // Serialize
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
     // Deserialize
-    ByteBuffer readBuffer = writeBuffer.flip();
-    DeepDouble deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    DeepDouble deserializedRecord = pickler.deserialize(readBuffer);
 
     // Verify equality
     assertTrue(deepEquals(testRecord.deepDoubles(), deserializedRecord.deepDoubles()));
@@ -128,7 +134,7 @@ public class MachineryTests {
 
   @Test
   void testPrimitiveTypes() throws Throwable {
-    RecordReflection<PrimitiveRecord> reflection = RecordReflection.analyze(PrimitiveRecord.class);
+    RecordPickler<PrimitiveRecord> pickler = createPickler(PrimitiveRecord.class);
 
     PrimitiveRecord testRecord = new PrimitiveRecord(
         true, (byte) 127, (short) 32767, 'A',
@@ -136,18 +142,18 @@ public class MachineryTests {
         3.14f, Math.PI
     );
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    ByteBuffer readBuffer = writeBuffer.flip();
-    PrimitiveRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    PrimitiveRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertEquals(testRecord, deserializedRecord);
   }
 
   @Test
   void testWrapperTypes() throws Throwable {
-    RecordReflection<WrapperRecord> reflection = RecordReflection.analyze(WrapperRecord.class);
+    RecordPickler<WrapperRecord> pickler = createPickler(WrapperRecord.class);
 
     WrapperRecord testRecord = new WrapperRecord(
         Boolean.TRUE, (byte) 127, (short) 32767,
@@ -156,56 +162,56 @@ public class MachineryTests {
         Math.PI
     );
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    ByteBuffer readBuffer = writeBuffer.flip();
-    WrapperRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    WrapperRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertEquals(testRecord, deserializedRecord);
   }
 
   @Test
   void testOptionalTypes() throws Throwable {
-    RecordReflection<OptionalRecord> reflection = RecordReflection.analyze(OptionalRecord.class);
+    RecordPickler<OptionalRecord> pickler = createPickler(OptionalRecord.class);
 
     // Test with a value
     OptionalRecord withValue = new OptionalRecord(Optional.of("Hello World"));
-    WriteBufferImpl writeBuffer1 = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer1, withValue);
-    ByteBuffer readBuffer1 = writeBuffer1.flip();
-    OptionalRecord deserializedWithValue = reflection.deserialize(readBuffer1);
+    WriteBuffer writeBuffer1 = pickler.allocateSufficient(withValue);
+    pickler.serialize(writeBuffer1, withValue);
+    ReadBuffer readBuffer1 = pickler.wrapForReading(writeBuffer1.flip());
+    OptionalRecord deserializedWithValue = pickler.deserialize(readBuffer1);
     assertEquals(withValue, deserializedWithValue);
 
     // Test empty optional
     OptionalRecord withoutValue = new OptionalRecord(Optional.empty());
-    WriteBufferImpl writeBuffer2 = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer2, withoutValue);
-    ByteBuffer readBuffer2 = writeBuffer2.flip();
-    OptionalRecord deserializedWithoutValue = reflection.deserialize(readBuffer2);
+    WriteBuffer writeBuffer2 = pickler.allocateSufficient(withoutValue);
+    pickler.serialize(writeBuffer2, withoutValue);
+    ReadBuffer readBuffer2 = pickler.wrapForReading(writeBuffer2.flip());
+    OptionalRecord deserializedWithoutValue = pickler.deserialize(readBuffer2);
     assertEquals(withoutValue, deserializedWithoutValue);
   }
 
   @Test
   void testListTypes() throws Throwable {
-    RecordReflection<ListRecord> reflection = RecordReflection.analyze(ListRecord.class);
+    RecordPickler<ListRecord> pickler = createPickler(ListRecord.class);
 
     ListRecord testRecord = new ListRecord(List.of("one", "two", "three"));
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ListRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ListRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertEquals(testRecord, deserializedRecord);
 
     // Test empty list
     ListRecord emptyList = new ListRecord(Collections.emptyList());
-    WriteBufferImpl writeBuffer2 = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer2, emptyList);
+    WriteBuffer writeBuffer2 = pickler.allocateSufficient(emptyList);
+    pickler.serialize(writeBuffer2, emptyList);
 
-    ByteBuffer readBuffer2 = writeBuffer2.flip();
-    ListRecord deserializedEmptyList = reflection.deserialize(readBuffer2);
+    ReadBuffer readBuffer2 = pickler.wrapForReading(writeBuffer2.flip());
+    ListRecord deserializedEmptyList = pickler.deserialize(readBuffer2);
 
     assertEquals(emptyList, deserializedEmptyList);
   }
@@ -246,89 +252,84 @@ public class MachineryTests {
     map.put(3, "three");
 
     MapRecord testRecord = new MapRecord(map);
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
+    RecordPickler<MapRecord> pickler = createPickler(MapRecord.class);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    RecordReflection<MapRecord> reflection = RecordReflection.analyze(MapRecord.class);
-    reflection.serialize(writeBuffer, testRecord);
-
-    ByteBuffer readBuffer = writeBuffer.flip();
-    MapRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    MapRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertEquals(testRecord, deserializedRecord);
   }
 
   @Test
   void testArrayBytes() throws Throwable {
-    RecordReflection<ArrayBytes> reflection = RecordReflection.analyze(ArrayBytes.class);
+    RecordPickler<ArrayBytes> pickler = createPickler(ArrayBytes.class);
 
     ArrayBytes testRecord = new ArrayBytes("hello".getBytes(StandardCharsets.UTF_8));
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayBytes deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ArrayBytes deserializedRecord = pickler.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.bytes(), deserializedRecord.bytes());
   }
 
   @Test
   void testArrayBoolean() throws Throwable {
-    RecordReflection<ArrayBooleanRecord> reflection = RecordReflection.analyze(ArrayBooleanRecord.class);
+    RecordPickler<ArrayBooleanRecord> pickler = createPickler(ArrayBooleanRecord.class);
 
     ArrayBooleanRecord testRecord = new ArrayBooleanRecord(new boolean[]{true, false, true});
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayBooleanRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ArrayBooleanRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.booleans(), deserializedRecord.booleans());
   }
 
   @Test
   void testArrayVarInt() throws Throwable {
-    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+    RecordPickler<ArrayIntRecord> pickler = createPickler(ArrayIntRecord.class);
 
     ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{1, 2});
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(1024), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ArrayIntRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
   }
 
   @Test
   void testArrayInt() throws Throwable {
-    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+    RecordPickler<ArrayIntRecord> pickler = createPickler(ArrayIntRecord.class);
 
     ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{Integer.MAX_VALUE, Integer.MIN_VALUE});
 
-    int size = reflection.maxSize(testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
-
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ArrayIntRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
   }
 
   @Test
   void testSmallVarIntArray() throws Throwable {
-    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+    RecordPickler<ArrayIntRecord> pickler = createPickler(ArrayIntRecord.class);
 
     ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{1, 2});
 
-    int size = reflection.maxSize(testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
-
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ArrayIntRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
   }
@@ -336,7 +337,7 @@ public class MachineryTests {
 
   @Test
   void testLargeVarIntArray() throws Throwable {
-    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+    RecordPickler<ArrayIntRecord> pickler = createPickler(ArrayIntRecord.class);
 
     int[] integers = new int[1000];
     for (int i = 0; i < integers.length; i++) {
@@ -345,20 +346,18 @@ public class MachineryTests {
 
     ArrayIntRecord testRecord = new ArrayIntRecord( integers );
 
-    int size = reflection.maxSize(testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
-
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ArrayIntRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
   }
 
   @Test
   void testLargeIntArray() throws Throwable {
-    RecordReflection<ArrayIntRecord> reflection = RecordReflection.analyze(ArrayIntRecord.class);
+    RecordPickler<ArrayIntRecord> pickler = createPickler(ArrayIntRecord.class);
 
     Random random = new Random(1234315135L);
 
@@ -370,21 +369,18 @@ public class MachineryTests {
 
     ArrayIntRecord testRecord = new ArrayIntRecord( integers );
 
-    int size = reflection.maxSize(testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
-
-    reflection.serialize(writeBuffer, testRecord);
-
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayIntRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ArrayIntRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.integers(), deserializedRecord.integers());
   }
 
   @Test
   void testLargeLongArray() throws Throwable {
-    RecordReflection<ArrayLongRecord> reflection = RecordReflection.analyze(ArrayLongRecord.class);
+    RecordPickler<ArrayLongRecord> pickler = createPickler(ArrayLongRecord.class);
 
     Random random = new Random(1234315135L);
 
@@ -396,21 +392,18 @@ public class MachineryTests {
 
     ArrayLongRecord testRecord = new ArrayLongRecord( longs );
 
-    int size = reflection.maxSize(testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
-
-    reflection.serialize(writeBuffer, testRecord);
-
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayLongRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ArrayLongRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.longs(), deserializedRecord.longs());
   }
 
   @Test
   void testLargeVarLongArray() throws Throwable {
-    RecordReflection<ArrayLongRecord> reflection = RecordReflection.analyze(ArrayLongRecord.class);
+    RecordPickler<ArrayLongRecord> pickler = createPickler(ArrayLongRecord.class);
 
     long[] longs = new long[128];
     for (int i = 0; i < longs.length; i++) {
@@ -419,14 +412,11 @@ public class MachineryTests {
 
     ArrayLongRecord testRecord = new ArrayLongRecord( longs );
 
-    int size = reflection.maxSize(testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
-
-    reflection.serialize(writeBuffer, testRecord);
-
-    ByteBuffer readBuffer = writeBuffer.flip();
-    ArrayLongRecord deserializedRecord = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    ArrayLongRecord deserializedRecord = pickler.deserialize(readBuffer);
 
     assertArrayEquals(testRecord.longs(), deserializedRecord.longs());
   }
@@ -436,42 +426,39 @@ public class MachineryTests {
 
   @Test
   void testUUID() throws Throwable {
-    RecordReflection<UUIDRecord> reflection = RecordReflection.analyze(UUIDRecord.class);
+    RecordPickler<UUIDRecord> pickler = createPickler(UUIDRecord.class);
 
     UUID testUUID = new UUID(12343535L, 9876543210L);
     UUIDRecord testRecord = new UUIDRecord(testUUID);
 
-    int size = reflection.maxSize(testRecord);
+    WriteBuffer writeBuffer = pickler.allocateSufficient(testRecord);
+    pickler.serialize(writeBuffer, testRecord);
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(ByteBuffer.allocate(size), (ignored)->"undefined");
-    reflection.serialize(writeBuffer, testRecord);
-
-    ByteBuffer readBuffer = writeBuffer.flip();
-    UUIDRecord deserialized = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    UUIDRecord deserialized = pickler.deserialize(readBuffer);
 
     assertEquals(testUUID, deserialized.uuid());
   }
 
   public record LinkedRecord(LinkedRecord next, String value) {}
 
+  public record LinkedLong(long someLong, LinkedInt next) {}
+  public record LinkedInt(int someInt, LinkedLong next) {}
+
   @Test
   public void testLinkedRecord() throws Throwable {
-    RecordReflection<LinkedRecord> reflection = RecordReflection.analyze(LinkedRecord.class);
+    RecordPickler<LinkedRecord> pickler = createPickler(LinkedRecord.class);
 
     // Create a linked record structure
     LinkedRecord record3 = new LinkedRecord(null, "three");
     LinkedRecord record2 = new LinkedRecord(record3, "two");
     LinkedRecord record1 = new LinkedRecord(record2, "one");
 
-    WriteBufferImpl writeBuffer = new WriteBufferImpl(
-        ByteBuffer.allocate(1024),
-        (cls) -> reflection.classToInternedName().get(cls)
-    );
+    WriteBuffer writeBuffer = pickler.allocate(1024); // TODO: temporary to fix delegation logic first
+    pickler.serialize(writeBuffer, record1);
 
-    reflection.serialize(writeBuffer, record1);
-
-    ByteBuffer readBuffer = writeBuffer.flip();
-    LinkedRecord deserialized = reflection.deserialize(readBuffer);
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    LinkedRecord deserialized = pickler.deserialize(readBuffer);
 
     // Verify the structure
     assertEquals("one", deserialized.value());
@@ -480,5 +467,33 @@ public class MachineryTests {
     assertNotNull(deserialized.next().next());
     assertEquals("three", deserialized.next().next().value());
     assertNull(deserialized.next().next().next());
+  }
+
+  @Test
+  public void testMutuallyRecursiveRecords() throws Throwable {
+    RecordPickler<LinkedLong> pickler = createPickler(LinkedLong.class);
+
+    // Create a mutually recursive structure: Long -> Int -> Long -> Int -> null
+    // Use extreme values to force different encoding strategies
+    LinkedInt record4 = new LinkedInt(Integer.MIN_VALUE, null); // forces 32-bit int encoding
+    LinkedLong record3 = new LinkedLong(Long.MAX_VALUE, record4); // forces 64-bit long encoding  
+    LinkedInt record2 = new LinkedInt(42, record3); // small int - uses varint encoding
+    LinkedLong record1 = new LinkedLong(1000L, record2); // small long - uses varlong encoding
+
+    WriteBuffer writeBuffer = pickler.allocate(1024); // TODO: temporary to fix delegation logic first
+    pickler.serialize(writeBuffer, record1);
+
+    ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+    LinkedLong deserialized = pickler.deserialize(readBuffer);
+
+    // Verify the structure and values
+    assertEquals(1000L, deserialized.someLong());
+    assertNotNull(deserialized.next());
+    assertEquals(42, deserialized.next().someInt());
+    assertNotNull(deserialized.next().next());
+    assertEquals(Long.MAX_VALUE, deserialized.next().next().someLong());
+    assertNotNull(deserialized.next().next().next());
+    assertEquals(Integer.MIN_VALUE, deserialized.next().next().next().someInt());
+    assertNull(deserialized.next().next().next().next());
   }
 }

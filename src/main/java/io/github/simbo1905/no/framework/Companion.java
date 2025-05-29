@@ -27,7 +27,7 @@ class Companion {
       final String name) {
     Objects.requireNonNull(recordClass);
     Objects.requireNonNull(name);
-    final var result = new RecordPickler<>(recordClass, new InternedName(name), classesByShortName);
+    final var result = new RecordPickler<>(recordClass);
     REGISTRY.putIfAbsent(recordClass, result);
     return result;
   }

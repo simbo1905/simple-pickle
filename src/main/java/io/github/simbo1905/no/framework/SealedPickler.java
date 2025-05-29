@@ -78,7 +78,8 @@ class SealedPickler<S> implements Pickler<S> {
       throw new IllegalStateException("No pickler found for " + name.name());
     }
     buf.nameToClass.clear();
-    buf.nameToClass.putAll(pickler.nameToClass);
+    // TODO: Fix this properly - for now just skip this step
+    // buf.nameToClass.putAll(pickler.nameToClass);
     try {
       //noinspection unchecked
       return (S) pickler.deserializeWithMap(buf, false);

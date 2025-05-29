@@ -1,88 +1,51 @@
 package io.github.simbo1905.no.framework;
 
-import java.lang.reflect.RecordComponent;
-import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-
-import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
 
 final class RecordPickler<R extends Record> implements Pickler<R> {
 
   final RecordReflection<R> reflection;
-  final Map<String, Class<?>> nameToClass = new HashMap<>(nameToBasicClass);
-  final Map<Enum<?>, InternedName> enumToName = new HashMap<>();
-  final Map<String, Enum<?>> nameToEnum;
   private final Class<R> recordClass;
 
-  public RecordPickler(final Class<R> recordClass,
-                       InternedName internedName,
-                       final Map<String, Class<?>> classesByShortName) {
+  public RecordPickler(final Class<R> recordClass) {
     Objects.requireNonNull(recordClass);
-    Objects.requireNonNull(internedName);
-    Objects.requireNonNull(classesByShortName);
     if (!recordClass.isRecord()) {
       throw new IllegalArgumentException("Class " + recordClass.getName() + " is not a record");
     }
     this.recordClass = recordClass;
-    final RecordComponent[] components = recordClass.getRecordComponents();
     reflection = RecordReflection.analyze(recordClass);
-    
-//    TypeStructure[] componentTypes = new TypeStructure[components.length];
-//    IntStream.range(0, components.length).forEach(i -> {
-//          RecordComponent component = components[i];
-//          // Analyze type structure
-//          Type genericType = component.getGenericType();
-//          componentTypes[i] = TypeStructure.analyze(genericType).with(recordClass);
-//        });
-
-    // Get parameter types for the canonical constructor
-    Class<?>[] parameterTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
-
-    // Record the regular types, the array types, and the enums that we will write into the buffer
-    Arrays.stream(parameterTypes).forEach(c -> {
-      switch (c) {
-        case Class<?> arrayType when arrayType.isArray() -> {
-          Class<?> componentType = arrayType.getComponentType();
-          nameToClass.putIfAbsent(componentType.getName(), componentType); // FIXME: make short name
-        }
-        case Class<?> enumType when enumType.isEnum() -> {
-          for (Object e : enumType.getEnumConstants()) {
-            if (e instanceof Enum<?> enumConst) {
-              final var shortName = IntStream.range(0, Math.min(enumType.getName().length(), recordClass.getName().length()))
-                  .takeWhile(i -> enumType.getName().charAt(i) == recordClass.getName().charAt(i))
-                  .reduce((a, b) -> b)
-                  .stream()
-                  .mapToObj(i -> enumType.getName().substring(i + 1) + "." + enumConst.name())
-                  .findFirst()
-                  .orElse(enumType.getName() + "." + enumConst.name());
-              enumToName.put(enumConst, new InternedName(shortName));
-            }
-          }
-        }
-        default -> nameToClass.putIfAbsent(c.getName(), c); // FIXME make shortName
-      }
-    });
-
-    // flip the map for the deserialization
-    nameToEnum = enumToName.entrySet().stream()
-        .collect(Collectors.toMap(e -> e.getValue().name(), Map.Entry::getKey));
   }
 
-  // TODO get this right
+  // Package-private constructor for delegation
+  RecordPickler(final Class<R> recordClass, RecordReflection<R> reflection) {
+    Objects.requireNonNull(recordClass);
+    Objects.requireNonNull(reflection);
+    if (!recordClass.isRecord()) {
+      throw new IllegalArgumentException("Class " + recordClass.getName() + " is not a record");
+    }
+    this.recordClass = recordClass;
+    this.reflection = reflection;
+  }
+
   public String classToInternedName(Class<?> type){
     Objects.requireNonNull(type);
-    return null;
+    return reflection.classToInternedName().get(type);
+  }
+
+  public Class<?> internedNameToClass(String name){
+    Objects.requireNonNull(name);
+    return reflection.shortNameToClass().get(name);
   }
 
   @Override
   public WriteBuffer wrap(ByteBuffer buf) {
     return new WriteBufferImpl(buf, this::classToInternedName);
+  }
+
+  public ReadBuffer wrapForReading(ByteBuffer buf) {
+    return new ReadBufferImpl(buf, this::internedNameToClass);
   }
 
   @Override
@@ -110,12 +73,10 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       throw new IllegalStateException("PackedBuffer is closed");
     }
     final var buf = ((ReadBufferImpl) readBuffer);
-    final var buffer = buf.buffer;
     buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-    buf.nameToEnum.putAll(nameToEnum);
-    buf.nameToClass.putAll(nameToClass);
+    buf.currentRecordClass = recordClass;
     try {
-      return this.reflection.deserialize(buffer);
+      return this.reflection.deserialize(buf);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {
@@ -127,7 +88,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   public WriteBuffer allocateSufficient(R record) {
     Objects.requireNonNull(record, "Record must not be null");
     int maxSize = reflection.maxSize(record);
-    return new WriteBufferImpl(ByteBuffer.allocate(maxSize), this::classToInternedName);
+    WriteBufferImpl buffer = new WriteBufferImpl(ByteBuffer.allocate(maxSize), this::classToInternedName);
+    buffer.parentReflection = this.reflection;
+    return buffer;
   }
 
   @Override
@@ -135,12 +98,16 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     int totalSize = Arrays.stream(record)
             .mapToInt(reflection::maxSize)
             .sum();
-    return new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
+    WriteBufferImpl buffer = new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
+    buffer.parentReflection = this.reflection;
+    return buffer;
   }
 
   @Override
   public WriteBuffer allocate(int totalSize) {
-    return new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
+    WriteBufferImpl buffer = new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
+    buffer.parentReflection = this.reflection;
+    return buffer;
   }
 
   public R deserializeWithMap(ReadBufferImpl buf, boolean writeName) throws Throwable {
@@ -167,6 +134,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     if (!recordClass.getName().equals(name.name())) {
       throw new IllegalStateException("Expected record class name " + recordClass.getName() + " but got " + name.name());
     }
-    return reflection.deserialize(buffer);
+    return reflection.deserialize(buf);
   }
 }

@@ -21,10 +21,11 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle[] componentAccessors,
                                           TypeStructure[] componentTypes,
                                           BiConsumer<WriteBuffer, Object>[] componentWriters,
-                                          Function<ByteBuffer, Object>[] componentReaders,
+                                          Function<ReadBufferImpl, Object>[] componentReaders,
                                           Function<Object, Integer>[] componentSizes,
                                           Map<Class<?>,String> classToInternedName,
-                                          Map<String, Class<?>> shortNameToClass) {
+                                          Map<String, Class<?>> shortNameToClass,
+                                          Map<Class<?>, Pickler<?>> delegateePicklers) {
 
   static <R extends Record> RecordReflection<R> analyze(Class<R> recordClass) {
     RecordComponent[] components = recordClass.getRecordComponents();
@@ -50,7 +51,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     @SuppressWarnings("unchecked")
     BiConsumer<WriteBuffer, Object>[] componentWriters = new BiConsumer[components.length];
     @SuppressWarnings("unchecked")
-    Function<ByteBuffer, Object>[] componentReaders = new Function[components.length];
+    Function<ReadBufferImpl, Object>[] componentReaders = new Function[components.length];
     @SuppressWarnings("unchecked")
     Function<Object, Integer>[] componentSizes = new Function[components.length];
 
@@ -65,20 +66,39 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
 
       // Analyze type structure
       Type genericType = component.getGenericType();
-      componentTypes[i] = TypeStructure.analyze(genericType).with(recordClass);
+      final var thisTypes = TypeStructure.analyze(genericType).with(recordClass);
+      componentTypes[i] = thisTypes;
 
       // Build writer and reader chains
       BiConsumer<WriteBuffer, Object> writeChain = Writers.buildWriterChain(componentTypes[i]);
       componentWriters[i] = componentExtractWithNullGuardAndDelegate(componentAccessors[i], writeChain);
 
-      componentReaders[i] = Readers.buildReaderChain(componentTypes[i]);
+      Function<ReadBufferImpl, Object> readerChain = Readers.buildReaderChain(componentTypes[i]);
+      componentReaders[i] = Readers.createNullGuardReader(readerChain);
       // Create size function for the component
       Function<Object, Integer> sizeChain = Readers.buildSizeChain(componentTypes[i]);
       componentSizes[i] = createExtractThenSize(componentAccessors[i], sizeChain);
     });
 
+    // Discover mutually recursive record types by scanning for other record classes in component types
+    Set<Class<?>> discoveredRecordTypes = Arrays.stream(componentTypes)
+        .flatMap(typeStructure -> typeStructure.types().stream())
+        .filter(type -> type.isRecord() && !recordClass.equals(type))
+        .collect(Collectors.toSet());
+
+    // Recursively analyze discovered record types to include their component types
+    Set<TypeStructure> allTypeStructures = new HashSet<>(Arrays.asList(componentTypes));
+    for (Class<?> discoveredRecord : discoveredRecordTypes) {
+      RecordComponent[] discoveredComponents = discoveredRecord.getRecordComponents();
+      for (RecordComponent discoveredComponent : discoveredComponents) {
+        Type discoveredGenericType = discoveredComponent.getGenericType();
+        TypeStructure discoveredTypeStructure = TypeStructure.analyze(discoveredGenericType).with(discoveredRecord);
+        allTypeStructures.add(discoveredTypeStructure);
+      }
+    }
+
     // Here we find all the types that are used in the record components including nested types.
-    final Set<Class<?>> allClasses = Arrays.stream(componentTypes)
+    final Set<Class<?>> allClasses = allTypeStructures.stream()
         .flatMap(typeStructure -> typeStructure.types().stream())
         .collect(Collectors.toSet());
 
@@ -123,9 +143,82 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
 
     //noinspection
     return new RecordReflection<>(constructor, componentAccessors, componentTypes,
-        componentWriters, componentReaders, componentSizes, classToShortName, shortNameToClass);
+        componentWriters, componentReaders, componentSizes, classToShortName, shortNameToClass,
+        new HashMap<>());
   }
 
+  /// Package-private method to create delegatee picklers that share the parent's class resolution context
+  @SuppressWarnings("unchecked")
+  static <T extends Record> RecordPickler<T> manufactureDelegateeRecordPickler(Class<T> delegateClass, RecordReflection<?> parentReflection) {
+    // Check if we already have a pickler for this class
+    Pickler<?> existingPickler = parentReflection.delegateePicklers().get(delegateClass);
+    if (existingPickler != null) {
+      return (RecordPickler<T>) existingPickler;
+    }
+
+    // Create a new RecordReflection that extends the parent's class maps
+    RecordReflection<T> delegateReflection = analyzeWithSharedContext(delegateClass, parentReflection);
+    
+    // Create the pickler and cache it
+    RecordPickler<T> delegatePickler = new RecordPickler<>(delegateClass, delegateReflection);
+    parentReflection.delegateePicklers().put(delegateClass, delegatePickler);
+    
+    return delegatePickler;
+  }
+
+  /// Analyze a record class while sharing class resolution context from parent
+  private static <T extends Record> RecordReflection<T> analyzeWithSharedContext(Class<T> recordClass, RecordReflection<?> parentReflection) {
+    RecordComponent[] components = recordClass.getRecordComponents();
+    MethodHandles.Lookup lookup = MethodHandles.lookup();
+
+    // Constructor reflection (same as regular analyze)
+    Class<?>[] parameterTypes = Arrays.stream(components)
+        .map(RecordComponent::getType)
+        .toArray(Class<?>[]::new);
+
+    Constructor<?> constructorHandle;
+    MethodHandle constructor;
+    try {
+      constructorHandle = recordClass.getDeclaredConstructor(parameterTypes);
+      constructor = lookup.unreflectConstructor(constructorHandle);
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      throw new RuntimeException(e);
+    }
+
+    // Component analysis (same as regular analyze)
+    MethodHandle[] componentAccessors = new MethodHandle[components.length];
+    TypeStructure[] componentTypes = new TypeStructure[components.length];
+    BiConsumer<WriteBuffer, Object>[] componentWriters = new BiConsumer[components.length];
+    Function<ReadBufferImpl, Object>[] componentReaders = new Function[components.length];
+    Function<Object, Integer>[] componentSizes = new Function[components.length];
+
+    IntStream.range(0, components.length).forEach(i -> {
+      RecordComponent component = components[i];
+      try {
+        componentAccessors[i] = lookup.unreflect(component.getAccessor());
+      } catch (IllegalAccessException e) {
+        throw new RuntimeException(e.getMessage(), e);
+      }
+
+      Type genericType = component.getGenericType();
+      componentTypes[i] = TypeStructure.analyze(genericType).with(recordClass);
+
+      BiConsumer<WriteBuffer, Object> writeChain = Writers.buildWriterChain(componentTypes[i]);
+      componentWriters[i] = componentExtractWithNullGuardAndDelegate(componentAccessors[i], writeChain);
+
+      Function<ReadBufferImpl, Object> readerChain = Readers.buildReaderChain(componentTypes[i]);
+      componentReaders[i] = Readers.createNullGuardReader(readerChain);
+
+      Function<Object, Integer> sizeChain = Readers.buildSizeChain(componentTypes[i]);
+      componentSizes[i] = createExtractThenSize(componentAccessors[i], sizeChain);
+    });
+
+    // Share the parent's class resolution maps instead of creating new ones
+    return new RecordReflection<>(constructor, componentAccessors, componentTypes,
+        componentWriters, componentReaders, componentSizes, 
+        parentReflection.classToInternedName(), parentReflection.shortNameToClass(),
+        parentReflection.delegateePicklers());
+  }
 
   /// This method returns a function that when passed our record will call a direct method handle accessor
   /// and perform a null check guard. If the component is null it will write a NULL marker to the buffer.
@@ -174,9 +267,9 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
 
 
   @SuppressWarnings("unchecked")
-  R deserialize(ByteBuffer buffer) throws Throwable {
+  R deserialize(ReadBufferImpl readBuffer) throws Throwable {
     Object[] components = new Object[componentReaders.length];
-    Arrays.setAll(components, i -> componentReaders[i].apply(buffer));
+    Arrays.setAll(components, i -> componentReaders[i].apply(readBuffer));
     return (R) constructor.invokeWithArguments(components);
   }
 
@@ -443,7 +536,7 @@ final class Writers {
   static BiConsumer<WriteBuffer, Object> DELEGATING_RECORD_WRITER = (buf, value) -> {
     final var writeBufferImpl = Writers.writeBufferImpl(buf);
     final var buffer = writeBufferImpl.buffer;
-    LOGGER.fine(() -> "Writing RECORD - position=" + buffer.position() + " class=" + value.getClass().getSimpleName());
+    LOGGER.fine(() -> "DELEGATING_RECORD_WRITER START - position=" + buffer.position() + " class=" + value.getClass().getSimpleName() + " value=" + value);
     buffer.put(Constants.RECORD.marker());
 
     // Check if we've seen this class before
@@ -451,6 +544,7 @@ final class Writers {
     if (offset != null) {
       // We've seen this class before, write a negative reference
       int reference = ~offset;
+      LOGGER.fine(() -> "Writing class reference (seen before) - reference=" + reference + " for class=" + value.getClass().getSimpleName());
       ZigZagEncoding.putInt(buffer, reference); // Using bitwise complement for negative reference
     } else {
       // First time seeing this class, write the short named
@@ -462,6 +556,7 @@ final class Writers {
       int currentPosition = buffer.position();
 
       // Write positive length and class name
+      LOGGER.fine(() -> "Writing new class - length=" + classNameLength + " name=" + internedName + " for class=" + value.getClass().getSimpleName());
       buffer.putInt(classNameLength);
       buffer.put(classNameBytes);
 
@@ -471,18 +566,21 @@ final class Writers {
 
     if (value instanceof Record record) {
       @SuppressWarnings("unchecked")
-      RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-      // Serialize the record using the pickler
-      nestedPickler.serialize(buf, record);
+      RecordPickler<Record> delegatePickler = (RecordPickler<Record>) RecordReflection.manufactureDelegateeRecordPickler(record.getClass(), writeBufferImpl.parentReflection);
+      LOGGER.fine(() -> "DELEGATING_RECORD_WRITER using delegatee pickler for " + record.getClass().getSimpleName() + " - about to serialize components");
+      // Serialize just the record components using the delegatee's reflection
+      delegatePickler.reflection.serialize(writeBufferImpl, record);
+      LOGGER.fine(() -> "DELEGATING_RECORD_WRITER completed nested serialization for " + record.getClass().getSimpleName());
     } else {
       throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
     }
+    LOGGER.fine(() -> "DELEGATING_RECORD_WRITER END - position=" + buffer.position() + " class=" + value.getClass().getSimpleName());
   };
 
   static BiConsumer<WriteBuffer, Object> DELEGATING_SAME_TYPE_WRITER = (buf, value) -> {
     final var writeBufferImpl = Writers.writeBufferImpl(buf);
     final var buffer = writeBufferImpl.buffer;
-    LOGGER.fine(() -> "Writing RECORD - position=" + buffer.position() + " class=" + value.getClass().getSimpleName());
+    LOGGER.fine(() -> "Writing SAME_TYPE - position=" + buffer.position() + " class=" + value.getClass().getSimpleName());
     buffer.put(Constants.SAME_TYPE.marker());
     if (value instanceof Record record) {
       @SuppressWarnings("unchecked")
@@ -756,7 +854,9 @@ final class Writers {
       case STRING -> STRING_WRITER;
       case ARRAY -> ARRAY_WRITER;
       case UUID -> UUID_WRITER;
-      case RECORD -> DELEGATING_RECORD_WRITER;
+      case RECORD ->
+          // we must avoid an infinite loop by doing lazily looking up the current record pickler to delegate to self
+          (buf, value) -> DELEGATING_RECORD_WRITER.accept(buf, value);
       case SAME_TYPE ->
           // we must avoid an infinite loop by doing lazily looking up the current record pickler to delegate to self
           (buf, value) -> DELEGATING_SAME_TYPE_WRITER.accept(buf, value);
@@ -766,7 +866,26 @@ final class Writers {
 }
 
 final class Readers {
-  static final Function<ByteBuffer, Object> BOOLEAN_READER = (buffer) -> {
+  
+  /// Creates a null guard reader that checks for NULL marker first before delegating
+  static Function<ReadBufferImpl, Object> createNullGuardReader(Function<ReadBufferImpl, Object> delegate) {
+    return (readBuffer) -> {
+      ByteBuffer buffer = readBuffer.buffer;
+      // Mark position to reset if not null
+      buffer.mark();
+      byte marker = buffer.get();
+      if (marker == Constants.NULL.marker()) {
+        LOGGER.fine(() -> "Reading NULL component at position " + (buffer.position() - 1));
+        return null;
+      } else {
+        // Reset to position before marker and delegate
+        buffer.reset();
+        return delegate.apply(readBuffer);
+      }
+    };
+  }
+  static final Function<ReadBufferImpl, Object> BOOLEAN_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading BOOLEAN - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.BOOLEAN.marker()) {
@@ -777,7 +896,8 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Object> BYTE_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> BYTE_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading BYTE - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.BYTE.marker()) {
@@ -788,7 +908,8 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Object> SHORT_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> SHORT_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading SHORT - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.SHORT.marker()) {
@@ -799,7 +920,8 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Object> CHAR_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> CHAR_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading CHARACTER - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.CHARACTER.marker()) {
@@ -810,7 +932,8 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Object> INTEGER_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> INTEGER_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading INTEGER - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker == Constants.INTEGER_VAR.marker()) {
@@ -826,7 +949,8 @@ final class Readers {
     }
   };
 
-  static final Function<ByteBuffer, Object> LONG_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> LONG_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading LONG - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker == Constants.LONG_VAR.marker()) {
@@ -842,7 +966,8 @@ final class Readers {
     }
   };
 
-  static final Function<ByteBuffer, Object> FLOAT_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> FLOAT_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading FLOAT - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.FLOAT.marker()) {
@@ -853,7 +978,8 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Object> DOUBLE_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> DOUBLE_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading DOUBLE - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.DOUBLE.marker()) {
@@ -864,7 +990,8 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Object> STRING_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> STRING_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading STRING - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.STRING.marker()) {
@@ -878,7 +1005,8 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Object> UUID_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> UUID_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading UUID - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.UUID.marker()) {
@@ -891,17 +1019,48 @@ final class Readers {
     return value;
   };
 
-  static final Function<ByteBuffer, Object> RECORD_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> DELEGATING_RECORD_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading RECORD - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.RECORD.marker()) {
       throw new IllegalStateException("Expected RECORD marker but got: " + marker);
     }
-    return null; // TODO resolve the interned name and deserialize the record
+
+    Class<?> clazz;
+    int classReference = buffer.getInt();
+    if (classReference < 0) {
+      // Negative reference - use offset to get from locations map
+      int offset = ~classReference;
+      clazz = readBuffer.locations.get(offset);
+      if (clazz == null) {
+        throw new IllegalStateException("No class found at offset: " + offset);
+      }
+      LOGGER.fine(() -> "Read class reference at offset " + offset + ": " + clazz.getSimpleName());
+    } else {
+      // Positive length - read class name and store location
+      int currentPosition = buffer.position() - Integer.BYTES; // Position where we wrote the length
+      byte[] classNameBytes = new byte[classReference];
+      buffer.get(classNameBytes);
+      String className = new String(classNameBytes, java.nio.charset.StandardCharsets.UTF_8);
+      clazz = readBuffer.internedNameToClass.apply(className);
+      // Store this class at the position for future reference
+      readBuffer.locations.put(currentPosition, clazz);
+      LOGGER.fine(() -> "Read new class name " + className + " -> " + clazz.getSimpleName() + " at position " + currentPosition);
+    }
+
+    @SuppressWarnings("unchecked")
+    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord((Class<? extends Record>) clazz);
+    // We must pass the same ReadBufferImpl instance to maintain class name compression
+    try {
+      return pickler.reflection.deserialize(readBuffer);
+    } catch (Throwable e) {
+      throw new RuntimeException("Failed to deserialize record of type " + clazz.getName(), e);
+    }
   };
 
   @SuppressWarnings("unchecked")
-  static Function<ByteBuffer, Object> recordSameTypeReader(Class<?> recordClass) {
+  static Function<ReadBufferImpl, Object> recordSameTypeReader(Class<?> recordClass) {
     RecordPickler<Record> nestedPickler;
     if( recordClass != null && recordClass.isRecord()) {
       Class<? extends Record> typedRecordClass = (Class<? extends Record>) recordClass;
@@ -909,17 +1068,24 @@ final class Readers {
     } else {
       throw new IllegalArgumentException("Expected a Record class but got: " + recordClass);
     }
-    return (buffer) -> {
-      LOGGER.fine(() -> "Reading SELF_TYPE - position=" + buffer.position());
+    return (readBuffer) -> {
+      ByteBuffer buffer = readBuffer.buffer;
+      LOGGER.fine(() -> "Reading SAME_TYPE - position=" + buffer.position());
       byte marker = buffer.get();
       if (marker != Constants.SAME_TYPE.marker()) {
-        throw new IllegalStateException("Expected RECORD marker but got: " + marker);
+        throw new IllegalStateException("Expected SAME_TYPE marker but got: " + marker);
       }
-      return nestedPickler.deserialize(ReadBuffer.wrap(buffer));
+      // We must pass the same ReadBufferImpl instance to maintain class name compression
+      try {
+        return nestedPickler.reflection.deserialize(readBuffer);
+      } catch (Throwable e) {
+        throw new RuntimeException("Failed to deserialize SAME_TYPE record of type " + recordClass.getName(), e);
+      }
     };
   }
 
-  static final Function<ByteBuffer, Object> ARRAY_READER = (buffer) -> {
+  static final Function<ReadBufferImpl, Object> ARRAY_READER = (readBuffer) -> {
+    ByteBuffer buffer = readBuffer.buffer;
     LOGGER.fine(() -> "Reading ARRAY - position=" + buffer.position());
     byte marker = buffer.get();
     if (marker != Constants.ARRAY.marker()) {
@@ -1052,15 +1218,16 @@ final class Readers {
   };
 
   // Container readers
-  static Function<ByteBuffer, Object> createDelegatingOptionalReader(Function<ByteBuffer, Object> delegate) {
-    return (buffer) -> {
+  static Function<ReadBufferImpl, Object> createDelegatingOptionalReader(Function<ReadBufferImpl, Object> delegate) {
+    return (readBuffer) -> {
+      ByteBuffer buffer = readBuffer.buffer;
       LOGGER.fine(() -> "Reading OPTIONAL - position=" + buffer.position());
       byte marker = buffer.get();
       if (marker == Constants.OPTIONAL_EMPTY.marker()) {
         LOGGER.finer(() -> "Read OPTIONAL_EMPTY");
         return Optional.empty();
       } else if (marker == Constants.OPTIONAL_OF.marker()) {
-        Object value = delegate.apply(buffer);
+        Object value = delegate.apply(readBuffer);
         LOGGER.finer(() -> "Read OPTIONAL_OF with value: " + value);
         return Optional.of(value);
       } else {
@@ -1069,8 +1236,9 @@ final class Readers {
     };
   }
 
-  static Function<ByteBuffer, Object> createDelegatingListReader(Function<ByteBuffer, Object> delegate) {
-    return (buffer) -> {
+  static Function<ReadBufferImpl, Object> createDelegatingListReader(Function<ReadBufferImpl, Object> delegate) {
+    return (readBuffer) -> {
+      ByteBuffer buffer = readBuffer.buffer;
       LOGGER.fine(() -> "Reading LIST - position=" + buffer.position());
       byte marker = buffer.get();
       if (marker != Constants.LIST.marker()) {
@@ -1079,14 +1247,15 @@ final class Readers {
       int size = buffer.getInt();
       LOGGER.finer(() -> "Reading List with " + size + " elements");
       List<Object> list = new ArrayList<>(size);
-      IntStream.range(0, size).forEach(i -> list.add(delegate.apply(buffer)));
+      IntStream.range(0, size).forEach(i -> list.add(delegate.apply(readBuffer)));
       return Collections.unmodifiableList(list);
     };
   }
 
-  static Function<ByteBuffer, Object> createMapReader(Function<ByteBuffer, Object> keyDelegate,
-                                                      Function<ByteBuffer, Object> valueDelegate) {
-    return (buffer) -> {
+  static Function<ReadBufferImpl, Object> createMapReader(Function<ReadBufferImpl, Object> keyDelegate,
+                                                            Function<ReadBufferImpl, Object> valueDelegate) {
+    return (readBuffer) -> {
+      ByteBuffer buffer = readBuffer.buffer;
       Objects.requireNonNull(buffer);
       final var initialPosition = buffer.position();
       final var marker = buffer.get();
@@ -1098,8 +1267,8 @@ final class Readers {
       Map<Object, Object> map = new LinkedHashMap<>(size);
       IntStream.range(0, size)
           .forEach(i -> {
-            Object key = keyDelegate.apply(buffer);
-            Object value = valueDelegate.apply(buffer);
+            Object key = keyDelegate.apply(readBuffer);
+            Object value = valueDelegate.apply(readBuffer);
             map.put(key, value);
           });
       return Collections.unmodifiableMap(map);
@@ -1107,7 +1276,7 @@ final class Readers {
   }
 
   // Get base reader for a tag
-  static Function<ByteBuffer, Object> createLeafReader(Class<?> recordClass, Tag tag) {
+  static Function<ReadBufferImpl, Object> createLeafReader(Class<?> recordClass, Tag tag) {
     LOGGER.fine(() -> "Creating leaf reader for tag: " + tag);
     return switch (tag) {
       case BOOLEAN -> BOOLEAN_READER;
@@ -1121,16 +1290,18 @@ final class Readers {
       case STRING -> STRING_READER;
       case ARRAY -> ARRAY_READER;
       case UUID -> UUID_READER;
-      case RECORD -> RECORD_READER;
+      case RECORD -> 
+        // we must avoid an infinite loop by doing lazily looking up the current record pickler to delegate to self
+          (readBuffer) -> DELEGATING_RECORD_READER.apply(readBuffer);
       case SAME_TYPE ->
         // we must avoid an infinite loop by doing lazily looking up the current record pickler to delegate to self
-          (buf) -> recordSameTypeReader(recordClass).apply(buf);
+          (readBuffer) -> recordSameTypeReader(recordClass).apply(readBuffer);
       default -> throw new IllegalArgumentException("No base reader for tag: " + tag);
     };
   }
 
   // Build reader chain from type structure
-  static Function<ByteBuffer, Object> buildReaderChain(TypeStructure structure) {
+  static Function<ReadBufferImpl, Object> buildReaderChain(TypeStructure structure) {
     Objects.requireNonNull(structure);
     final var tags = structure.tags();
     if (tags == null || tags.isEmpty()) {
@@ -1139,15 +1310,15 @@ final class Readers {
     // Reverse the tags to process from right to left
     final var tagsIterator = tags.reversed().iterator();
     // To handle maps we need to look at the prior two tags in reverse order
-    List<Function<ByteBuffer, Object>> readers = new ArrayList<>(tags.size());
+    List<Function<ReadBufferImpl, Object>> readers = new ArrayList<>(tags.size());
 
     // Start with the leaf (rightmost) reader
-    Function<ByteBuffer, Object> reader = createLeafReader(structure.recoredClass(), tagsIterator.next());
+    Function<ReadBufferImpl, Object> reader = createLeafReader(structure.recoredClass(), tagsIterator.next());
     readers.add(reader);
 
     // Build chain from right to left (reverse order)
     while (tagsIterator.hasNext()) {
-      final Function<ByteBuffer, Object> delegateToReader = reader; // final required for lambda capture
+      final Function<ReadBufferImpl, Object> delegateToReader = reader; // final required for lambda capture
       Tag preceedingTag = tagsIterator.next();
       reader = switch (preceedingTag) {
         case LIST -> createDelegatingListReader(delegateToReader);
@@ -1209,7 +1380,7 @@ final class Readers {
       1 + Math.min(Integer.BYTES, ZigZagEncoding.sizeOf((Integer) object));
 
   static Function<Object, Integer> LONG_SIZE = (object) ->
-      1 + Math.min(Integer.BYTES, ZigZagEncoding.sizeOf((Integer) object));
+      1 + Math.min(Long.BYTES, ZigZagEncoding.sizeOf((Long) object));
 
   static Function<Object, Integer> STRING_SIZE = (object) -> {
     if (object == null) {
@@ -1276,7 +1447,7 @@ final class Readers {
     }
     @SuppressWarnings("unchecked")
     RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-    return 1; // FIXME what here?
+    return 1 + pickler.reflection.maxSize(record); // 1 byte for SAME_TYPE marker + recursive size
   };
 
   static Function<Object, Integer> createLeafSizeFunction(Tag leafTag) {
