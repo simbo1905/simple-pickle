@@ -9,7 +9,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
-import java.util.function.IntFunction;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -22,7 +22,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
                                           TypeStructure[] componentTypes,
                                           BiConsumer<WriteBuffer, Object>[] componentWriters,
                                           Function<ReadBufferImpl, Object>[] componentReaders,
-                                          Function<Object, Integer>[] componentSizes,
+                                          ToIntFunction<Object> componentsSizer,
                                           Map<Class<?>,String> classToInternedName,
                                           Map<String, Class<?>> shortNameToClass,
                                           Map<Class<?>, Pickler<?>> delegateePicklers) {
@@ -75,8 +75,8 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
 
       Function<ReadBufferImpl, Object> readerChain = Readers.buildReaderChain(componentTypes[i]);
       componentReaders[i] = Readers.createNullGuardReader(readerChain);
-      // Create size function for the component
-      Function<Object, Integer> sizeChain = Readers.buildSizeChain(componentTypes[i]);
+
+      ToIntFunction<Object> sizeChain = Readers.buildSizeChain(componentTypes[i]);
       componentSizes[i] = createExtractThenSize(componentAccessors[i], sizeChain);
     });
 
@@ -129,6 +129,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
             cls -> cls,
             cls -> cls.getName().replaceAll("\\bjava\\.", "j.").replaceAll("\\.([a-z])[a-z]*", ".$1")));
 
+    // Join the modified application and java class names into a single map
     final Map<Class<?>, String> classToShortName = Stream.concat(
         applicationShortClassNames.entrySet().stream(),
         javaShortClassNames.entrySet().stream()
@@ -137,17 +138,29 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
         Map.Entry::getValue
     ));
 
-    // invert the map to get class to interned name
+    // invert the map to get class to interned name lookup
     final Map<String, Class<?>> shortNameToClass = classToShortName.entrySet().stream()
         .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
 
+    // Create a map for delegate sizer
+    ToIntFunction<Object> componentSizer = (o) -> {
+      if (o == null) {
+        return 1; // NULL marker size
+      }
+      int size = 0;
+      for (Function<Object, Integer> sizer : componentSizes) {
+        size += sizer.apply(o);
+      }
+      return size;
+    };
+
     //noinspection
     return new RecordReflection<>(constructor, componentAccessors, componentTypes,
-        componentWriters, componentReaders, componentSizes, classToShortName, shortNameToClass,
+        componentWriters, componentReaders, componentSizer, classToShortName, shortNameToClass,
         new HashMap<>());
   }
 
-  /// Package-private method to create delegatee picklers that share the parent's class resolution context
+  /// Package-private method to create delegate picklers that share the parent's class resolution context
   @SuppressWarnings("unchecked")
   static <T extends Record> RecordPickler<T> manufactureDelegateeRecordPickler(Class<T> delegateClass, RecordReflection<?> parentReflection) {
     // Check if we already have a pickler for this class
@@ -157,67 +170,27 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     }
 
     // Create a new RecordReflection that extends the parent's class maps
-    RecordReflection<T> delegateReflection = analyzeWithSharedContext(delegateClass, parentReflection);
+    RecordReflection<T> delegateReflection = analyze(delegateClass);
+    // We need to copy the classToInternedName and shortNameToClass maps from the parent reflection
+    delegateReflection = new RecordReflection<>(
+        delegateReflection.constructor(),
+        delegateReflection.componentAccessors(),
+        delegateReflection.componentTypes(),
+        delegateReflection.componentWriters(),
+        delegateReflection.componentReaders(),
+        delegateReflection.componentsSizer(),
+        Stream.concat(parentReflection.classToInternedName().entrySet().stream(), delegateReflection.classToInternedName().entrySet().stream())
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v2)),
+        Stream.concat(parentReflection.shortNameToClass().entrySet().stream(), delegateReflection.shortNameToClass().entrySet().stream())
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v2)),
+        delegateReflection.delegateePicklers()
+    );
     
     // Create the pickler and cache it
     RecordPickler<T> delegatePickler = new RecordPickler<>(delegateClass, delegateReflection);
     parentReflection.delegateePicklers().put(delegateClass, delegatePickler);
     
     return delegatePickler;
-  }
-
-  /// Analyze a record class while sharing class resolution context from parent
-  private static <T extends Record> RecordReflection<T> analyzeWithSharedContext(Class<T> recordClass, RecordReflection<?> parentReflection) {
-    RecordComponent[] components = recordClass.getRecordComponents();
-    MethodHandles.Lookup lookup = MethodHandles.lookup();
-
-    // Constructor reflection (same as regular analyze)
-    Class<?>[] parameterTypes = Arrays.stream(components)
-        .map(RecordComponent::getType)
-        .toArray(Class<?>[]::new);
-
-    Constructor<?> constructorHandle;
-    MethodHandle constructor;
-    try {
-      constructorHandle = recordClass.getDeclaredConstructor(parameterTypes);
-      constructor = lookup.unreflectConstructor(constructorHandle);
-    } catch (NoSuchMethodException | IllegalAccessException e) {
-      throw new RuntimeException(e);
-    }
-
-    // Component analysis (same as regular analyze)
-    MethodHandle[] componentAccessors = new MethodHandle[components.length];
-    TypeStructure[] componentTypes = new TypeStructure[components.length];
-    BiConsumer<WriteBuffer, Object>[] componentWriters = new BiConsumer[components.length];
-    Function<ReadBufferImpl, Object>[] componentReaders = new Function[components.length];
-    Function<Object, Integer>[] componentSizes = new Function[components.length];
-
-    IntStream.range(0, components.length).forEach(i -> {
-      RecordComponent component = components[i];
-      try {
-        componentAccessors[i] = lookup.unreflect(component.getAccessor());
-      } catch (IllegalAccessException e) {
-        throw new RuntimeException(e.getMessage(), e);
-      }
-
-      Type genericType = component.getGenericType();
-      componentTypes[i] = TypeStructure.analyze(genericType).with(recordClass);
-
-      BiConsumer<WriteBuffer, Object> writeChain = Writers.buildWriterChain(componentTypes[i]);
-      componentWriters[i] = componentExtractWithNullGuardAndDelegate(componentAccessors[i], writeChain);
-
-      Function<ReadBufferImpl, Object> readerChain = Readers.buildReaderChain(componentTypes[i]);
-      componentReaders[i] = Readers.createNullGuardReader(readerChain);
-
-      Function<Object, Integer> sizeChain = Readers.buildSizeChain(componentTypes[i]);
-      componentSizes[i] = createExtractThenSize(componentAccessors[i], sizeChain);
-    });
-
-    // Share the parent's class resolution maps instead of creating new ones
-    return new RecordReflection<>(constructor, componentAccessors, componentTypes,
-        componentWriters, componentReaders, componentSizes, 
-        parentReflection.classToInternedName(), parentReflection.shortNameToClass(),
-        parentReflection.delegateePicklers());
   }
 
   /// This method returns a function that when passed our record will call a direct method handle accessor
@@ -246,18 +219,17 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     };
   }
 
-  static Function<Object, Integer> createExtractThenSize(
+  static Function<Object, Integer>  createExtractThenSize(
       MethodHandle accessor,
-      Function<Object, Integer> delegate) {
+      ToIntFunction<Object> delegate) {
     return (obj) -> {
-      Objects.requireNonNull(obj);
       try {
         Object componentValue = accessor.invokeWithArguments(obj);
         if (componentValue == null) {
           LOGGER.finer(() -> "Size NULL component - returning 1");
           return 1; // NULL marker size
         } else {
-          return delegate.apply(componentValue);
+          return delegate.applyAsInt(componentValue);
         }
       } catch (Throwable e) {
         throw new RuntimeException("Failed to extract component", e);
@@ -279,16 +251,12 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     }
   }
 
-  /// This is pessimistic size calculation in that it does not attempt to compute all variable length types rather it takes a worst case
+  /// This is pessimistic size calculation in that it does not attempt to check what might be compressed during serialization.
   int maxSize(R record) {
     if (record == null) {
       return 1;
     }
-    int size = 0;
-    for (Function<Object, Integer> sizer : componentSizes) {
-      size += sizer.apply(record);
-    }
-    return size;
+    return componentsSizer.applyAsInt(record);
   }
 }
 
@@ -341,7 +309,6 @@ enum Tag {
   }
 }
 
-// TODO delete this and just use an array of tags
 record TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recoredClass) {
   TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recoredClass) {
     Objects.requireNonNull(tags);
@@ -428,6 +395,15 @@ record TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recoredClass
 
       throw new IllegalArgumentException("Unsupported type: " + current);
     }
+  }
+
+  @Override
+  public String toString() {
+    return "TypeStructure{" +
+        "tags=" + tags +
+        ", types=" + types +
+        ", recoredClass=" + recoredClass +
+        '}';
   }
 }
 
@@ -557,7 +533,7 @@ final class Writers {
 
       // Write positive length and class name
       LOGGER.fine(() -> "Writing new class - length=" + classNameLength + " name=" + internedName + " for class=" + value.getClass().getSimpleName());
-      buffer.putInt(classNameLength);
+      ZigZagEncoding.putInt(buffer, classNameLength);
       buffer.put(classNameBytes);
 
       // Store the position where we wrote this class
@@ -739,8 +715,7 @@ final class Writers {
     final var sampleSize = IntStream.range(0, sampleLength)
         .map(i -> ZigZagEncoding.sizeOf(longs[i]))
         .sum();
-    final var sampleAverageSize = sampleSize / sampleLength;
-    return sampleAverageSize;
+    return sampleSize / sampleLength;
   }
 
   private static int estimateAverageSizeInt(int[] integers, int length) {
@@ -748,8 +723,7 @@ final class Writers {
     final var sampleSize = IntStream.range(0, sampleLength)
         .map(i -> ZigZagEncoding.sizeOf(integers[i]))
         .sum();
-    final var sampleAverageSize = sampleSize / sampleLength;
-    return sampleAverageSize;
+    return sampleSize / sampleLength;
   }
 
   // Container writers
@@ -874,12 +848,14 @@ final class Readers {
       // Mark position to reset if not null
       buffer.mark();
       byte marker = buffer.get();
+      LOGGER.fine(() -> "NULL_GUARD checking marker=" + marker + " NULL=" + Constants.NULL.marker() + " at position=" + (buffer.position() - 1));
       if (marker == Constants.NULL.marker()) {
         LOGGER.fine(() -> "Reading NULL component at position " + (buffer.position() - 1));
         return null;
       } else {
         // Reset to position before marker and delegate
         buffer.reset();
+        LOGGER.fine(() -> "NULL_GUARD delegating marker=" + marker + " to next reader");
         return delegate.apply(readBuffer);
       }
     };
@@ -1028,7 +1004,7 @@ final class Readers {
     }
 
     Class<?> clazz;
-    int classReference = buffer.getInt();
+    int classReference = ZigZagEncoding.getInt(buffer);
     if (classReference < 0) {
       // Negative reference - use offset to get from locations map
       int offset = ~classReference;
@@ -1036,24 +1012,25 @@ final class Readers {
       if (clazz == null) {
         throw new IllegalStateException("No class found at offset: " + offset);
       }
-      LOGGER.fine(() -> "Read class reference at offset " + offset + ": " + clazz.getSimpleName());
+      LOGGER.fine(() -> "Read class reference at offset " + offset + ": " + (clazz != null ? clazz.getSimpleName() : "NULL") + " locations=" + readBuffer.locations.keySet());
     } else {
-      // Positive length - read class name and store location
-      int currentPosition = buffer.position() - Integer.BYTES; // Position where we wrote the length
+      // Positive length - read class name and store location  
+      int currentPosition = buffer.position() - ZigZagEncoding.sizeOf(classReference); // Position where we wrote the length
       byte[] classNameBytes = new byte[classReference];
       buffer.get(classNameBytes);
       String className = new String(classNameBytes, java.nio.charset.StandardCharsets.UTF_8);
+      LOGGER.finer(() -> "Trying to resolve class name: '" + className + "' available classes: " + readBuffer.parentReflection.shortNameToClass().keySet());
       clazz = readBuffer.internedNameToClass.apply(className);
       // Store this class at the position for future reference
       readBuffer.locations.put(currentPosition, clazz);
-      LOGGER.fine(() -> "Read new class name " + className + " -> " + clazz.getSimpleName() + " at position " + currentPosition);
+      LOGGER.fine(() -> "Read new class name " + className + " -> " + (clazz != null ? clazz.getSimpleName() : "NULL") + " at position " + currentPosition);
     }
 
     @SuppressWarnings("unchecked")
-    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord((Class<? extends Record>) clazz);
+    RecordPickler<Record> delegatePickler = (RecordPickler<Record>) RecordReflection.manufactureDelegateeRecordPickler((Class<? extends Record>) clazz, readBuffer.parentReflection);
     // We must pass the same ReadBufferImpl instance to maintain class name compression
     try {
-      return pickler.reflection.deserialize(readBuffer);
+      return delegatePickler.reflection.deserialize(readBuffer);
     } catch (Throwable e) {
       throw new RuntimeException("Failed to deserialize record of type " + clazz.getName(), e);
     }
@@ -1121,9 +1098,7 @@ final class Readers {
         LOGGER.finer(() -> "Read Short Array len=" + length);
         short[] shorts = new short[length];
         IntStream.range(0, length)
-            .forEach(i -> {
-              shorts[i] = buffer.getShort();
-            });
+            .forEach(i -> shorts[i] = buffer.getShort());
         return shorts;
       }
       case Constants.CHARACTER -> {
@@ -1131,9 +1106,7 @@ final class Readers {
         LOGGER.finer(() -> "Read Character Array len=" + length);
         char[] chars = new char[length];
         IntStream.range(0, length)
-            .forEach(i -> {
-              chars[i] = buffer.getChar();
-            });
+            .forEach(i -> chars[i] = buffer.getChar());
         return chars;
       }
       case Constants.INTEGER -> {
@@ -1292,7 +1265,8 @@ final class Readers {
       case UUID -> UUID_READER;
       case RECORD -> 
         // we must avoid an infinite loop by doing lazily looking up the current record pickler to delegate to self
-          (readBuffer) -> DELEGATING_RECORD_READER.apply(readBuffer);
+        //noinspection Convert2MethodRef,FunctionalExpressionCanBeFolded
+      (readBuffer) -> DELEGATING_RECORD_READER.apply(readBuffer);
       case SAME_TYPE ->
         // we must avoid an infinite loop by doing lazily looking up the current record pickler to delegate to self
           (readBuffer) -> recordSameTypeReader(recordClass).apply(readBuffer);
@@ -1333,7 +1307,7 @@ final class Readers {
     return reader;
   }
 
-  public static Function<Object, Integer> buildSizeChain(TypeStructure componentType) {
+  public static ToIntFunction<Object> buildSizeChain(TypeStructure componentType) {
     final var tags = componentType.tags();
     if (tags == null || tags.isEmpty()) {
       throw new IllegalArgumentException("Type structure.tags() must have at least one tag: " + tags);
@@ -1341,15 +1315,15 @@ final class Readers {
     // Reverse the tags to process from right to left
     final var tagsIterator = tags.reversed().iterator();
     // To handle maps we need to look at the prior two tags in reverse order
-    List<Function<Object, Integer>> sizeFunctions = new ArrayList<>(tags.size());
+    List<ToIntFunction<Object>> sizeFunctions = new ArrayList<>(tags.size());
 
     // Start with the leaf (rightmost) size function
-    Function<Object, Integer> sizeFunction = createLeafSizeFunction(tagsIterator.next());
+    ToIntFunction<Object> sizeFunction = createLeafSizeFunction(tagsIterator.next());
     sizeFunctions.add(sizeFunction);
 
     // Build chain from right to left (reverse order)
     while (tagsIterator.hasNext()) {
-      final Function<Object, Integer> delegateToSizeFunction = sizeFunction; // final required for lambda capture
+      final ToIntFunction<Object> delegateToSizeFunction = sizeFunction; // final required for lambda capture
       Tag preceedingTag = tagsIterator.next();
       sizeFunction = switch (preceedingTag) {
         case LIST -> createDelegatingListSizeFunction(delegateToSizeFunction);
@@ -1364,29 +1338,52 @@ final class Readers {
     return sizeFunction;
   }
 
-  static Function<Object, Integer> createDelegatingListSizeFunction(Function<Object, Integer> delegateToSizeFunction) {
-    return (obj) -> 4;
+  static ToIntFunction<Object> createDelegatingListSizeFunction(ToIntFunction<Object> delegateToSizeFunction) {
+    return (obj) -> {
+      if (obj == null) return 1; // NULL marker
+      List<?> list = (List<?>) obj;
+      // LIST marker + size + elements
+      return 1 + ZigZagEncoding.maxSizeOfInt() + list.stream().mapToInt(delegateToSizeFunction).sum();
+    };
   }
 
-  static Function<Object, Integer> createDelegatingOptionalSizeFunction(Function<Object, Integer> delegateToSizeFunction) {
-    return (obj) -> 3;
+  static ToIntFunction<Object> createDelegatingOptionalSizeFunction(ToIntFunction<Object> delegateToSizeFunction) {
+    return (obj) -> {
+      if (obj == null) return 1; // NULL marker
+      Optional<?> opt = (Optional<?>) obj;
+      // OPTIONAL_EMPTY marker
+      // OPTIONAL_OF marker + value
+      return opt.map(o -> 1 + delegateToSizeFunction.applyAsInt(o)).orElse(1);
+    };
   }
 
-  static Function<Object, Integer> createMapSizeFunction(Function<Object, Integer> last, Function<Object, Integer> objectIntegerFunction) {
-    return (obj) -> 2;
+  static ToIntFunction<Object> createMapSizeFunction(ToIntFunction<Object> keyFunction, ToIntFunction<Object> valueFunction) {
+    return (obj) -> {
+      if (obj == null) return 1; // NULL marker
+      Map<?, ?> map = (Map<?, ?>) obj;
+      // MAP marker + size + entries
+      int size = 1 + ZigZagEncoding.maxSizeOfInt();
+      for (Map.Entry<?, ?> entry : map.entrySet()) {
+        size += keyFunction.applyAsInt(entry.getKey());
+        size += valueFunction.applyAsInt(entry.getValue());
+      }
+      return size;
+    };
   }
 
-  static Function<Object, Integer> INTEGER_SIZE = (object) ->
-      1 + Math.min(Integer.BYTES, ZigZagEncoding.sizeOf((Integer) object));
+  // Worst-case fixed size for primitives - no runtime ZigZag calculation
+  static ToIntFunction<Object> INTEGER_SIZE = (object) -> 
+      object == null ? 1 : (1 + Integer.BYTES); // marker + worst case 4 bytes
 
-  static Function<Object, Integer> LONG_SIZE = (object) ->
-      1 + Math.min(Long.BYTES, ZigZagEncoding.sizeOf((Long) object));
+  static ToIntFunction<Object> LONG_SIZE = (object) -> 
+      object == null ? 1 : (1 + Long.BYTES); // marker + worst case 8 bytes
 
-  static Function<Object, Integer> STRING_SIZE = (object) -> {
+  static ToIntFunction<Object> STRING_SIZE = (object) -> {
     if (object == null) {
       return 1; // NULL marker size
     }
     String s = (String) object;
+    // Use proper UTF-8 codepoint analysis from existing maxSizeOf logic
     return 1 + ZigZagEncoding.sizeOf(s.length()) + s.codePoints()
         .map(cp -> {
           if (cp < 128) {
@@ -1401,32 +1398,78 @@ final class Readers {
         }).sum();
   };
 
-  static Function<Object, Integer> ARRAY_SIZE = (value) -> {
+  static ToIntFunction<Object> DELEGATING_RECORD_SIZE = (value) -> {
+    if (value == null) {
+      return 1; // NULL marker size
+    }
+    if (!(value instanceof Record record)) {
+      throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
+    }
+    @SuppressWarnings("unchecked")
+    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
+    // RECORD marker + class name size + record content
+    String className = record.getClass().getSimpleName();
+    int classNameSize = ZigZagEncoding.sizeOf(className.length()) + className.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+    return 1 + classNameSize + pickler.maxSizeOf(record);
+  };
+
+  static ToIntFunction<Object> ARRAY_SIZE = (value) -> {
     if (value == null) {
       return 1; // NULL marker size
     }
     return 1 + switch (value) {
       case byte[] arr -> {
         int length = arr.length;
-        yield 1 + ZigZagEncoding.sizeOf(length) + length;
+        yield 1 + ZigZagEncoding.maxSizeOfInt() + length; // worst case length + data
       }
       case boolean[] booleans -> {
         int length = booleans.length;
-        yield 1 + ZigZagEncoding.sizeOf(length) + length / 8; // BitSet size in bytes
+        int bitSetBytes = (length + 7) / 8; // Round up to nearest byte
+        yield 1 + ZigZagEncoding.maxSizeOfInt() + ZigZagEncoding.maxSizeOfInt() + bitSetBytes;
       }
       case int[] integers -> {
         int length = integers.length;
-        yield 1 + ZigZagEncoding.sizeOf(length) + length * Integer.BYTES;
+        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Integer.BYTES; // worst case: all fixed size
       }
       case long[] longs -> {
         int length = longs.length;
-        yield 1 + ZigZagEncoding.sizeOf(length) + length * Long.BYTES;
+        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Long.BYTES; // worst case: all fixed size
       }
-      default -> throw new AssertionError("not implemented for type: " + value.getClass());
+      case float[] floats -> {
+        int length = floats.length;
+        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Float.BYTES;
+      }
+      case double[] doubles -> {
+        int length = doubles.length;
+        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Double.BYTES;
+      }
+      case short[] shorts -> {
+        int length = shorts.length;
+        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Short.BYTES;
+      }
+      case char[] chars -> {
+        int length = chars.length;
+        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Character.BYTES;
+      }
+      case String[] strings -> {
+        int overhead = 1 + ZigZagEncoding.maxSizeOfInt(); // component type marker + length
+        int contentSize = Arrays.stream(strings).mapToInt(s -> STRING_SIZE.applyAsInt(s) - 1).sum(); // -1 to avoid double counting marker
+        yield overhead + contentSize;
+      }
+      case UUID[] uuids -> {
+        int length = uuids.length;
+        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * (2 * Long.BYTES); // component type + length + UUIDs
+      }
+      case Record[] records -> {
+        int overhead = 1 + ZigZagEncoding.maxSizeOfInt(); // component type marker + length
+        int contentSize = Arrays.stream(records).mapToInt(DELEGATING_RECORD_SIZE).sum();
+        yield overhead + contentSize;
+      }
+      default -> throw new AssertionError("not implemented for array type: " + value.getClass());
     };
   };
 
-  static Function<Object, Integer> DELEGATING_RECORD_SIZE = (value) -> {
+  static ToIntFunction<Object> DELEGATING_SAME_TYPE_SIZE = (value) -> {
     if (value == null) {
       return 1; // NULL marker size
     }
@@ -1435,38 +1478,26 @@ final class Readers {
     }
     @SuppressWarnings("unchecked")
     RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-    return 1; // FIXME what here?
+    return 1 + pickler.maxSizeOf(record); // 1 byte for SAME_TYPE marker + recursive size
   };
 
-  static Function<Object, Integer> DELEGATING_SAME_TYPE_SIZE = (value) -> {
-    if (value == null) {
-      return 1; // NULL marker size
-    }
-    if (!(value instanceof Record record)) {
-      throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
-    }
-    @SuppressWarnings("unchecked")
-    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-    return 1 + pickler.reflection.maxSize(record); // 1 byte for SAME_TYPE marker + recursive size
-  };
-
-  static Function<Object, Integer> createLeafSizeFunction(Tag leafTag) {
+  static ToIntFunction<Object> createLeafSizeFunction(Tag leafTag) {
     LOGGER.fine(() -> "Creating size function for tag: " + leafTag);
     return switch (leafTag) {
-      case BOOLEAN -> (ignored) -> Byte.BYTES + 1; // 1 for the type marker;
-      case BYTE -> (ignored) -> Byte.BYTES + 1; // 1 for the type marker
-      case SHORT -> (ignored) -> Short.BYTES + 1; // 1 for the type marker;;;
-      case CHARACTER -> (ignored) -> Character.BYTES + 1; // 1 for the type marker;;
+      case BOOLEAN -> (ignored) -> ignored == null ? 1 : (Byte.BYTES + 1); // null check + marker + data
+      case BYTE -> (ignored) -> ignored == null ? 1 : (Byte.BYTES + 1);
+      case SHORT -> (ignored) -> ignored == null ? 1 : (Short.BYTES + 1);
+      case CHARACTER -> (ignored) -> ignored == null ? 1 : (Character.BYTES + 1);
       case INTEGER -> INTEGER_SIZE;
       case LONG -> LONG_SIZE;
-      case FLOAT -> (ignored) -> Float.BYTES + 1; // 1 for the type marker
-      case DOUBLE -> (ignored) -> Double.BYTES + 1; // 1 for the type marker;
+      case FLOAT -> (ignored) -> ignored == null ? 1 : (Float.BYTES + 1);
+      case DOUBLE -> (ignored) -> ignored == null ? 1 : (Double.BYTES + 1);
       case STRING -> STRING_SIZE;
-      case UUID -> (ignored) -> 2 * Long.BYTES + 1; // 1 for the type marker;;
+      case UUID -> (ignored) -> ignored == null ? 1 : (2 * Long.BYTES + 1);
       case ARRAY -> ARRAY_SIZE;
       case RECORD -> DELEGATING_RECORD_SIZE;
-      case SAME_TYPE -> DELEGATING_SAME_TYPE_SIZE; // SELF_TYPE is treated as a record
-      default -> throw new IllegalArgumentException("No leaf writer for tag: " + leafTag);
+      case SAME_TYPE -> DELEGATING_SAME_TYPE_SIZE;
+      default -> throw new IllegalArgumentException("No leaf size function for tag: " + leafTag);
     };
   }
 }

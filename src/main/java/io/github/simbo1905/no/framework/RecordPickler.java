@@ -45,7 +45,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   }
 
   public ReadBuffer wrapForReading(ByteBuffer buf) {
-    return new ReadBufferImpl(buf, this::internedNameToClass);
+    ReadBufferImpl buffer = new ReadBufferImpl(buf, this::internedNameToClass);
+    buffer.parentReflection = this.reflection;
+    return buffer;
   }
 
   @Override
@@ -135,5 +137,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
       throw new IllegalStateException("Expected record class name " + recordClass.getName() + " but got " + name.name());
     }
     return reflection.deserialize(buf);
+  }
+
+  int maxSizeOf(R record) {
+    return reflection.maxSize(record);
   }
 }

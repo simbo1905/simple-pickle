@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.logging.*;
@@ -92,7 +91,7 @@ public class MachineryTests {
   }
 
   @Test
-  void testDeepNestedTypes() throws Throwable {
+  void testDeepNestedTypes() {
     // Create pickler
     RecordPickler<DeepDouble> pickler = createPickler(DeepDouble.class);
 
@@ -133,7 +132,7 @@ public class MachineryTests {
   }
 
   @Test
-  void testPrimitiveTypes() throws Throwable {
+  void testPrimitiveTypes() {
     RecordPickler<PrimitiveRecord> pickler = createPickler(PrimitiveRecord.class);
 
     PrimitiveRecord testRecord = new PrimitiveRecord(
@@ -152,7 +151,7 @@ public class MachineryTests {
   }
 
   @Test
-  void testWrapperTypes() throws Throwable {
+  void testWrapperTypes() {
     RecordPickler<WrapperRecord> pickler = createPickler(WrapperRecord.class);
 
     WrapperRecord testRecord = new WrapperRecord(
@@ -172,7 +171,7 @@ public class MachineryTests {
   }
 
   @Test
-  void testOptionalTypes() throws Throwable {
+  void testOptionalTypes() {
     RecordPickler<OptionalRecord> pickler = createPickler(OptionalRecord.class);
 
     // Test with a value
@@ -454,7 +453,7 @@ public class MachineryTests {
     LinkedRecord record2 = new LinkedRecord(record3, "two");
     LinkedRecord record1 = new LinkedRecord(record2, "one");
 
-    WriteBuffer writeBuffer = pickler.allocate(1024); // TODO: temporary to fix delegation logic first
+    WriteBuffer writeBuffer = pickler.allocate(1024); // TODO: fix allocateSufficient size calculation later
     pickler.serialize(writeBuffer, record1);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -480,7 +479,7 @@ public class MachineryTests {
     LinkedInt record2 = new LinkedInt(42, record3); // small int - uses varint encoding
     LinkedLong record1 = new LinkedLong(1000L, record2); // small long - uses varlong encoding
 
-    WriteBuffer writeBuffer = pickler.allocate(1024); // TODO: temporary to fix delegation logic first
+    WriteBuffer writeBuffer = pickler.allocate(1024); // TODO: fix allocateSufficient size calculation later
     pickler.serialize(writeBuffer, record1);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -496,4 +495,5 @@ public class MachineryTests {
     assertEquals(Integer.MIN_VALUE, deserialized.next().next().next().someInt());
     assertNull(deserialized.next().next().next().next());
   }
+
 }

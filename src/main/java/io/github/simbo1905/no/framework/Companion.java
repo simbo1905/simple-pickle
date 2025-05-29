@@ -345,9 +345,7 @@ class Companion {
             }
           }).sum();
       case Enum<?> e -> maxSizeOf(e.getClass().getName()) + maxSizeOf(e.name());
-      case Record r -> {
-        yield -1;
-      }
+      case Record ignored1 -> -1;
       case null -> 0;
       case Optional<?> o when o.isEmpty() -> 1;
       case Optional<?> o -> 1 + maxSizeOf(o.get());
@@ -375,6 +373,7 @@ class Companion {
               .sum();
         }
       }
+      case UUID ignored -> 1 + Long.BYTES * 2; // 1 for the type marker and 2 longs for the UUID
       default -> throw new AssertionError("not implemented for " + object.getClass().getName());
     };
   }

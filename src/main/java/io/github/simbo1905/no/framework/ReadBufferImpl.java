@@ -21,6 +21,7 @@ class ReadBufferImpl implements ReadBuffer {
   final Map<String, Enum<?>> nameToEnum = new HashMap<>(64);
   final Map<String, Class<?>> nameToClass = new HashMap<>(64);
   final List<Type[]> componentGenericTypes = new ArrayList<>();
+  RecordReflection<?> parentReflection; // For delegation context sharing
 
   ReadBufferImpl(ByteBuffer buffer, Function<String, Class<?>> internedNameToClass) {
     this.internedNameToClass = internedNameToClass;

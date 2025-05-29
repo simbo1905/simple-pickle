@@ -241,4 +241,14 @@ class ZigZagEncoding {
     }
     return length;
   }
+
+  /// Returns the maximum number of bytes needed to encode any int value
+  static int maxSizeOfInt() {
+    return 5; // ZigZag encoded int can take at most 5 bytes
+  }
+
+  /// Returns the maximum number of bytes needed to encode any long value  
+  static int maxSizeOfLong() {
+    return 9; // ZigZag encoded long can take at most 9 bytes
+  }
 }

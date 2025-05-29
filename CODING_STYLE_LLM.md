@@ -80,6 +80,20 @@ Here is an example of the correct format for documentation comments:
 /// @see     java.lang.Object#equals(java.lang.Object)
 ```
 
+## Logging
+
+- Use Java's built-in logging: `java.util.logging.Logger`
+- Log levels: Use appropriate levels (FINE, FINER, INFO, WARNING, SEVERE)
+  - **FINE**: Production-level debugging, default for most debug output
+  - **FINER**: Verbose debugging, detailed internal flow, class resolution details
+  - **INFO**: Important runtime information
+- LOGGER is a static field: `static final Logger LOGGER = Logger.getLogger(ClassName.class.getName());`
+- Use lambda logging for performance: `LOGGER.fine(() -> "message " + variable);`
+- **Testing with Verbose Logs**: Use system property override in test commands:
+  ```bash
+  mvn test -Dtest=MachineryTests#testMethod -Djava.util.logging.ConsoleHandler.level=FINER
+  ```
+
 ## JEP References
 
 [JEP 467](https://openjdk.org/jeps/467): Markdown Documentation in JavaDoc
