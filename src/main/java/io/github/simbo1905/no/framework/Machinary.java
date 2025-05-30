@@ -25,7 +25,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
                                           ToIntFunction<Object> componentsSizer,
                                           Map<Class<?>,String> classToInternedName,
                                           Map<String, Class<?>> shortNameToClass,
-                                          Map<Class<?>, Pickler<?>> delegateePicklers) {
+                                          Map<Class<?>, Pickler<?>> delegatePicklers) {
 
   static <R extends Record> RecordReflection<R> analyze(Class<R> recordClass) {
     RecordComponent[] components = recordClass.getRecordComponents();
@@ -53,7 +53,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     @SuppressWarnings("unchecked")
     Function<ReadBufferImpl, Object>[] componentReaders = new Function[components.length];
     @SuppressWarnings("unchecked")
-    Function<Object, Integer>[] componentSizes = new Function[components.length];
+    ToIntFunction<Object>[] componentSizes = new ToIntFunction[components.length];
 
     IntStream.range(0, components.length).forEach(i -> {
       RecordComponent component = components[i];
@@ -148,8 +148,8 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
         return 1; // NULL marker size
       }
       int size = 0;
-      for (Function<Object, Integer> sizer : componentSizes) {
-        size += sizer.apply(o);
+      for (ToIntFunction<Object> sizer : componentSizes) {
+        size += sizer.applyAsInt(o);
       }
       return size;
     };
@@ -164,7 +164,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
   @SuppressWarnings("unchecked")
   static <T extends Record> RecordPickler<T> manufactureDelegateeRecordPickler(Class<T> delegateClass, RecordReflection<?> parentReflection) {
     // Check if we already have a pickler for this class
-    Pickler<?> existingPickler = parentReflection.delegateePicklers().get(delegateClass);
+    Pickler<?> existingPickler = parentReflection.delegatePicklers().get(delegateClass);
     if (existingPickler != null) {
       return (RecordPickler<T>) existingPickler;
     }
@@ -183,12 +183,12 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
             .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v2)),
         Stream.concat(parentReflection.shortNameToClass().entrySet().stream(), delegateReflection.shortNameToClass().entrySet().stream())
             .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v2)),
-        delegateReflection.delegateePicklers()
+        delegateReflection.delegatePicklers()
     );
     
     // Create the pickler and cache it
     RecordPickler<T> delegatePickler = new RecordPickler<>(delegateClass, delegateReflection);
-    parentReflection.delegateePicklers().put(delegateClass, delegatePickler);
+    parentReflection.delegatePicklers().put(delegateClass, delegatePickler);
     
     return delegatePickler;
   }
@@ -219,7 +219,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     };
   }
 
-  static Function<Object, Integer>  createExtractThenSize(
+  static ToIntFunction<Object> createExtractThenSize(
       MethodHandle accessor,
       ToIntFunction<Object> delegate) {
     return (obj) -> {
@@ -256,6 +256,38 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
       return 1;
     }
     return componentsSizer.applyAsInt(record);
+  }
+}
+
+/// Package-private record to encapsulate class name resolution mappings
+record ClassNameMappings(
+    Map<Class<?>, String> classToInternedName,
+    Map<String, Class<?>> shortNameToClass
+) {
+  /// Combines multiple ClassNameMappings into a single merged mapping
+  static ClassNameMappings merge(ClassNameMappings... delegates) {
+    Map<Class<?>, String> combinedClassToName = new HashMap<>();
+    Map<String, Class<?>> combinedNameToClass = new HashMap<>();
+    
+    for (ClassNameMappings mapping : delegates) {
+      if (mapping != null) {
+        combinedClassToName.putAll(mapping.classToInternedName());
+        combinedNameToClass.putAll(mapping.shortNameToClass());
+      }
+    }
+    
+    return new ClassNameMappings(
+        Collections.unmodifiableMap(combinedClassToName),
+        Collections.unmodifiableMap(combinedNameToClass)
+    );
+  }
+  
+  /// Creates ClassNameMappings from a RecordReflection
+  static ClassNameMappings fromRecordReflection(RecordReflection<?> reflection) {
+    return new ClassNameMappings(
+        reflection.classToInternedName(),
+        reflection.shortNameToClass()
+    );
   }
 }
 
@@ -421,6 +453,67 @@ final class Writers {
     return bufImpl;
   }
 
+  /// Shared class name compression logic - writes class name with offset compression
+  /// Returns true if this was a new class name, false if it was a cached reference
+  static void writeCompressedClassName(WriteBufferImpl writeBuffer, Class<?> clazz) {
+    final var buffer = writeBuffer.buffer;
+    
+    // Check if we've seen this class before
+    Integer offset = writeBuffer.classToOffset.get(clazz);
+    if (offset != null) {
+      // We've seen this class before, write a negative reference
+      int reference = ~offset;
+      LOGGER.fine(() -> "Writing class reference (seen before) - reference=" + reference + " for class=" + clazz.getSimpleName());
+      ZigZagEncoding.putInt(buffer, reference); // Using bitwise complement for negative reference
+    } else {
+      // First time seeing this class, write the short name
+      final var internedName = writeBuffer.classToInternedName.apply(clazz);
+      byte[] classNameBytes = internedName.getBytes(UTF_8);
+      int classNameLength = classNameBytes.length;
+
+      // Store current position before writing
+      int currentPosition = buffer.position();
+
+      // Write positive length and class name
+      LOGGER.fine(() -> "Writing new class - length=" + classNameLength + " name=" + internedName + " for class=" + clazz.getSimpleName());
+      ZigZagEncoding.putInt(buffer, classNameLength);
+      buffer.put(classNameBytes);
+
+      // Store the position where we wrote this class
+      writeBuffer.classToOffset.put(clazz, currentPosition);
+    }
+  }
+
+  /// Shared class name decompression logic - reads class name with offset decompression  
+  static Class<?> readCompressedClassName(ReadBufferImpl readBuffer) {
+    final var buffer = readBuffer.buffer;
+    
+    Class<?> clazz;
+    int classReference = ZigZagEncoding.getInt(buffer);
+    if (classReference < 0) {
+      // Negative reference - use offset to get from locations map
+      int offset = ~classReference;
+      clazz = readBuffer.locations.get(offset);
+      if (clazz == null) {
+        throw new IllegalStateException("No class found at offset: " + offset);
+      }
+      LOGGER.fine(() -> "Read class reference at offset " + offset + ": " + clazz.getSimpleName() + " locations=" + readBuffer.locations.keySet());
+    } else {
+      // Positive length - read class name and store location  
+      int currentPosition = buffer.position() - ZigZagEncoding.sizeOf(classReference); // Position where we wrote the length
+      byte[] classNameBytes = new byte[classReference];
+      buffer.get(classNameBytes);
+      String className = new String(classNameBytes, java.nio.charset.StandardCharsets.UTF_8);
+      LOGGER.finer(() -> "Trying to resolve class name: '" + className + "' available classes: " + readBuffer.parentReflection.shortNameToClass().keySet());
+      clazz = readBuffer.internedNameToClass.apply(className);
+      // Store this class at the position for future reference
+      readBuffer.locations.put(currentPosition, clazz);
+      LOGGER.fine(() -> "Read new class name " + className + " -> " + (clazz != null ? clazz.getSimpleName() : "NULL") + " at position " + currentPosition);
+    }
+    
+    return clazz;
+  }
+
   static final BiConsumer<WriteBuffer, Object> BOOLEAN_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf);
     LOGGER.fine(() -> "Writing BOOLEAN - position=" + buffer.position() + " value=" + value);
@@ -501,55 +594,48 @@ final class Writers {
 
   static final BiConsumer<WriteBuffer, Object> UUID_WRITER = (buf, value) -> {
     ByteBuffer buffer = byteBuffer(buf);
-    LOGGER.fine(() -> "Writing ENUM - position=" + buffer.position() + " value=" + value);
+    LOGGER.fine(() -> "Writing UUID - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.UUID.marker());
     java.util.UUID uuid = (java.util.UUID) value;
     buffer.putLong(uuid.getMostSignificantBits());
     buffer.putLong(uuid.getLeastSignificantBits());
   };
 
+  static final BiConsumer<WriteBuffer, Object> ENUM_WRITER = (buf, value) -> {
+    final var writeBufferImpl = Writers.writeBufferImpl(buf);
+    Enum<?> enumValue = (Enum<?>) value;
+    LOGGER.fine(() -> "Writing ENUM - position=" + writeBufferImpl.buffer.position() + " value=" + enumValue);
+    writeBufferImpl.buffer.put(Constants.ENUM.marker());
+    
+    // Use shared class name compression logic
+    Writers.writeCompressedClassName(writeBufferImpl, enumValue.getClass());
+    
+    // Write enum constant name  
+    String constantName = enumValue.name();
+    byte[] constantBytes = constantName.getBytes(UTF_8);
+    ZigZagEncoding.putInt(writeBufferImpl.buffer, constantBytes.length);
+    writeBufferImpl.buffer.put(constantBytes);
+  };
+
   static BiConsumer<WriteBuffer, Object> DELEGATING_RECORD_WRITER = (buf, value) -> {
     final var writeBufferImpl = Writers.writeBufferImpl(buf);
-    final var buffer = writeBufferImpl.buffer;
-    LOGGER.fine(() -> "DELEGATING_RECORD_WRITER START - position=" + buffer.position() + " class=" + value.getClass().getSimpleName() + " value=" + value);
-    buffer.put(Constants.RECORD.marker());
+    LOGGER.fine(() -> "DELEGATING_RECORD_WRITER START - position=" + writeBufferImpl.buffer.position() + " class=" + value.getClass().getSimpleName() + " value=" + value);
+    writeBufferImpl.buffer.put(Constants.RECORD.marker());
 
-    // Check if we've seen this class before
-    Integer offset = writeBufferImpl.classToOffset.get(value.getClass());
-    if (offset != null) {
-      // We've seen this class before, write a negative reference
-      int reference = ~offset;
-      LOGGER.fine(() -> "Writing class reference (seen before) - reference=" + reference + " for class=" + value.getClass().getSimpleName());
-      ZigZagEncoding.putInt(buffer, reference); // Using bitwise complement for negative reference
-    } else {
-      // First time seeing this class, write the short named
-      final var internedName = writeBufferImpl.classToInternedName.apply(value.getClass());
-      byte[] classNameBytes = internedName.getBytes(UTF_8);
-      int classNameLength = classNameBytes.length;
-
-      // Store current position before writing
-      int currentPosition = buffer.position();
-
-      // Write positive length and class name
-      LOGGER.fine(() -> "Writing new class - length=" + classNameLength + " name=" + internedName + " for class=" + value.getClass().getSimpleName());
-      ZigZagEncoding.putInt(buffer, classNameLength);
-      buffer.put(classNameBytes);
-
-      // Store the position where we wrote this class
-      writeBufferImpl.classToOffset.put(value.getClass(), currentPosition);
-    }
+    // Use shared class name compression logic
+    Writers.writeCompressedClassName(writeBufferImpl, value.getClass());
 
     if (value instanceof Record record) {
       @SuppressWarnings("unchecked")
       RecordPickler<Record> delegatePickler = (RecordPickler<Record>) RecordReflection.manufactureDelegateeRecordPickler(record.getClass(), writeBufferImpl.parentReflection);
-      LOGGER.fine(() -> "DELEGATING_RECORD_WRITER using delegatee pickler for " + record.getClass().getSimpleName() + " - about to serialize components");
-      // Serialize just the record components using the delegatee's reflection
+      LOGGER.fine(() -> "DELEGATING_RECORD_WRITER using delegate pickler for " + record.getClass().getSimpleName() + " - about to serialize components");
+      // Serialize just the record components using the delegate's reflection
       delegatePickler.reflection.serialize(writeBufferImpl, record);
       LOGGER.fine(() -> "DELEGATING_RECORD_WRITER completed nested serialization for " + record.getClass().getSimpleName());
     } else {
       throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
     }
-    LOGGER.fine(() -> "DELEGATING_RECORD_WRITER END - position=" + buffer.position() + " class=" + value.getClass().getSimpleName());
+    LOGGER.fine(() -> "DELEGATING_RECORD_WRITER END - position=" + writeBufferImpl.buffer.position() + " class=" + value.getClass().getSimpleName());
   };
 
   static BiConsumer<WriteBuffer, Object> DELEGATING_SAME_TYPE_WRITER = (buf, value) -> {
@@ -825,6 +911,7 @@ final class Writers {
       case FLOAT -> FLOAT_WRITER;
       case DOUBLE -> DOUBLE_WRITER;
       case STRING -> STRING_WRITER;
+      case ENUM -> ENUM_WRITER;
       case ARRAY -> ARRAY_WRITER;
       case UUID -> UUID_WRITER;
       case RECORD ->
@@ -994,36 +1081,37 @@ final class Readers {
     return value;
   };
 
+  static final Function<ReadBufferImpl, Object> ENUM_READER = (readBuffer) -> {
+    LOGGER.fine(() -> "Reading ENUM - position=" + readBuffer.buffer.position());
+    byte marker = readBuffer.buffer.get();
+    if (marker != Constants.ENUM.marker()) {
+      throw new IllegalStateException("Expected ENUM marker but got: " + marker);
+    }
+    
+    // Use shared class name decompression logic
+    Class<?> enumClass = Writers.readCompressedClassName(readBuffer);
+    
+    // Read enum constant name
+    int constantLength = ZigZagEncoding.getInt(readBuffer.buffer);
+    byte[] constantBytes = new byte[constantLength];
+    readBuffer.buffer.get(constantBytes);
+    String constantName = new String(constantBytes, UTF_8);
+    
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    Enum<?> value = Enum.valueOf((Class<? extends Enum>) enumClass, constantName);
+    LOGGER.finer(() -> "Read Enum: " + value);
+    return value;
+  };
+
   static final Function<ReadBufferImpl, Object> DELEGATING_RECORD_READER = (readBuffer) -> {
-    ByteBuffer buffer = readBuffer.buffer;
-    LOGGER.fine(() -> "Reading RECORD - position=" + buffer.position());
-    byte marker = buffer.get();
+    LOGGER.fine(() -> "Reading RECORD - position=" + readBuffer.buffer.position());
+    byte marker = readBuffer.buffer.get();
     if (marker != Constants.RECORD.marker()) {
       throw new IllegalStateException("Expected RECORD marker but got: " + marker);
     }
 
-    Class<?> clazz;
-    int classReference = ZigZagEncoding.getInt(buffer);
-    if (classReference < 0) {
-      // Negative reference - use offset to get from locations map
-      int offset = ~classReference;
-      clazz = readBuffer.locations.get(offset);
-      if (clazz == null) {
-        throw new IllegalStateException("No class found at offset: " + offset);
-      }
-      LOGGER.fine(() -> "Read class reference at offset " + offset + ": " + (clazz != null ? clazz.getSimpleName() : "NULL") + " locations=" + readBuffer.locations.keySet());
-    } else {
-      // Positive length - read class name and store location  
-      int currentPosition = buffer.position() - ZigZagEncoding.sizeOf(classReference); // Position where we wrote the length
-      byte[] classNameBytes = new byte[classReference];
-      buffer.get(classNameBytes);
-      String className = new String(classNameBytes, java.nio.charset.StandardCharsets.UTF_8);
-      LOGGER.finer(() -> "Trying to resolve class name: '" + className + "' available classes: " + readBuffer.parentReflection.shortNameToClass().keySet());
-      clazz = readBuffer.internedNameToClass.apply(className);
-      // Store this class at the position for future reference
-      readBuffer.locations.put(currentPosition, clazz);
-      LOGGER.fine(() -> "Read new class name " + className + " -> " + (clazz != null ? clazz.getSimpleName() : "NULL") + " at position " + currentPosition);
-    }
+    // Use shared class name decompression logic
+    Class<?> clazz = Writers.readCompressedClassName(readBuffer);
 
     @SuppressWarnings("unchecked")
     RecordPickler<Record> delegatePickler = (RecordPickler<Record>) RecordReflection.manufactureDelegateeRecordPickler((Class<? extends Record>) clazz, readBuffer.parentReflection);
@@ -1260,6 +1348,7 @@ final class Readers {
       case FLOAT -> FLOAT_READER;
       case DOUBLE -> DOUBLE_READER;
       case STRING -> STRING_READER;
+      case ENUM -> ENUM_READER;
       case ARRAY -> ARRAY_READER;
       case UUID -> UUID_READER;
       case RECORD -> 
@@ -1342,7 +1431,7 @@ final class Readers {
       if (obj == null) return 1; // NULL marker
       List<?> list = (List<?>) obj;
       // LIST marker + size + elements
-      return 1 + ZigZagEncoding.maxSizeOfInt() + list.stream().mapToInt(delegateToSizeFunction).sum();
+      return 1 + 4 + list.stream().mapToInt(delegateToSizeFunction).sum();
     };
   }
 
@@ -1361,7 +1450,7 @@ final class Readers {
       if (obj == null) return 1; // NULL marker
       Map<?, ?> map = (Map<?, ?>) obj;
       // MAP marker + size + entries
-      int size = 1 + ZigZagEncoding.maxSizeOfInt();
+      int size = 1 + 4;
       for (Map.Entry<?, ?> entry : map.entrySet()) {
         size += keyFunction.applyAsInt(entry.getKey());
         size += valueFunction.applyAsInt(entry.getValue());
@@ -1409,7 +1498,7 @@ final class Readers {
     // RECORD marker + class name size + record content
     String className = record.getClass().getSimpleName();
     int classNameSize = ZigZagEncoding.sizeOf(className.length()) + className.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
-    return 1 + classNameSize + pickler.maxSizeOf(record);
+    return 1 + classNameSize + pickler.reflection.maxSize(record);
   };
 
   static ToIntFunction<Object> ARRAY_SIZE = (value) -> {
@@ -1419,48 +1508,48 @@ final class Readers {
     return 1 + switch (value) {
       case byte[] arr -> {
         int length = arr.length;
-        yield 1 + ZigZagEncoding.maxSizeOfInt() + length; // worst case length + data
+        yield 1 + 4 + length; // worst case length + data
       }
       case boolean[] booleans -> {
         int length = booleans.length;
         int bitSetBytes = (length + 7) / 8; // Round up to nearest byte
-        yield 1 + ZigZagEncoding.maxSizeOfInt() + ZigZagEncoding.maxSizeOfInt() + bitSetBytes;
+        yield 1 + 4 + 4 + bitSetBytes;
       }
       case int[] integers -> {
         int length = integers.length;
-        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Integer.BYTES; // worst case: all fixed size
+        yield 1 + 4 + length * Integer.BYTES; // worst case: all fixed size
       }
       case long[] longs -> {
         int length = longs.length;
-        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Long.BYTES; // worst case: all fixed size
+        yield 1 + 4 + length * Long.BYTES; // worst case: all fixed size
       }
       case float[] floats -> {
         int length = floats.length;
-        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Float.BYTES;
+        yield 1 + 4 + length * Float.BYTES;
       }
       case double[] doubles -> {
         int length = doubles.length;
-        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Double.BYTES;
+        yield 1 + 4 + length * Double.BYTES;
       }
       case short[] shorts -> {
         int length = shorts.length;
-        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Short.BYTES;
+        yield 1 + 4 + length * Short.BYTES;
       }
       case char[] chars -> {
         int length = chars.length;
-        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * Character.BYTES;
+        yield 1 + 4 + length * Character.BYTES;
       }
       case String[] strings -> {
-        int overhead = 1 + ZigZagEncoding.maxSizeOfInt(); // component type marker + length
+        int overhead = 1 + 4; // component type marker + length
         int contentSize = Arrays.stream(strings).mapToInt(s -> STRING_SIZE.applyAsInt(s) - 1).sum(); // -1 to avoid double counting marker
         yield overhead + contentSize;
       }
       case UUID[] uuids -> {
         int length = uuids.length;
-        yield 1 + ZigZagEncoding.maxSizeOfInt() + length * (2 * Long.BYTES); // component type + length + UUIDs
+        yield 1 + 4 + length * (2 * Long.BYTES); // component type + length + UUIDs
       }
       case Record[] records -> {
-        int overhead = 1 + ZigZagEncoding.maxSizeOfInt(); // component type marker + length
+        int overhead = 1 + 4; // component type marker + length
         int contentSize = Arrays.stream(records).mapToInt(DELEGATING_RECORD_SIZE).sum();
         yield overhead + contentSize;
       }
@@ -1477,7 +1566,20 @@ final class Readers {
     }
     @SuppressWarnings("unchecked")
     RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-    return 1 + pickler.maxSizeOf(record); // 1 byte for SAME_TYPE marker + recursive size
+    return 1 + pickler.reflection.maxSize(record); // 1 byte for SAME_TYPE marker + recursive size
+  };
+
+  static ToIntFunction<Object> ENUM_SIZE = (value) -> {
+    if (value == null) {
+      return 1; // NULL marker size
+    }
+    Enum<?> enumValue = (Enum<?>) value;
+    // TODO: Use shortened class name size calculation instead of full class name
+    String className = enumValue.getClass().getName();
+    String constantName = enumValue.name();
+    // marker + class name length + class name + constant length + constant name
+    return 1 + ZigZagEncoding.sizeOf(className.length()) + className.length() + 
+           ZigZagEncoding.sizeOf(constantName.length()) + constantName.length();
   };
 
   static ToIntFunction<Object> createLeafSizeFunction(Tag leafTag) {
@@ -1492,6 +1594,7 @@ final class Readers {
       case FLOAT -> (ignored) -> ignored == null ? 1 : (Float.BYTES + 1);
       case DOUBLE -> (ignored) -> ignored == null ? 1 : (Double.BYTES + 1);
       case STRING -> STRING_SIZE;
+      case ENUM -> ENUM_SIZE;
       case UUID -> (ignored) -> ignored == null ? 1 : (2 * Long.BYTES + 1);
       case ARRAY -> ARRAY_SIZE;
       case RECORD -> DELEGATING_RECORD_SIZE;

@@ -128,4 +128,9 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   public int maxSizeOf(R record) {
     return reflection.maxSize(record);
   }
+  
+  /// Package-private method to get class name mappings for use in SealedPickler
+  ClassNameMappings getClassNameMappings() {
+    return ClassNameMappings.fromRecordReflection(reflection);
+  }
 }

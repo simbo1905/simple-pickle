@@ -443,6 +443,10 @@ public class MachineryTests {
 
   public record LinkedLong(long someLong, LinkedInt next) {}
   public record LinkedInt(int someInt, LinkedLong next) {}
+  
+  // Test enum and record containing enum for ENUM serialization tests
+  public enum Priority { LOW, MEDIUM, HIGH }
+  public record TaskRecord(String name, Priority priority, boolean completed) {}
 
   @Test
   public void testLinkedRecord() throws Throwable {
@@ -494,6 +498,33 @@ public class MachineryTests {
     assertNotNull(deserialized.next().next().next());
     assertEquals(Integer.MIN_VALUE, deserialized.next().next().next().someInt());
     assertNull(deserialized.next().next().next().next());
+  }
+
+  @Test
+  public void testEnumSerialization() throws Throwable {
+    RecordPickler<TaskRecord> pickler = createPickler(TaskRecord.class);
+
+    // Test record with different enum values
+    TaskRecord task1 = new TaskRecord("Important Task", Priority.HIGH, false);
+    TaskRecord task2 = new TaskRecord("Normal Task", Priority.MEDIUM, true);
+    TaskRecord task3 = new TaskRecord("Optional Task", Priority.LOW, false);
+
+    // Test each task
+    for (TaskRecord originalTask : List.of(task1, task2, task3)) {
+      WriteBuffer writeBuffer = pickler.allocateForWriting(1024);
+      pickler.serialize(writeBuffer, originalTask);
+
+      ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
+      TaskRecord deserializedTask = pickler.deserialize(readBuffer);
+
+      // Verify all fields are correctly deserialized
+      assertEquals(originalTask.name(), deserializedTask.name());
+      assertEquals(originalTask.priority(), deserializedTask.priority());
+      assertEquals(originalTask.completed(), deserializedTask.completed());
+      
+      // Verify enum identity (enums should be the same instance)
+      assertSame(originalTask.priority(), deserializedTask.priority());
+    }
   }
 
 }

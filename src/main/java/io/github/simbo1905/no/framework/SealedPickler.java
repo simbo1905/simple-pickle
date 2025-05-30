@@ -18,6 +18,9 @@ class SealedPickler<S> implements Pickler<S> {
   final Map<Class<? extends S>, Pickler<? extends S>> subPicklers;
   final Map<String, Class<?>> recordClassByName;
   final Map<String, Class<?>> nameToRecordClass = new HashMap<>(nameToBasicClass);
+  
+  // Combined class name mappings from all delegatee RecordPicklers
+  final ClassNameMappings combinedClassNameMappings;
 
   public SealedPickler(
       Map<Class<? extends S>, Pickler<? extends S>> subPicklers,
@@ -30,6 +33,14 @@ class SealedPickler<S> implements Pickler<S> {
             Map.Entry::getKey,
             Map.Entry::getValue
         )));
+    
+    // Collect ClassNameMappings from all delegatee RecordPicklers and merge them
+    ClassNameMappings[] mappingsArray = subPicklers.values().stream()
+        .filter(pickler -> pickler instanceof RecordPickler<?>)
+        .map(pickler -> ((RecordPickler<?>) pickler).getClassNameMappings())
+        .toArray(ClassNameMappings[]::new);
+    
+    this.combinedClassNameMappings = ClassNameMappings.merge(mappingsArray);
   }
 
   /// Here we simply delegate to the RecordPickler which is configured to first write out its name.
@@ -92,32 +103,50 @@ class SealedPickler<S> implements Pickler<S> {
 
   @Override
   public WriteBuffer allocateForWriting(int size) {
-    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
-    throw new UnsupportedOperationException("SealedPickler does not support allocate");
+    return new WriteBufferImpl(
+        ByteBuffer.allocate(size),
+        combinedClassNameMappings.classToInternedName()::get
+    );
   }
 
   @Override
   public WriteBuffer wrapForWriting(ByteBuffer buf) {
-    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
-    throw new UnsupportedOperationException("SealedPickler does not support allocate");
+    return new WriteBufferImpl(
+        buf,
+        combinedClassNameMappings.classToInternedName()::get
+    );
   }
 
   @Override
   public int maxSizeOf(S record) {
-    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
-    throw new UnsupportedOperationException("SealedPickler does not support allocate");
+    if (record == null) {
+      return 1; // NULL marker
+    }
+    @SuppressWarnings("unchecked")
+    Class<? extends S> concreteType = (Class<? extends S>) record.getClass();
+    Pickler<? extends S> pickler = subPicklers.get(concreteType);
+    if (pickler == null) {
+      throw new IllegalArgumentException("No pickler found for type: " + concreteType.getName());
+    }
+    // Delegate to the concrete pickler's maxSizeOf method
+    @SuppressWarnings("unchecked")
+    Pickler<S> typedPickler = (Pickler<S>) pickler;
+    return typedPickler.maxSizeOf(record);
   }
 
   @Override
   public ReadBuffer allocateForReading(int size) {
-    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
-    throw new UnsupportedOperationException("SealedPickler does not support allocate");
-
+    return new ReadBufferImpl(
+        ByteBuffer.allocate(size),
+        combinedClassNameMappings.shortNameToClass()::get
+    );
   }
 
   @Override
   public ReadBuffer wrapForReading(ByteBuffer buf) {
-    // FIXME is this solvable? may have to have a sub-interface of Pickler that allows allocation that only record picklers implement
-    throw new UnsupportedOperationException("SealedPickler does not support allocate");
+    return new ReadBufferImpl(
+        buf,
+        combinedClassNameMappings.shortNameToClass()::get
+    );
   }
 }
