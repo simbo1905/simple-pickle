@@ -4,12 +4,10 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
 import static io.github.simbo1905.no.framework.Constants.*;
@@ -59,6 +57,10 @@ class SealedPickler<S> implements Pickler<S> {
     //noinspection unchecked
     Class<? extends S> concreteType = (Class<? extends S>) object.getClass();
     Pickler<?> pickler = subPicklers.get(concreteType);
+
+    // Use shared class name compression logic
+    Writers.writeCompressedClassName(buf, object.getClass());
+
     Companion.serializeWithPickler(buf, pickler, object);
     return buf.position() - startPosition;
   }
@@ -73,31 +75,22 @@ class SealedPickler<S> implements Pickler<S> {
     if (marker == NULL.marker()) {
       return null;
     }
-    if (marker != INTERNED_NAME.marker() && marker != INTERNED_OFFSET.marker()) {
-      throw new IllegalStateException("Expected marker byte for INTERNED_NAME("
-          + INTERNED_NAME.marker() + ") or INTERNED_OFFSET("
-          + INTERNED_OFFSET.marker() + ") for INTERNED_NAME but got "
-          + marker);
-    }
     buffer.reset();
     buf.nameToClass.putAll(nameToRecordClass);
-    // Read the interned name
-    final InternedName name = (InternedName) Companion.read(-1, buf); // TODO annoying that passing -1 for unused
-    assert name != null;
-    final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(recordClassByName.get(name.name()));
+    // Use shared class name decompression logic
+    Class<?> clazz = Writers.readCompressedClassName(buf);
+    final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(clazz);
     if (pickler == null) {
-      throw new IllegalStateException("No pickler found for " + name.name());
+      throw new IllegalStateException("No pickler found for " + clazz.getName() + " in sealed hierarchy: " +
+          String.join(",", this.recordClassByName.keySet()));
     }
-    buf.nameToClass.clear();
-    // TODO: Fix this properly - for now just skip this step
-    // buf.nameToClass.putAll(pickler.nameToClass);
     try {
       //noinspection unchecked
-      return (S) pickler.deserializeWithMap(buf, false);
+      return (S) pickler.deserialize(buf);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {
-      throw new RuntimeException("Failed to deserialize " + name.name() + " : " + t.getMessage(), t);
+      throw new RuntimeException("Failed to deserialize " + clazz.getName() + " : " + t.getMessage(), t);
     }
   }
 

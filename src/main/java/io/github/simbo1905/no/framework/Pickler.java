@@ -50,7 +50,7 @@ public interface Pickler<T> {
     // Get all permitted record subclasses. This will throw an exception if the class is not sealed or if any of the subclasses are not records or sealed interfaces.
     final Class<?>[] subclasses = Companion.recordClassHierarchy(sealedClass, new HashSet<>()).toArray(Class<?>[]::new);
 
-    LOGGER.fine(Stream.of(sealedClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
+    LOGGER.fine(()->Stream.of(sealedClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
         Stream.of(subclasses).map(Object::toString).collect(Collectors.joining(",\n")));
 
     final int commonPrefixLength = Stream.concat(Stream.of(sealedClass), Arrays.stream(subclasses))
@@ -83,7 +83,7 @@ public interface Pickler<T> {
               @SuppressWarnings("unchecked")
               Class<? extends Record> recordCls = (Class<? extends Record>) e.getValue();
               LOGGER.fine(() -> "Manufacturing pickler for record: " + recordCls.getName());
-              return (Pickler<S>) manufactureRecordPickler(classesByShortName, recordCls, e.getKey());
+              return (Pickler<S>) manufactureRecordPickler(recordCls);
             }
         ));
 
@@ -101,18 +101,4 @@ public interface Pickler<T> {
   ReadBuffer wrapForReading(ByteBuffer buf);
 }
 
-record InternedName(String name) {
-  InternedName {
-    Objects.requireNonNull(name);
-    // TODO shorten java.lang.String to be j.l.String the StringBuild reverse it
-  }
-}
-
-record InternedOffset(int offset) {
-  InternedOffset {
-    if (offset >= 0) {
-      throw new IllegalArgumentException("Offset must be negative");
-    }
-  }
-}
 

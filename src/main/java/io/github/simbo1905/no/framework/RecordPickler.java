@@ -97,7 +97,7 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     return buffer;
   }
 
-  public R deserializeWithMap(ReadBufferImpl buf, boolean writeName) throws Throwable {
+  public R deserializeWithMap(ReadBufferImpl buf) throws Throwable {
     Objects.requireNonNull(buf);
     if (buf.isClosed()) {
       throw new IllegalStateException("PackedBuffer is closed");
@@ -108,19 +108,8 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     if (marker == Constants.NULL.marker()) {
       return null;
     }
-    if (marker != Constants.INTERNED_NAME.marker() && marker != Constants.INTERNED_OFFSET.marker()) {
-      throw new IllegalStateException("Expected marker byte for INTERNED_NAME("
-          + Constants.INTERNED_NAME.marker() + ") or INTERNED_OFFSET("
-          + Constants.INTERNED_OFFSET.marker() + ") for INTERNED_NAME but got "
-          + marker);
-    }
     buffer.reset();
     // Read the interned name
-    final InternedName name = (InternedName) Companion.read(-1, buf); // TODO annoying that passing -1 for unused
-    assert name != null;
-    if (!recordClass.getName().equals(name.name())) {
-      throw new IllegalStateException("Expected record class name " + recordClass.getName() + " but got " + name.name());
-    }
     return reflection.deserialize(buf);
   }
 

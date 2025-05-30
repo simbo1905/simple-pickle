@@ -730,7 +730,7 @@ public class RefactorTests {
     assertEquals(original.value().get().get(), deserialized.value().get().get());
   }
 
-  public record OptionalExample(Optional<Object> objectOpt, Optional<Integer> intOpt, Optional<String> stringOpt) {
+  public record OptionalExample(Optional<Animal> objectOpt, Optional<Integer> intOpt, Optional<String> stringOpt) {
   }
 
   @Test
@@ -1015,6 +1015,86 @@ public class RefactorTests {
             assertEquals(expected[i], actual[i]);
           }
         });
+  }
+
+  public record DeepDouble(List<List<Optional<Double>>> deepDoubles){}
+
+  @Test
+  void testDeepDoubleList() {
+    // Create a record with a deep list of optional doubles
+    DeepDouble original = new DeepDouble(
+        List.of(
+            List.of(Optional.of(1.0), Optional.empty(), Optional.of(3.0)),
+            List.of(Optional.empty(), Optional.of(5.0))
+        )
+    );
+
+    // Get a pickler for the record
+    Pickler<DeepDouble> pickler = Pickler.forRecord(DeepDouble.class);
+
+    // Calculate size and allocate buffer
+    var buffer = pickler.allocateForWriting(1024);
+
+    // Serialize
+    pickler.serialize(buffer, original);
+
+    // Flip the buffer to prepare for reading
+    var buf = pickler.wrapForReading(buffer.flip());
+
+    // Deserialize
+    DeepDouble deserialized = pickler.deserialize(buf);
+
+    // Verify the deep list structure
+    assertEquals(original.deepDoubles().size(), deserialized.deepDoubles().size());
+    IntStream.range(0, original.deepDoubles().size())
+        .forEach(i -> assertEquals(original.deepDoubles().get(i).size(), deserialized.deepDoubles().get(i).size()));
+
+    // Verify buffer is fully consumed
+    assertFalse(buffer.hasRemaining());
+  }
+
+  @Test
+  void testNestedLists() {
+    // Create a record with nested lists
+    record NestedListRecord(List<List<String>> nestedList) {
+    }
+
+    // Make the inner lists.
+    List<List<String>> nestedList = new ArrayList<>();
+    nestedList.add(Arrays.asList("A", "B", "C"));
+    nestedList.add(Arrays.asList("D", "E"));
+
+    // The record has mutable inner lists
+    NestedListRecord original = new NestedListRecord(nestedList);
+
+    // Get a pickler for the record
+    Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
+
+    // Calculate size and allocate buffer
+    var buffer = pickler.allocateForWriting(1024);
+
+    // Serialize
+    pickler.serialize(buffer, original);
+
+    // Flip the buffer to prepare for reading
+    var buf = pickler.wrapForReading(buffer.flip());
+
+    // Deserialize
+    NestedListRecord deserialized = pickler.deserialize(buf);
+
+    // Verify the nested list structure
+    assertEquals(original.nestedList().size(), deserialized.nestedList().size());
+
+    // Verify the inner lists are equal
+    IntStream.range(0, original.nestedList().size())
+        .forEach(i ->
+            assertEquals(original.nestedList().get(i).size(), deserialized.nestedList().get(i).size()));
+
+    // Verify buffer is fully consumed
+    assertFalse(buffer.hasRemaining());
+
+    // verify the inner lists are immutable
+    assertThrows(UnsupportedOperationException.class, () -> deserialized.nestedList().removeFirst());
   }
 
 }

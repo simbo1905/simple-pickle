@@ -23,16 +23,13 @@ enum Constants {
   STRING((byte) 12, 0, String.class),
   OPTIONAL_EMPTY((byte) 13, 0, Optional.class),
   OPTIONAL_OF((byte) 14, 0, Optional.class),
-  INTERNED_NAME((byte) 15, 0, InternedName.class),
-  INTERNED_OFFSET((byte) 16, 0, InternedOffset.class),
-  INTERNED_OFFSET_VAR((byte) 17, 0, InternedOffset.class),
-  ENUM((byte) 18, 0, Enum.class),
-  ARRAY((byte) 19, 0, null),
-  MAP((byte) 20, 0, Map.class),
-  LIST((byte) 21, 0, List.class),
-  RECORD((byte) 22, 0, Record.class),
-  SAME_TYPE((byte) 23, 0, Record.class),
-  UUID((byte) 24, 16, java.util.UUID.class);
+  ENUM((byte) 15, 0, Enum.class),
+  ARRAY((byte) 16, 0, null),
+  MAP((byte) 17, 0, Map.class),
+  LIST((byte) 18, 0, List.class),
+  RECORD((byte) 19, 0, Record.class),
+  SAME_TYPE((byte) 20, 0, Record.class),
+  UUID((byte) 21, 16, java.util.UUID.class);
 
   private final byte typeMarker;
   final int sizeInBytes;
@@ -46,14 +43,6 @@ enum Constants {
 
   public byte marker() {
     return typeMarker;
-  }
-
-  public int getSizeInBytes() {
-    return sizeInBytes;
-  }
-
-  public Class<?> _class() {
-    return clazz;
   }
 
   public static Constants fromMarker(byte marker) {

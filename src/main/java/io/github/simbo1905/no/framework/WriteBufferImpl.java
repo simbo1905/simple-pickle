@@ -68,37 +68,6 @@ class WriteBufferImpl implements WriteBuffer {
     buffer.put(utf8);
   }
 
-  static void writeNull(ByteBuffer buffer) {
-    buffer.put(NULL.marker());
-  }
-
-  static void write(ByteBuffer buffer, InternedName type) {
-    Objects.requireNonNull(type);
-    Objects.requireNonNull(type.name());
-    buffer.put(INTERNED_NAME.marker());
-    intern(buffer, type.name());
-  }
-
-  static void intern(ByteBuffer buffer, String string) {
-    final var nameBytes = string.getBytes(StandardCharsets.UTF_8);
-    final var nameLength = nameBytes.length;
-    ZigZagEncoding.putInt(buffer, nameLength);
-    buffer.put(nameBytes);
-  }
-
-  static void write(ByteBuffer buffer, InternedOffset typeOffset) {
-    Objects.requireNonNull(typeOffset);
-    final int offset = typeOffset.offset();
-    final int size = ZigZagEncoding.sizeOf(offset);
-    if (size < Integer.BYTES) {
-      buffer.put(INTERNED_OFFSET_VAR.marker());
-      ZigZagEncoding.putInt(buffer, offset);
-    } else {
-      buffer.put(INTERNED_OFFSET.marker());
-      buffer.putInt(offset);
-    }
-  }
-
   public void put(byte b) {
     buffer.put(b);
   }

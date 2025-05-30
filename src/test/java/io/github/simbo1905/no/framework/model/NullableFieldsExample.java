@@ -2,5 +2,7 @@
 // SPDX-License-Identifier: MIT
 package io.github.simbo1905.no.framework.model;
 
-public record NullableFieldsExample(String stringField, Integer integerField, Double doubleField, Object objectField) {
+import io.github.simbo1905.RefactorTests;
+
+public record NullableFieldsExample(String stringField, Integer integerField, Double doubleField, RefactorTests.Animal objectField) {
 }
