@@ -1,6 +1,8 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 final class RecordPickler<R extends Record> implements Pickler<R> {
@@ -8,13 +10,19 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
   final RecordReflection<R> reflection;
   private final Class<R> recordClass;
 
+  final Map<Class<?>, Pickler<?>> delegatePicklers = new HashMap<>();
+
   public RecordPickler(final Class<R> recordClass) {
     Objects.requireNonNull(recordClass);
     if (!recordClass.isRecord()) {
       throw new IllegalArgumentException("Class " + recordClass.getName() + " is not a record");
     }
+    LOGGER.info("Creating RecordPickler for: " + recordClass.getName());
     this.recordClass = recordClass;
     reflection = RecordReflection.analyze(recordClass);
+    
+    // Note: delegate picklers will be populated by Companion.populateDelegatePicklers()
+    // This maintains separation between analysis (here) and construction (in Companion)
   }
 
   // Package-private constructor for delegation

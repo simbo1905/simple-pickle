@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.Constants.*;
 
 class SealedPickler<S> implements Pickler<S> {
@@ -23,6 +24,8 @@ class SealedPickler<S> implements Pickler<S> {
   public SealedPickler(
       Map<Class<? extends S>, Pickler<? extends S>> subPicklers,
       Map<String, Class<?>> classesByShortName) {
+    LOGGER.info("Creating SealedPickler for " + subPicklers.size() + " delegate types: " + 
+        subPicklers.keySet().stream().map(Class::getSimpleName).collect(Collectors.toList()));
     this.subPicklers = subPicklers;
     this.recordClassByName = classesByShortName;
     this.nameToRecordClass.putAll(classesByShortName.entrySet().stream()
@@ -38,7 +41,12 @@ class SealedPickler<S> implements Pickler<S> {
         .map(pickler -> ((RecordPickler<?>) pickler).getClassNameMappings())
         .toArray(ClassNameMappings[]::new);
     
+    LOGGER.finer(() -> "SealedPickler: collected " + mappingsArray.length + " class name mappings from delegatee picklers");
     this.combinedClassNameMappings = ClassNameMappings.merge(mappingsArray);
+    LOGGER.finer(() -> "SealedPickler: final combined class mappings: " + 
+        combinedClassNameMappings.classToInternedName().entrySet().stream()
+            .map(e -> e.getKey().getSimpleName() + "->" + e.getValue())
+            .collect(Collectors.toList()));
   }
 
   /// Here we simply delegate to the RecordPickler which is configured to first write out its name.
@@ -69,6 +77,7 @@ class SealedPickler<S> implements Pickler<S> {
   public S deserialize(ReadBuffer readBuffer) {
     final var buf = (ReadBufferImpl) readBuffer;
     final var buffer = buf.buffer;
+    LOGGER.finer(() -> "SealedPickler.deserialize: readBuffer parentReflection=" + (buf.parentReflection != null ? "present" : "null"));
     buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     buffer.mark();
     final byte marker = buffer.get();
@@ -77,6 +86,7 @@ class SealedPickler<S> implements Pickler<S> {
     }
     buffer.reset();
     buf.nameToClass.putAll(nameToRecordClass);
+    LOGGER.finer(() -> "SealedPickler.deserialize: about to call readCompressedClassName");
     // Use shared class name decompression logic
     Class<?> clazz = Writers.readCompressedClassName(buf);
     final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(clazz);
@@ -129,17 +139,21 @@ class SealedPickler<S> implements Pickler<S> {
 
   @Override
   public ReadBuffer allocateForReading(int size) {
-    return new ReadBufferImpl(
+    ReadBufferImpl readBuffer = new ReadBufferImpl(
         ByteBuffer.allocate(size),
         combinedClassNameMappings.shortNameToClass()::get
     );
+    LOGGER.finer(() -> "SealedPickler.allocateForReading: created ReadBuffer with parentReflection=" + (readBuffer.parentReflection != null ? "present" : "null"));
+    return readBuffer;
   }
 
   @Override
   public ReadBuffer wrapForReading(ByteBuffer buf) {
-    return new ReadBufferImpl(
+    ReadBufferImpl readBuffer = new ReadBufferImpl(
         buf,
         combinedClassNameMappings.shortNameToClass()::get
     );
+    LOGGER.finer(() -> "SealedPickler.wrapForReading: created ReadBuffer with parentReflection=" + (readBuffer.parentReflection != null ? "present" : "null"));
+    return readBuffer;
   }
 }

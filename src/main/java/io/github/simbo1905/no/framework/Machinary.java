@@ -25,7 +25,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
                                           ToIntFunction<Object> componentsSizer,
                                           Map<Class<?>,String> classToInternedName,
                                           Map<String, Class<?>> shortNameToClass,
-                                          Map<Class<?>, Pickler<?>> delegatePicklers) {
+                                          Set<Class<?>> discoveredRecordTypes) {
 
   static <R extends Record> RecordReflection<R> analyze(Class<R> recordClass) {
     RecordComponent[] components = recordClass.getRecordComponents();
@@ -101,6 +101,20 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     final Set<Class<?>> allClasses = allTypeStructures.stream()
         .flatMap(typeStructure -> typeStructure.types().stream())
         .collect(Collectors.toSet());
+    
+    // Add the record class itself to get proper name shortening
+    allClasses.add(recordClass);
+    
+    // Add component types for any array types to ensure they get proper class name mappings
+    Set<Class<?>> arrayComponentTypes = allClasses.stream()
+        .filter(Class::isArray)
+        .map(Class::getComponentType)
+        .collect(Collectors.toSet());
+    allClasses.addAll(arrayComponentTypes);
+    
+    LOGGER.finer(() -> "RecordReflection.analyze: discovered classes for " + recordClass.getSimpleName() + ": " + 
+        allClasses.stream().map(Class::getSimpleName).collect(Collectors.toList()));
+    
 
     // Here we split off what are the java.lang or java.util core classes from the host application classes.
     final var partitionByIsJavaCoreClass = allClasses.stream()
@@ -111,17 +125,21 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     final Map<Class<?>,String> applicationShortClassNames = partitionByIsJavaCoreClass.get(false).stream()
         .collect(Collectors.toMap(
             cls -> cls,
-            cls -> cls.getName().substring(
-                allClasses.stream()
-                    .map(Class::getName)
-                    .reduce((a, b) ->
-                        !a.isEmpty() && !b.isEmpty() ?
-                            a.substring(0,
-                                IntStream.range(0, Math.min(a.length(), b.length()))
-                                    .filter(i -> a.charAt(i) != b.charAt(i))
-                                    .findFirst()
-                                    .orElse(Math.min(a.length(), b.length()))) : "")
-                    .orElse("").length())));
+            cls -> {
+              String commonPrefixRemovedName = cls.getName().substring(
+                  allClasses.stream()
+                      .map(Class::getName)
+                      .reduce((a, b) ->
+                          !a.isEmpty() && !b.isEmpty() ?
+                              a.substring(0,
+                                  IntStream.range(0, Math.min(a.length(), b.length()))
+                                      .filter(i -> a.charAt(i) != b.charAt(i))
+                                      .findFirst()
+                                      .orElse(Math.min(a.length(), b.length()))) : "")
+                      .orElse("").length());
+              // If the result is empty (common prefix was the whole name), use the simple class name
+              return commonPrefixRemovedName.isEmpty() ? cls.getSimpleName() : commonPrefixRemovedName;
+            }));
 
     // Here we replace java.l.String with j.l.String in a generic way the core packages using regular expressions
     final Map<Class<?>, String> javaShortClassNames = partitionByIsJavaCoreClass.get(true).stream()
@@ -137,6 +155,9 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
         Map.Entry::getKey,
         Map.Entry::getValue
     ));
+    
+    LOGGER.finer(() -> "RecordReflection.analyze: final class mappings for " + recordClass.getSimpleName() + ": " + 
+        classToShortName.entrySet().stream().map(e -> e.getKey().getSimpleName() + "->" + e.getValue()).collect(Collectors.toList()));
 
     // invert the map to get class to interned name lookup
     final Map<String, Class<?>> shortNameToClass = classToShortName.entrySet().stream()
@@ -157,40 +178,20 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
     //noinspection
     return new RecordReflection<>(constructor, componentAccessors, componentTypes,
         componentWriters, componentReaders, componentSizer, classToShortName, shortNameToClass,
-        new HashMap<>());
+        discoveredRecordTypes);
   }
 
-  /// Package-private method to create delegate picklers that share the parent's class resolution context
+  /// Package-private method to create delegate picklers using the global registry
   @SuppressWarnings("unchecked")
   static <T extends Record> RecordPickler<T> manufactureDelegateeRecordPickler(Class<T> delegateClass, RecordReflection<?> parentReflection) {
-    // Check if we already have a pickler for this class
-    Pickler<?> existingPickler = parentReflection.delegatePicklers().get(delegateClass);
+    // Check global registry first
+    Pickler<?> existingPickler = Companion.REGISTRY.get(delegateClass);
     if (existingPickler != null) {
       return (RecordPickler<T>) existingPickler;
     }
 
-    // Create a new RecordReflection that extends the parent's class maps
-    RecordReflection<T> delegateReflection = analyze(delegateClass);
-    // We need to copy the classToInternedName and shortNameToClass maps from the parent reflection
-    delegateReflection = new RecordReflection<>(
-        delegateReflection.constructor(),
-        delegateReflection.componentAccessors(),
-        delegateReflection.componentTypes(),
-        delegateReflection.componentWriters(),
-        delegateReflection.componentReaders(),
-        delegateReflection.componentsSizer(),
-        Stream.concat(parentReflection.classToInternedName().entrySet().stream(), delegateReflection.classToInternedName().entrySet().stream())
-            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v2)),
-        Stream.concat(parentReflection.shortNameToClass().entrySet().stream(), delegateReflection.shortNameToClass().entrySet().stream())
-            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v2)),
-        delegateReflection.delegatePicklers()
-    );
-    
-    // Create the pickler and cache it
-    RecordPickler<T> delegatePickler = new RecordPickler<>(delegateClass, delegateReflection);
-    parentReflection.delegatePicklers().put(delegateClass, delegatePickler);
-    
-    return delegatePickler;
+    // Create new pickler using standard factory method - this will handle registry caching
+    return (RecordPickler<T>) Companion.manufactureRecordPickler(delegateClass);
   }
 
   /// This method returns a function that when passed our record will call a direct method handle accessor
@@ -419,7 +420,13 @@ record TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recordClass)
         if( current instanceof Class<?> clazz){
           types.add(clazz);
         } else {
-          tags.add(null);
+          // For complex component types, recursively analyze them
+          // This handles cases like Optional<String>[], List<Person>[], etc.
+          TypeStructure componentStructure = TypeStructure.analyze(current);
+          tags.addAll(componentStructure.tags());
+          types.addAll(componentStructure.types());
+          // After adding component structure, we're done with this array
+          return new TypeStructure(tags, types);
         }
         continue;
       }
@@ -467,7 +474,9 @@ final class Writers {
       ZigZagEncoding.putInt(buffer, reference); // Using bitwise complement for negative reference
     } else {
       // First time seeing this class, write the short name
+      LOGGER.finer(() -> "writeCompressedClassName: trying to resolve class=" + clazz + " with classToInternedName function");
       final var internedName = writeBuffer.classToInternedName.apply(clazz);
+      LOGGER.finer(() -> "writeCompressedClassName: resolved class=" + clazz + " to internedName='" + internedName + "'");
       byte[] classNameBytes = internedName.getBytes(UTF_8);
       int classNameLength = classNameBytes.length;
 
@@ -504,7 +513,8 @@ final class Writers {
       byte[] classNameBytes = new byte[classReference];
       buffer.get(classNameBytes);
       String className = new String(classNameBytes, java.nio.charset.StandardCharsets.UTF_8);
-      LOGGER.finer(() -> "Trying to resolve class name: '" + className + "' available classes: " + readBuffer.parentReflection.shortNameToClass().keySet());
+      LOGGER.finer(() -> "Trying to resolve class name: '" + className + "' available classes: " + 
+          (readBuffer.parentReflection != null ? readBuffer.parentReflection.shortNameToClass().keySet() : "no parentReflection"));
       clazz = readBuffer.internedNameToClass.apply(className);
       // Store this class at the position for future reference
       readBuffer.locations.put(currentPosition, clazz);
@@ -605,6 +615,7 @@ final class Writers {
     final var writeBufferImpl = Writers.writeBufferImpl(buf);
     Enum<?> enumValue = (Enum<?>) value;
     LOGGER.fine(() -> "Writing ENUM - position=" + writeBufferImpl.buffer.position() + " value=" + enumValue);
+    LOGGER.finer(() -> "ENUM_WRITER: enum class=" + enumValue.getClass() + " classToInternedName function=" + (writeBufferImpl.classToInternedName != null ? "present" : "null"));
     writeBufferImpl.buffer.put(Constants.ENUM.marker());
     
     // Use shared class name compression logic
@@ -656,7 +667,8 @@ final class Writers {
   public static final int SAMPLE_SIZE = 32;
 
   static final BiConsumer<WriteBuffer, Object> ARRAY_WRITER = (buf, value) -> {
-    ByteBuffer buffer = byteBuffer(buf);
+    final var writeBufferImpl = (WriteBufferImpl) buf;
+    ByteBuffer buffer = writeBufferImpl.buffer;
     LOGGER.fine(() -> "Writing ARRAY - position=" + buffer.position() + " value=" + value);
     buffer.put(Constants.ARRAY.marker());
     switch (value) {
@@ -767,6 +779,11 @@ final class Writers {
         LOGGER.fine(() -> "Writing RECORD array - position=" + buffer.position() + " length=" + length);
         buffer.put(Constants.RECORD.marker());
         ZigZagEncoding.putInt(buffer, length);
+        
+        // Write component type name using existing class name compression
+        Class<?> componentType = value.getClass().getComponentType();
+        Writers.writeCompressedClassName(writeBufferImpl, componentType);
+        
         for (Record record : records) {
           @SuppressWarnings("unchecked")
           RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
@@ -791,7 +808,42 @@ final class Writers {
           buffer.putChar(c);
         }
       }
-      default -> throw new IllegalArgumentException("Unsupported array type: " + value.getClass());
+      default -> {
+        // Check if it's an Optional array
+        Class<?> componentType = value.getClass().getComponentType();
+        if (componentType == Optional.class) {
+          Optional<?>[] optionals = (Optional<?>[]) value;
+          final var length = Array.getLength(value);
+          LOGGER.fine(() -> "Writing OPTIONAL array - position=" + buffer.position() + " length=" + length);
+          buffer.put(Constants.OPTIONAL_OF.marker());
+          ZigZagEncoding.putInt(buffer, length);
+          for (Optional<?> optional : optionals) {
+            if (optional.isEmpty()) {
+              buffer.put(Constants.OPTIONAL_EMPTY.marker());
+            } else {
+              buffer.put(Constants.OPTIONAL_OF.marker());
+              Object content = optional.get();
+              // Delegate to appropriate writer based on content type
+              switch (content) {
+                case String s -> STRING_WRITER.accept(buf, s);
+                case Integer i -> INTEGER_WRITER.accept(buf, i);
+                case Long l -> LONG_WRITER.accept(buf, l);
+                case Boolean b -> BOOLEAN_WRITER.accept(buf, b);
+                case Byte b -> BYTE_WRITER.accept(buf, b);
+                case Short s -> SHORT_WRITER.accept(buf, s);
+                case Character c -> CHAR_WRITER.accept(buf, c);
+                case Float f -> FLOAT_WRITER.accept(buf, f);
+                case Double d -> DOUBLE_WRITER.accept(buf, d);
+                case UUID uuid -> UUID_WRITER.accept(buf, uuid);
+                case Record r -> DELEGATING_RECORD_WRITER.accept(buf, r);
+                default -> throw new IllegalArgumentException("Unsupported Optional content type: " + content.getClass());
+              }
+            }
+          }
+        } else {
+          throw new IllegalArgumentException("Unsupported array type: " + value.getClass());
+        }
+      }
     }
   };
 
@@ -866,7 +918,7 @@ final class Writers {
       throw new IllegalArgumentException("Type structure must have at least one tag");
     }
     LOGGER.fine(() -> "Building writer chain for type structure: " +
-        tags.stream().map(Enum::name).collect(Collectors.joining(",")));
+        tags.stream().map(tag -> tag != null ? tag.name() : "null").collect(Collectors.joining(",")));
 
     // Reverse the tags to process from right to left
     Iterator<Tag> reversedTags = tags.reversed().iterator();
@@ -1266,12 +1318,51 @@ final class Readers {
       case Constants.RECORD -> {
         int length = ZigZagEncoding.getInt(buffer);
         LOGGER.finer(() -> "Read RECORD Array len=" + length);
-        Record[] records = new Record[length];
+        
+        // Read component type using existing class name decompression
+        Class<?> componentType = Writers.readCompressedClassName(readBuffer);
+        
+        // Create typed array using the component type
+        Record[] records = (Record[]) Array.newInstance(componentType, length);
+        
         IntStream.range(0, length).forEach(i -> {
           // TODO resolve the interned name and deserialize the record
           records[i] = null; // nestedPickler.deserialize(pickler.wrapForReading(buffer));
         });
         return records;
+      }
+      case Constants.OPTIONAL_OF -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read Optional Array len=" + length);
+        Optional<?>[] optionals = new Optional<?>[length];
+        IntStream.range(0, length).forEach(i -> {
+          byte optMarker = buffer.get();
+          if (optMarker == Constants.OPTIONAL_EMPTY.marker()) {
+            optionals[i] = Optional.empty();
+          } else if (optMarker == Constants.OPTIONAL_OF.marker()) {
+            // Read the next value based on its type marker
+            byte valueMarker = buffer.get();
+            buffer.position(buffer.position() - 1); // Rewind to read marker again
+            Object value = switch (Constants.fromMarker(valueMarker)) {
+              case Constants.STRING -> STRING_READER.apply(readBuffer);
+              case Constants.INTEGER, Constants.INTEGER_VAR -> INTEGER_READER.apply(readBuffer);
+              case Constants.LONG, Constants.LONG_VAR -> LONG_READER.apply(readBuffer);
+              case Constants.BOOLEAN -> BOOLEAN_READER.apply(readBuffer);
+              case Constants.BYTE -> BYTE_READER.apply(readBuffer);
+              case Constants.SHORT -> SHORT_READER.apply(readBuffer);
+              case Constants.CHARACTER -> CHAR_READER.apply(readBuffer);
+              case Constants.FLOAT -> FLOAT_READER.apply(readBuffer);
+              case Constants.DOUBLE -> DOUBLE_READER.apply(readBuffer);
+              case Constants.UUID -> UUID_READER.apply(readBuffer);
+              case Constants.RECORD -> DELEGATING_RECORD_READER.apply(readBuffer);
+              default -> throw new IllegalStateException("Unsupported Optional content type marker: " + valueMarker);
+            };
+            optionals[i] = Optional.of(value);
+          } else {
+            throw new IllegalStateException("Expected OPTIONAL_EMPTY or OPTIONAL_OF marker but got: " + optMarker);
+          }
+        });
+        return optionals;
       }
       default -> throw new IllegalStateException("Unsupported array type marker: " + arrayTypeMarker);
     }
@@ -1553,7 +1644,39 @@ final class Readers {
         int contentSize = Arrays.stream(records).mapToInt(DELEGATING_RECORD_SIZE).sum();
         yield overhead + contentSize;
       }
-      default -> throw new AssertionError("not implemented for array type: " + value.getClass());
+      default -> {
+        // Check if it's an Optional array
+        Class<?> componentType = value.getClass().getComponentType();
+        if (componentType == Optional.class) {
+          Optional<?>[] optionals = (Optional<?>[]) value;
+          int overhead = 1 + 4; // component type marker + length
+          int contentSize = Arrays.stream(optionals).mapToInt(opt -> {
+            if (opt.isEmpty()) {
+              return 1; // OPTIONAL_EMPTY marker
+            } else {
+              // OPTIONAL_OF marker + content size (content needs its own marker)
+              Object content = opt.get();
+              int innerContentSize = switch (content) {
+                case String s -> 1 + 4 + s.getBytes(UTF_8).length; // STRING marker + length + bytes
+                case Integer i -> 1 + ZigZagEncoding.sizeOf(i); // INTEGER marker + zigzag size
+                case Long l -> 1 + ZigZagEncoding.sizeOf(l); // LONG marker + zigzag size
+                case Boolean b -> 1 + 1; // BOOLEAN marker + 1 byte
+                case Byte b -> 1 + 1; // BYTE marker + 1 byte
+                case Short s -> 1 + Short.BYTES; // SHORT marker + 2 bytes
+                case Character c -> 1 + Character.BYTES; // CHARACTER marker + 2 bytes
+                case Float f -> 1 + Float.BYTES; // FLOAT marker + 4 bytes
+                case Double d -> 1 + Double.BYTES; // DOUBLE marker + 8 bytes
+                case java.util.UUID uuid -> 1 + 16; // UUID marker + 16 bytes
+                default -> throw new IllegalArgumentException("Unsupported Optional content type for size: " + content.getClass());
+              };
+              return 1 + innerContentSize; // OPTIONAL_OF marker + content
+            }
+          }).sum();
+          yield overhead + contentSize;
+        } else {
+          throw new AssertionError("not implemented for array type: " + value.getClass());
+        }
+      }
     };
   };
 
