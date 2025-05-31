@@ -69,9 +69,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     if (buffer.isClosed()) {
       throw new IllegalStateException("WriteBuffer is closed");
     }
-    if (0 == object.getClass().getRecordComponents().length) {
-      LOGGER.fine(() -> object.getClass().getName() + " has no components. Built-in collections conversion to arrays may cause this problem.");
-    }
     final var buf = ((WriteBufferImpl) buffer);
     final var startPos = buf.position();
     // Ensure java native endian writes

@@ -94,6 +94,23 @@ Here is an example of the correct format for documentation comments:
   mvn test -Dtest=MachineryTests#testMethod -Djava.util.logging.ConsoleHandler.level=FINER
   ```
 
+## Maven Utilities and Scripts
+
+**For project utilities that need dependencies**: Use Maven exec instead of complex classpath management:
+```bash
+# Run utility classes with all project dependencies
+mvn exec:java -Dexec.mainClass="org.sample.UtilityClass" -q
+
+# Use token-saving script to reduce Maven output
+./mvn-test-no-boilerplate.sh exec:java -Dexec.mainClass="org.sample.UtilityClass"
+```
+
+**Critical Lessons from Benchmarking**:
+- **Measure ACTUAL test data**: Import real benchmark records, don't create fake copies that fall out of date
+- **Use Maven exec for utilities**: Avoid complex classpath setup when project dependencies are needed
+- **Records must be public**: NFP requires public records for reflection access
+
+
 ## JEP References
 
 [JEP 467](https://openjdk.org/jeps/467): Markdown Documentation in JavaDoc

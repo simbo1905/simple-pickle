@@ -16,12 +16,12 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MachineryTests {
-  
+
   // Helper method to create RecordPickler for tests
   private static <R extends Record> RecordPickler<R> createPickler(Class<R> recordClass) {
     return new RecordPickler<>(recordClass);
   }
-  
+
   @BeforeAll
   static void setupLogging() {
     final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
@@ -104,7 +104,7 @@ public class MachineryTests {
     );
 
     // Serialize
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     // Deserialize
@@ -161,7 +161,7 @@ public class MachineryTests {
         Math.PI
     );
 
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -176,7 +176,7 @@ public class MachineryTests {
 
     // Test with a value
     OptionalRecord withValue = new OptionalRecord(Optional.of("Hello World"));
-    WriteBuffer writeBuffer1 = pickler.allocateForWriting(pickler.maxSizeOf (withValue));
+    WriteBuffer writeBuffer1 = pickler.allocateForWriting(pickler.maxSizeOf(withValue));
     pickler.serialize(writeBuffer1, withValue);
     ReadBuffer readBuffer1 = pickler.wrapForReading(writeBuffer1.flip());
     OptionalRecord deserializedWithValue = pickler.deserialize(readBuffer1);
@@ -184,7 +184,7 @@ public class MachineryTests {
 
     // Test empty optional
     OptionalRecord withoutValue = new OptionalRecord(Optional.empty());
-    WriteBuffer writeBuffer2 = pickler.allocateForWriting(pickler.maxSizeOf (withoutValue));
+    WriteBuffer writeBuffer2 = pickler.allocateForWriting(pickler.maxSizeOf(withoutValue));
     pickler.serialize(writeBuffer2, withoutValue);
     ReadBuffer readBuffer2 = pickler.wrapForReading(writeBuffer2.flip());
     OptionalRecord deserializedWithoutValue = pickler.deserialize(readBuffer2);
@@ -196,7 +196,7 @@ public class MachineryTests {
     RecordPickler<ListRecord> pickler = createPickler(ListRecord.class);
 
     ListRecord testRecord = new ListRecord(List.of("one", "two", "three"));
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -206,7 +206,7 @@ public class MachineryTests {
 
     // Test empty list
     ListRecord emptyList = new ListRecord(Collections.emptyList());
-    WriteBuffer writeBuffer2 = pickler.allocateForWriting(pickler.maxSizeOf (emptyList));
+    WriteBuffer writeBuffer2 = pickler.allocateForWriting(pickler.maxSizeOf(emptyList));
     pickler.serialize(writeBuffer2, emptyList);
 
     ReadBuffer readBuffer2 = pickler.wrapForReading(writeBuffer2.flip());
@@ -252,7 +252,7 @@ public class MachineryTests {
 
     MapRecord testRecord = new MapRecord(map);
     RecordPickler<MapRecord> pickler = createPickler(MapRecord.class);
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -266,7 +266,7 @@ public class MachineryTests {
     RecordPickler<ArrayBytes> pickler = createPickler(ArrayBytes.class);
 
     ArrayBytes testRecord = new ArrayBytes("hello".getBytes(StandardCharsets.UTF_8));
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -280,7 +280,7 @@ public class MachineryTests {
     RecordPickler<ArrayBooleanRecord> pickler = createPickler(ArrayBooleanRecord.class);
 
     ArrayBooleanRecord testRecord = new ArrayBooleanRecord(new boolean[]{true, false, true});
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -294,7 +294,7 @@ public class MachineryTests {
     RecordPickler<ArrayIntRecord> pickler = createPickler(ArrayIntRecord.class);
 
     ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{1, 2});
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -309,7 +309,7 @@ public class MachineryTests {
 
     ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{Integer.MAX_VALUE, Integer.MIN_VALUE});
 
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -324,7 +324,7 @@ public class MachineryTests {
 
     ArrayIntRecord testRecord = new ArrayIntRecord(new int[]{1, 2});
 
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -343,9 +343,9 @@ public class MachineryTests {
       integers[i] = i * 1000; // Write in a way that is better suited for varint encoding
     }
 
-    ArrayIntRecord testRecord = new ArrayIntRecord( integers );
+    ArrayIntRecord testRecord = new ArrayIntRecord(integers);
 
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -366,9 +366,9 @@ public class MachineryTests {
       integers[i] = random.nextInt();
     }
 
-    ArrayIntRecord testRecord = new ArrayIntRecord( integers );
+    ArrayIntRecord testRecord = new ArrayIntRecord(integers);
 
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -389,9 +389,9 @@ public class MachineryTests {
       longs[i] = random.nextLong();
     }
 
-    ArrayLongRecord testRecord = new ArrayLongRecord( longs );
+    ArrayLongRecord testRecord = new ArrayLongRecord(longs);
 
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -409,9 +409,9 @@ public class MachineryTests {
       longs[i] = i * 1000L; // Write in a way that is better suited for varlong encoding
     }
 
-    ArrayLongRecord testRecord = new ArrayLongRecord( longs );
+    ArrayLongRecord testRecord = new ArrayLongRecord(longs);
 
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -430,7 +430,7 @@ public class MachineryTests {
     UUID testUUID = new UUID(12343535L, 9876543210L);
     UUIDRecord testRecord = new UUIDRecord(testUUID);
 
-    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf (testRecord));
+    WriteBuffer writeBuffer = pickler.allocateForWriting(pickler.maxSizeOf(testRecord));
     pickler.serialize(writeBuffer, testRecord);
 
     ReadBuffer readBuffer = pickler.wrapForReading(writeBuffer.flip());
@@ -439,14 +439,20 @@ public class MachineryTests {
     assertEquals(testUUID, deserialized.uuid());
   }
 
-  public record LinkedRecord(LinkedRecord next, String value) {}
+  public record LinkedRecord(LinkedRecord next, String value) {
+  }
 
-  public record LinkedLong(long someLong, LinkedInt next) {}
-  public record LinkedInt(int someInt, LinkedLong next) {}
-  
+  public record LinkedLong(long someLong, LinkedInt next) {
+  }
+
+  public record LinkedInt(int someInt, LinkedLong next) {
+  }
+
   // Test enum and record containing enum for ENUM serialization tests
-  public enum Priority { LOW, MEDIUM, HIGH }
-  public record TaskRecord(String name, Priority priority, boolean completed) {}
+  public enum Priority {LOW, MEDIUM, HIGH}
+
+  public record TaskRecord(String name, Priority priority, boolean completed) {
+  }
 
   @Test
   public void testLinkedRecord() throws Throwable {
@@ -521,10 +527,9 @@ public class MachineryTests {
       assertEquals(originalTask.name(), deserializedTask.name());
       assertEquals(originalTask.priority(), deserializedTask.priority());
       assertEquals(originalTask.completed(), deserializedTask.completed());
-      
+
       // Verify enum identity (enums should be the same instance)
       assertSame(originalTask.priority(), deserializedTask.priority());
     }
   }
-
 }

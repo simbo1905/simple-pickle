@@ -24,6 +24,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class RefactorTests {
 
+  public record AllPrimitives(
+      boolean boolVal, byte byteVal, short shortVal, char charVal,
+      int intVal, long longVal, float floatVal, double doubleVal
+  ) implements Serializable {}
+
   @BeforeAll
   static void setupLogging() {
     final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
@@ -1095,6 +1100,94 @@ public class RefactorTests {
 
     // verify the inner lists are immutable
     assertThrows(UnsupportedOperationException.class, () -> deserialized.nestedList().removeFirst());
+  }
+
+  /// Public record containing a UUID field for testing serialization.
+  /// This record must be public as required by the Pickler framework.
+  public record UserSession(String sessionId, UUID userId, long timestamp) {}
+
+  @Test
+  void testUuidRoundTripSerialization() {
+    LOGGER.info("Starting UUID round-trip serialization test");
+
+    // Create a UUID from known values for predictable testing
+    final long mostSigBits = 0x550e8400e29b41d4L;
+    final long leastSigBits = 0xa716446655440000L;
+    final var originalUuid = new UUID(mostSigBits, leastSigBits);
+
+    LOGGER.info(() -> "Created test UUID: " + originalUuid);
+
+    // Create a record containing the UUID
+    final var originalRecord = new UserSession("session-123", originalUuid, System.currentTimeMillis());
+    LOGGER.info(() -> "Created test record: " + originalRecord);
+
+    // Get a pickler for the record type
+    final var pickler = Pickler.forRecord(UserSession.class);
+    assertNotNull(pickler, "Pickler should not be null");
+
+    // Allocate buffer for writing
+    final var writeBuffer = pickler.allocateForWriting(1024);
+    LOGGER.info("Allocated write buffer");
+
+    // Serialize the record
+    final int actualSize = pickler.serialize(writeBuffer, originalRecord);
+    LOGGER.info(() -> "Serialized record, actual size: " + actualSize + " bytes");
+
+    // Create read buffer from write buffer
+    final var readBuffer = pickler.wrapForReading(writeBuffer.flip());
+
+    // Deserialize the record
+    final var deserializedRecord = pickler.deserialize(readBuffer);
+    assertNotNull(deserializedRecord, "Deserialized record should not be null");
+    LOGGER.info(() -> "Deserialized record: " + deserializedRecord);
+
+    // Verify the entire record matches
+    assertEquals(originalRecord, deserializedRecord, "Original and deserialized records should be equal");
+
+    // Verify UUID specifically
+    assertEquals(originalRecord.userId(), deserializedRecord.userId(), "UUIDs should be equal");
+    assertEquals(originalUuid, deserializedRecord.userId(), "Deserialized UUID should match original");
+
+    // Verify UUID components match
+    assertEquals(mostSigBits, deserializedRecord.userId().getMostSignificantBits(),
+        "Most significant bits should match");
+    assertEquals(leastSigBits, deserializedRecord.userId().getLeastSignificantBits(),
+        "Least significant bits should match");
+
+    LOGGER.info("UUID round-trip serialization test completed successfully");
+  }
+
+  @Test
+  void testAllPrimitivesWrite() throws Exception {
+    LOGGER.info("=== Testing AllPrimitives write performance issue ===");
+
+    final var testData = new AllPrimitives(
+        true, (byte)42, (short)1000, 'A', 123456, 9876543210L, 3.14f, 2.71828
+    );
+
+    LOGGER.info(() -> "Test data: " + testData);
+
+    // This should show detailed logging of where the reflection work happens
+    final var pickler = forRecord(AllPrimitives.class);
+
+    LOGGER.info("=== Starting single write operation ===");
+
+    LOGGER.finer("About to allocate WriteBuffer...");
+    try (final var writeBuffer = pickler.allocateForWriting(256)) {
+      LOGGER.finer("WriteBuffer allocated, about to serialize...");
+      pickler.serialize(writeBuffer, testData);
+      LOGGER.finer("Serialization complete, about to flip...");
+      final var readyToReadBack = writeBuffer.flip();
+      LOGGER.finer(() -> "Write complete, serialized " + readyToReadBack.remaining() + " bytes");
+
+      // Verify round-trip
+      final var readBuffer = pickler.wrapForReading(readyToReadBack.duplicate());
+      AllPrimitives result = pickler.deserialize(readBuffer);
+      assertEquals(testData, result);
+      LOGGER.info("Round-trip verification successful");
+    }
+
+    LOGGER.info("=== AllPrimitives test complete ===");
   }
 
 }
