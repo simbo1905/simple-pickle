@@ -1053,11 +1053,11 @@ public class RefactorTests {
     assertFalse(buffer.hasRemaining());
   }
 
+  public record NestedListRecord(List<List<String>> nestedList) {
+  }
+
   @Test
   void testNestedLists() {
-    // Create a record with nested lists
-    record NestedListRecord(List<List<String>> nestedList) {
-    }
 
     // Make the inner lists.
     List<List<String>> nestedList = new ArrayList<>();
