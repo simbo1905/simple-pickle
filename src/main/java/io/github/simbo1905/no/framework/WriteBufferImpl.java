@@ -24,7 +24,7 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 class WriteBufferImpl implements WriteBuffer {
 
   final ByteBuffer buffer;
-  Map<Class<?>, Integer> classToOffset = new HashMap<>(64);
+  final Map<Class<?>, Integer> classToOffset = new HashMap<>(64);
   final Function<Class<?>, String> classToInternedName;
   RecordReflection<?> parentReflection; // For delegation context sharing
 

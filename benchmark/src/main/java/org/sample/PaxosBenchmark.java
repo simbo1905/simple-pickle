@@ -5,6 +5,8 @@ import com.github.trex_paxos.Command;
 import com.github.trex_paxos.NoOperation;
 import com.github.trex_paxos.msg.Accept;
 import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.WriteBuffer;
+import io.github.simbo1905.no.framework.ReadBuffer;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 import org.sample.proto.*;
@@ -12,6 +14,7 @@ import org.sample.proto.*;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -48,12 +51,26 @@ public class PaxosBenchmark {
   }
 
   @Benchmark
-  public void paxosNfp(Blackhole bh) {
-
-    Pickler.serializeMany(original, buffer);
-    buffer.flip();
-    nfp = buffer.remaining();
-    final var back = Pickler.deserializeMany(Accept.class, buffer);
+  public void paxosNfp(Blackhole bh) throws Exception {
+    final Pickler<Accept> pickler = Pickler.forRecord(Accept.class);
+    final ByteBuffer readyToReadBack;
+    
+    // Write phase - serialize all Accept records with automatic class name compression
+    try (final var writeBuffer = pickler.allocateForWriting(2048)) { //TODO: set back to fair size after measuring actual data size separately
+      for (var accept : original) {
+        pickler.serialize(writeBuffer, accept);
+      }
+      readyToReadBack = writeBuffer.flip(); // flip() calls close(), buffer is now unusable
+      nfp = readyToReadBack.remaining();
+      // In real usage: transmit readyToReadBack bytes to network or save to file
+    }
+    
+    // Read phase - read back from transmitted/saved bytes
+    final var readBuffer = pickler.wrapForReading(readyToReadBack);
+    final var back = new ArrayList<Accept>();
+    for (int i = 0; i < original.length; i++) {
+      back.add(pickler.deserialize(readBuffer));
+    }
     bh.consume(back);
   }
 
@@ -123,7 +140,7 @@ public class PaxosBenchmark {
   /**
    * Converts an Accept record to its Protocol Buffer representation
    */
-  private static AcceptMessage convertToProto(Accept accept) {
+  public static AcceptMessage convertToProto(Accept accept) {
     SlotTermMessage slotTermProto = SlotTermMessage.newBuilder()
         .setLogIndex(accept.slotTerm().logIndex())
         .setNumber(convertBallotNumberToProto(accept.slotTerm().number()))
@@ -205,7 +222,7 @@ public class PaxosBenchmark {
     }
   }
 
-  public static void main(String[] args) throws IOException, ClassNotFoundException {
+  public static void main(String[] args) throws Exception {
     System.out.println("=== Paxos Serialization Size Comparison ===");
     System.out.println("Test data: " + original.length + " Accept records");
     
@@ -218,9 +235,15 @@ public class PaxosBenchmark {
     System.out.println("JDK Serialization size: " + jdkSize + " bytes");
     
     // Test No Framework Pickler
-    ByteBuffer nfpBuffer = ByteBuffer.allocate(1024);
-    Pickler.serializeMany(original, nfpBuffer);
-    int nfpSize = nfpBuffer.position();
+    final Pickler<Accept> pickler = Pickler.forRecord(Accept.class);
+    final ByteBuffer readyToReadBack;
+    try (final var writeBuffer = pickler.allocateForWriting(1024)) { //TODO: use maxSizeOf for precise allocation
+      for (var accept : original) {
+        pickler.serialize(writeBuffer, accept);
+      }
+      readyToReadBack = writeBuffer.flip(); // flip() calls close(), buffer is now unusable
+    }
+    int nfpSize = readyToReadBack.remaining();
     System.out.println("No Framework Pickler size: " + nfpSize + " bytes");
     
     // Test Protobuf

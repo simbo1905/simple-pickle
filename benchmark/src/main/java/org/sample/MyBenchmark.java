@@ -53,17 +53,31 @@ public class MyBenchmark {
     // Print your results or summary here
   }
 
-  public static void main(String[] args) {
+  public static void main(String[] args) throws Exception {
     new MyBenchmark().testPickler1(null);
   }
 
 //  @Benchmark
-  public void testPickler1(Blackhole bh) {
-
-    Pickler.serializeMany(original, buffer);
-    buffer.flip();
-    nfp = buffer.remaining();
-    final var back = Pickler.deserializeMany(Push.class, buffer);
+  public void testPickler1(Blackhole bh) throws Exception {
+    final Pickler<Push> pickler = Pickler.forRecord(Push.class);
+    final ByteBuffer readyToReadBack;
+    
+    // Write phase - serialize all Push records with automatic class name compression
+    try (final var writeBuffer = pickler.allocateForWriting(1024)) { //TODO: use maxSizeOf for precise allocation
+      for (var push : original) {
+        pickler.serialize(writeBuffer, push);
+      }
+      readyToReadBack = writeBuffer.flip(); // flip() calls close(), buffer is now unusable
+      nfp = readyToReadBack.remaining();
+      // In real usage: transmit readyToReadBack bytes to network or save to file
+    }
+    
+    // Read phase - read back from transmitted/saved bytes
+    final var readBuffer = pickler.wrapForReading(readyToReadBack);
+    final var back = new java.util.ArrayList<Push>();
+    for (int i = 0; i < original.length; i++) {
+      back.add(pickler.deserialize(readBuffer));
+    }
     bh.consume(back);
   }
 
