@@ -527,4 +527,42 @@ public class MachineryTests {
     }
   }
 
+  @Test 
+  void testPrimitiveWritePerformance() throws Exception {
+    // FIXME: NFP write performance regression - 10x slower than JDK on primitives
+    // This test ensures we catch performance regressions in primitive serialization
+    
+    record AllPrimitives(
+        boolean boolVal, byte byteVal, short shortVal, char charVal,
+        int intVal, long longVal, float floatVal, double doubleVal
+    ) {}
+    
+    final var testData = new AllPrimitives(
+        true, (byte)42, (short)1000, 'A', 123456, 9876543210L, 3.14f, 2.71828
+    );
+    
+    final var pickler = createPickler(AllPrimitives.class);
+    
+    // Measure NFP write performance
+    long startTime = System.nanoTime();
+    int iterations = 100_000;
+    
+    for (int i = 0; i < iterations; i++) {
+      try (final var writeBuffer = pickler.allocateForWriting(256)) {
+        pickler.serialize(writeBuffer, testData);
+        writeBuffer.flip();
+      }
+    }
+    
+    long nfpDuration = System.nanoTime() - startTime;
+    double nfpOpsPerSecond = (double) iterations / (nfpDuration / 1_000_000_000.0);
+    
+    LOGGER.info(() -> String.format("NFP Write Performance: %.0f ops/s", nfpOpsPerSecond));
+    
+    // NFP should achieve reasonable write performance (at least 50k ops/s for primitives)
+    // Current performance is ~125k ops/s, but should be much higher given read performance
+    assertTrue(nfpOpsPerSecond > 50_000, 
+               "NFP primitive write performance too low: " + nfpOpsPerSecond + " ops/s");
+  }
+
 }

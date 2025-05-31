@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit;
 import java.io.*;
 import java.nio.ByteBuffer;
 import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.WriteBuffer;
 
 /// Phase 1: Benchmark for all primitive types
 @BenchmarkMode(Mode.Throughput)
@@ -35,25 +36,47 @@ public class PrimitiveBenchmark {
 
     // NFP
     private Pickler<AllPrimitives> nfpPickler;
+    private WriteBuffer nfpWriteBuffer;
     
-    // Buffers sized based on measurements (will be updated after SizeCalculator run)
-    private ByteBuffer nfpBuffer = ByteBuffer.allocate(256); // Fair size: will measure actual
-    private ByteBuffer jdkBuffer = ByteBuffer.allocate(256); // Fair size: will measure actual
+    // Pre-allocated streams for fair comparison with JDK
+    private ByteArrayOutputStream baos;
+    private ByteArrayInputStream bais;
+    
+    // Pre-serialized data for read-only benchmarks
+    private ByteBuffer nfpSerializedData;
+    private byte[] jdkSerializedData;
+
+    @Setup(Level.Trial)
+    public void setupTrial() throws Exception {
+        // Initialize NFP pickler once
+        nfpPickler = Pickler.forRecord(AllPrimitives.class);
+        
+        // Pre-serialize data for read-only benchmarks
+        try (final var setupWriteBuffer = nfpPickler.allocateForWriting(256)) {
+            nfpPickler.serialize(setupWriteBuffer, testData);
+            nfpSerializedData = setupWriteBuffer.flip();
+        }
+        
+        // Pre-serialize JDK data
+        ByteArrayOutputStream setupBaos = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(setupBaos)) {
+            oos.writeObject(testData);
+        }
+        jdkSerializedData = setupBaos.toByteArray();
+    }
 
     @Setup(Level.Invocation)
     public void setup() {
-        // Initialize NFP pickler
-        nfpPickler = Pickler.forRecord(AllPrimitives.class);
-        
-        // Reset buffers
-        nfpBuffer.clear();
-        jdkBuffer.clear();
+        // Reset JDK streams for fair comparison
+        baos = new ByteArrayOutputStream();
+        // WriteBuffer cannot be reused after flip() - need fresh allocation per invocation
+        nfpWriteBuffer = nfpPickler.allocateForWriting(256);
     }
 
     @Benchmark
-    public void primitivesNfp(Blackhole bh) throws Exception {
-        // NFP serialization
-        try (final var writeBuffer = nfpPickler.allocateForWriting(256)) { // Fair size based on measurements
+    public void primitivesRoundtripNfp(Blackhole bh) throws Exception {
+        // NFP round-trip serialization using pre-allocated WriteBuffer
+        try (final var writeBuffer = nfpWriteBuffer) {
             nfpPickler.serialize(writeBuffer, testData);
             final var readyToReadBack = writeBuffer.flip();
             
@@ -65,15 +88,51 @@ public class PrimitiveBenchmark {
     }
 
     @Benchmark  
-    public void primitivesJdk(Blackhole bh) throws Exception {
-        // JDK serialization
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    public void primitivesRoundtripJdk(Blackhole bh) throws Exception {
+        // JDK round-trip serialization using pre-allocated stream
         try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
             oos.writeObject(testData);
         }
         
         // Deserialize
-        ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
+        bais = new ByteArrayInputStream(baos.toByteArray());
+        try (ObjectInputStream ois = new ObjectInputStream(bais)) {
+            AllPrimitives result = (AllPrimitives) ois.readObject();
+            bh.consume(result);
+        }
+    }
+
+    @Benchmark
+    public void primitivesWriteNfp(Blackhole bh) throws Exception {
+        // NFP write-only performance
+        try (final var writeBuffer = nfpWriteBuffer) {
+            nfpPickler.serialize(writeBuffer, testData);
+            final var readyToReadBack = writeBuffer.flip();
+            bh.consume(readyToReadBack);
+        }
+    }
+
+    @Benchmark  
+    public void primitivesWriteJdk(Blackhole bh) throws Exception {
+        // JDK write-only performance
+        try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+            oos.writeObject(testData);
+            bh.consume(baos.toByteArray());
+        }
+    }
+
+    @Benchmark
+    public void primitivesReadNfp(Blackhole bh) throws Exception {
+        // NFP read-only performance using pre-serialized data
+        final var readBuffer = nfpPickler.wrapForReading(nfpSerializedData.duplicate());
+        AllPrimitives result = nfpPickler.deserialize(readBuffer);
+        bh.consume(result);
+    }
+
+    @Benchmark  
+    public void primitivesReadJdk(Blackhole bh) throws Exception {
+        // JDK read-only performance using pre-serialized data
+        bais = new ByteArrayInputStream(jdkSerializedData);
         try (ObjectInputStream ois = new ObjectInputStream(bais)) {
             AllPrimitives result = (AllPrimitives) ois.readObject();
             bh.consume(result);

@@ -24,6 +24,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class RefactorTests {
 
+  public record AllPrimitives(
+      boolean boolVal, byte byteVal, short shortVal, char charVal,
+      int intVal, long longVal, float floatVal, double doubleVal
+  ) implements Serializable {}
+
   @BeforeAll
   static void setupLogging() {
     final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
@@ -1150,6 +1155,39 @@ public class RefactorTests {
         "Least significant bits should match");
     
     LOGGER.info("UUID round-trip serialization test completed successfully");
+  }
+
+  @Test
+  void testAllPrimitivesWrite() throws Exception {
+    LOGGER.info("=== Testing AllPrimitives write performance issue ===");
+    
+    final var testData = new AllPrimitives(
+        true, (byte)42, (short)1000, 'A', 123456, 9876543210L, 3.14f, 2.71828
+    );
+    
+    LOGGER.info(() -> "Test data: " + testData);
+    
+    // This should show detailed logging of where the reflection work happens
+    final var pickler = forRecord(AllPrimitives.class);
+    
+    LOGGER.info("=== Starting single write operation ===");
+    
+    LOGGER.finer("About to allocate WriteBuffer...");
+    try (final var writeBuffer = pickler.allocateForWriting(256)) {
+      LOGGER.finer("WriteBuffer allocated, about to serialize...");
+      pickler.serialize(writeBuffer, testData);
+      LOGGER.finer("Serialization complete, about to flip...");
+      final var readyToReadBack = writeBuffer.flip();
+      LOGGER.finer(() -> "Write complete, serialized " + readyToReadBack.remaining() + " bytes");
+      
+      // Verify round-trip
+      final var readBuffer = pickler.wrapForReading(readyToReadBack.duplicate());
+      AllPrimitives result = pickler.deserialize(readBuffer);
+      assertEquals(testData, result);
+      LOGGER.info("Round-trip verification successful");
+    }
+    
+    LOGGER.info("=== AllPrimitives test complete ===");
   }
 
 }
