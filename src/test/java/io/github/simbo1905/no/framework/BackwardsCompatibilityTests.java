@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2025 Simon Massey
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 package io.github.simbo1905.no.framework;
 
@@ -24,9 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * This test suite verifies that records can evolve by adding new fields
  * while maintaining the ability to deserialize data serialized with older schemas.
  */
-public class BackwardsCompatibilityTest {
+public class BackwardsCompatibilityTests {
 
-  static final Logger LOGGER = Logger.getLogger(BackwardsCompatibilityTest.class.getName());
+  static final Logger LOGGER = Logger.getLogger(BackwardsCompatibilityTests.class.getName());
 
   // Original schema with just one field
   static final String GENERATION_1 = """
@@ -86,18 +86,18 @@ public class BackwardsCompatibilityTest {
 
   @BeforeEach
   void setUp() {
-    System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+    //System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
   }
 
   @AfterEach
   void tearDown() {
-    System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+    //System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
   }
 
   @Test
   void testOriginalToEvolvedDeserializationStrict() throws Exception {
     // clear should force strict mode
-    System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+    //System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
     // Compile and class load
     Class<?> originalClass = compileAndClassLoad(compiler, FULL_CLASS_NAME, GENERATION_1);
     assertTrue(originalClass.isRecord(), "Compiled class should be a record");
@@ -130,7 +130,7 @@ public class BackwardsCompatibilityTest {
 
   @Test
   void testMultiGenerationEvolutionBackwards() throws Exception {
-    System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
+    //////System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
 
     multiGenerationalBackwardsTwice();
   }
@@ -181,13 +181,13 @@ public class BackwardsCompatibilityTest {
 
   @Test
   void testMultiGenerationEvolutionForwards() throws Exception {
-    System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.FORWARDS.name());
+    //////System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.FORWARDS.name());
     runTwoGenerationsForward();
   }
 
   @Test
   void testMultiGenerationEvolutionForwardsALL() throws Exception {
-    System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.ALL.name());
+    ////System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.ALL.name());
     runTwoGenerationsForward();
   }
 
@@ -236,7 +236,7 @@ public class BackwardsCompatibilityTest {
   @Test
   void testBackwardsCompatibilityDisabledFails() throws Exception {
     // Temporarily disable backwards compatibility
-    System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+    //System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
 
     // Compile the source code
     // Get the Java compiler
@@ -276,7 +276,7 @@ public class BackwardsCompatibilityTest {
 
   @Test
   void testFieldRenamingWithBackwardsCompatibility() throws Exception {
-    System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
+    ////System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
 
     // Define schema with renamed field but same structure
     final var renamedFieldSchema = """

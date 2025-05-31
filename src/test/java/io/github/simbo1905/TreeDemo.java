@@ -1,13 +1,12 @@
 package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
+import io.github.simbo1905.no.framework.ReadBuffer;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
 
-import java.nio.ByteBuffer;
-
-public class Demo2 {
+public class TreeDemo {
   public static void main(String[] args) {
 
     final var leaf1 = new LeafNode(42);
@@ -21,20 +20,17 @@ public class Demo2 {
 // Get a pickler for the TreeNode sealed interface
     final var pickler = Pickler.forSealedInterface(TreeNode.class);
 
-// Calculate buffer size needed for the whole graph reachable from the root node
-    final var bufferSize = pickler.sizeOf(originalRoot);
-
 // Allocate a buffer to hold just the root node
-    final var buffer = ByteBuffer.allocate(bufferSize);
+    final var buffer = pickler.allocateForWriting(pickler.maxSizeOf(originalRoot));
 
 // Serialize only the root node (which should include the entire graph)
-    pickler.serialize(originalRoot, buffer);
+    pickler.serialize(buffer, originalRoot);
 
 // Prepare buffer for reading
-    buffer.flip();
+    final ReadBuffer buf = pickler.wrapForReading(buffer.flip());
 
 // Deserialize the root node (which will reconstruct the entire graph)
-    final var deserializedRoot = pickler.deserialize(buffer);
+    final var deserializedRoot = pickler.deserialize(buf);
 
 // See junit tests that Validates the entire tree structure was properly deserialized
     TreeNode.areTreesEqual(originalRoot, deserializedRoot);

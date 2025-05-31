@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2025 Simon Massey
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 package io.github.simbo1905.no.framework;
 
 import org.junit.jupiter.api.Test;
@@ -61,9 +61,9 @@ public class SchemaEvolutionTest {
   @Test
   void testBasicSchemaEvolution() throws Exception {
     try {
-      System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
+//      System.setProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY, Pickler.Compatibility.BACKWARDS.name());
       // Step 1: Compile and load the original schema
-      Class<?> originalClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
+      Class<?> originalClass = BackwardsCompatibilityTests.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
       assertTrue(originalClass.isRecord(), "Compiled class should be a record");
 
       // Step 2: Create an instance of the original record
@@ -72,7 +72,7 @@ public class SchemaEvolutionTest {
       // Step 3: Serialize the original instance
       byte[] serializedData = serializeRecord(originalInstance);
 
-      Class<?> evolvedClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
+      Class<?> evolvedClass = BackwardsCompatibilityTests.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
       assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
 
       // Step 5: Deserialize using the evolved schema
@@ -84,7 +84,7 @@ public class SchemaEvolutionTest {
           "myNewInt", 42  // Should be the default value from the compatibility constructor
       ));
     } finally {
-      System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
+      //System.clearProperty(Pickler.Compatibility.COMPATIBILITY_SYSTEM_PROPERTY);
     }
   }
 
@@ -92,7 +92,7 @@ public class SchemaEvolutionTest {
   void testBasicSchemaEvolutionDisabledByDefault() throws Exception {
     // Step 1: Compile and load the original schema
     // Step 1: Compile and load the original schema
-    Class<?> originalClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
+    Class<?> originalClass = BackwardsCompatibilityTests.compileAndClassLoad(compiler, CLASS_NAME, ORIGINAL_SCHEMA);
     assertTrue(originalClass.isRecord(), "Compiled class should be a record");
 
     // Step 2: Create an instance of the original record
@@ -102,7 +102,7 @@ public class SchemaEvolutionTest {
     byte[] serializedData = serializeRecord(originalInstance);
 
     // Step 4: Compile and load the evolved schema
-    Class<?> evolvedClass = BackwardsCompatibilityTest.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
+    Class<?> evolvedClass = BackwardsCompatibilityTests.compileAndClassLoad(compiler, CLASS_NAME, EVOLVED_SCHEMA);
     assertTrue(evolvedClass.isRecord(), "Evolved class should be a record");
 
     // Step 5: Deserialize using the evolved schema
@@ -304,18 +304,19 @@ public class SchemaEvolutionTest {
     Class<? extends Record> recordClass = (Class<? extends Record>) record.getClass();
     Pickler pickler = Pickler.forRecord(recordClass);
 
-    // Calculate buffer size and allocate buffer
-    int size = pickler.sizeOf(record);
-    ByteBuffer buffer = ByteBuffer.allocate(size);
-
-    // Serialize the record
-    pickler.serialize(record, buffer);
-    buffer.flip();
-
-    // Return the serialized bytes
-    byte[] result = new byte[buffer.remaining()];
-    buffer.get(result);
-    return result;
+//    // Calculate buffer size and allocate buffer
+//    final var buffer = WriteBuffer.allocateSufficient(record);
+//
+//    // Serialize the record
+//    pickler.serialize(buffer, record);
+//    assertFalse(buffer.hasRemaining());
+//    final var buf = buffer.flip();
+//
+//    // Return the serialized bytes
+//    byte[] result = new byte[buf.remaining()];
+//    buf.get(result);
+//    return result;
+    return null;
   }
 
   /// Deserializes a record from bytes using the Pickler.
@@ -325,7 +326,8 @@ public class SchemaEvolutionTest {
   /// @return The deserialized record instance
   @SuppressWarnings({"unchecked"})
   public static Object deserializeRecord(Class<?> recordClass, byte[] bytes) {
-    return Pickler.forRecord((Class<? extends Record>) recordClass).deserialize(ByteBuffer.wrap(bytes));
+    final ReadBuffer buf = null; // pickler.wrapForReading(ByteBuffer.wrap(bytes));
+    return Pickler.forRecord((Class<? extends Record>) recordClass).deserialize(buf);
   }
 
   /// Verifies that a record instance has the expected component values.
