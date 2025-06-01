@@ -1,6 +1,9 @@
 package io.github.simbo1905.no.framework;
 
 import org.junit.jupiter.api.Test;
+
+import java.util.HashSet;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Tests for enum constants in sealed interfaces - reproduces Paxos benchmark bug
@@ -31,7 +34,11 @@ class EnumConstantTests {
         // FIXME: This test will fail due to enum serialization bug
         // Error: Cannot invoke "String.getBytes(java.nio.charset.Charset)" because "internedName" is null
         // at io.github.simbo1905.no.framework.Writers.writeCompressedClassName
-        
+
+      final var allClasses = Companion.recordClassHierarchy(DataCommand.class, new HashSet<>()).toArray();
+
+       final var pickler2 = Pickler.forRecord(DataCommand.class);
+
         final var pickler = Pickler.forSealedInterface(Command.class);
         
         // This should work but currently fails

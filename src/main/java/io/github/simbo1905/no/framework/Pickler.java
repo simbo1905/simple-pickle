@@ -47,7 +47,7 @@ public interface Pickler<T> {
       LOGGER.severe(() -> msg);
       throw new IllegalArgumentException(msg);
     }
-    // Get all permitted record subclasses. This will throw an exception if the class is not sealed or if any of the subclasses are not records or sealed interfaces.
+    // Get all permitted subclasses including records and enums
     final Class<?>[] subclasses = Companion.recordClassHierarchy(sealedClass, new HashSet<>()).toArray(Class<?>[]::new);
 
     LOGGER.fine(()->Stream.of(sealedClass).map(Object::toString).collect(Collectors.joining(",")) + " subclasses: " +
@@ -66,7 +66,6 @@ public interface Pickler<T> {
 
     @SuppressWarnings("unchecked") final Map<String, Class<?>> classesByShortName =
         Arrays.stream(subclasses)
-            .map(cls -> (Class<? extends Record>) cls) // Safe due to validateSealedRecordHierarchy
             .collect(Collectors.toMap(
                     cls -> cls.getName().substring(commonPrefixLength),
                     cls -> cls

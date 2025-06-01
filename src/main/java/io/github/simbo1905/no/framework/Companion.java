@@ -76,7 +76,7 @@ class Companion {
             current.isRecord()
                 ? Arrays.stream(current.getRecordComponents())
                 .map(RecordComponent::getType)
-                .filter(t -> t.isRecord() || t.isSealed())
+                .filter(t -> t.isRecord() || t.isSealed() || t.isEnum())
                 : Stream.empty()
         ).flatMap(child -> recordClassHierarchy(child, visited))
     );

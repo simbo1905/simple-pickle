@@ -5,13 +5,31 @@ import com.github.trex_paxos.Command;
 import com.github.trex_paxos.NoOperation;
 import com.github.trex_paxos.msg.Accept;
 import io.github.simbo1905.no.framework.Pickler;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.IntStream;
 
 public class PaxosTests {
+
+  @BeforeAll
+  static void setupLogging() {
+    String logLevel = System.getProperty("java.util.logging.ConsoleHandler.level");
+    if (logLevel != null) {
+      System.out.println("Logging initialized at level: " + logLevel);
+      Level level = Level.parse(logLevel);
+      Logger rootLogger = Logger.getLogger("");
+      ConsoleHandler consoleHandler = new ConsoleHandler();
+      consoleHandler.setLevel(level);
+      rootLogger.addHandler(consoleHandler);
+      rootLogger.setLevel(level);
+    }
+  }
 
   static final Accept[] original = {
       new Accept((short) 1, 2L, new BallotNumber((short) 3, 4, (short) 5), NoOperation.NOOP),
@@ -32,6 +50,31 @@ public class PaxosTests {
       IntStream.range(0, original.length).forEach(i -> {
         final var deserialized = pickler.deserialize(readBuffer); // Deserialize each Accept record from the buffer
         assert deserialized.equals(original[i]); // Verify that the deserialized record matches the original
+      });
+    }
+  }
+
+  @Test
+  void testAbstractCommandSealedInterface() throws Exception {
+    // Test direct serialization of sealed interface with enum and record permits
+    final var commandPickler = Pickler.forSealedInterface(com.github.trex_paxos.AbstractCommand.class);
+    
+    com.github.trex_paxos.AbstractCommand[] commands = {
+        NoOperation.NOOP,
+        new com.github.trex_paxos.Command("test".getBytes(StandardCharsets.UTF_8), (byte)42)
+    };
+    
+    final ByteBuffer readyToReadBack;
+    try( final var writeBuffer = commandPickler.allocateForWriting(1024)) {
+      for (var command : commands) {
+        commandPickler.serialize(writeBuffer, command);
+      }
+      readyToReadBack = writeBuffer.flip();
+    }
+    try( final var readBuffer = commandPickler.wrapForReading(readyToReadBack)) {
+      IntStream.range(0, commands.length).forEach(i -> {
+        final var deserialized = commandPickler.deserialize(readBuffer);
+        assert deserialized.equals(commands[i]);
       });
     }
   }
