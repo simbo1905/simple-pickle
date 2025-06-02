@@ -92,6 +92,26 @@ public interface Pickler<T> {
     return (Pickler<S>) Companion.REGISTRY.get(sealedClass);
   }
 
+  /// Create a unified pickler for any type (record, enum, or sealed interface).
+  /// This is the new unified entry point that replaces forRecord() and forSealedInterface().
+  /// 
+  /// @param <T> the type to create a pickler for
+  /// @param clazz the class representing the type - must be a record, enum, or sealed interface
+  /// @return a unified pickler that can handle the type and all its reachable nested types
+  /// @throws IllegalArgumentException if clazz is null or not a supported type
+  static <T> Pickler<T> of(Class<T> clazz) {
+    Objects.requireNonNull(clazz, "clazz cannot be null");
+    
+    if (!clazz.isRecord() && !clazz.isEnum() && !clazz.isSealed()) {
+      final var msg = "Class must be a record, enum, or sealed interface: " + clazz.getName();
+      LOGGER.severe(() -> msg);
+      throw new IllegalArgumentException(msg);
+    }
+    
+    LOGGER.info(() -> "Creating unified pickler for: " + clazz.getName());
+    return new PicklerImpl<>(clazz);
+  }
+
   int maxSizeOf(T record);
   WriteBuffer allocateForWriting(int size);
   WriteBuffer wrapForWriting(ByteBuffer buf);

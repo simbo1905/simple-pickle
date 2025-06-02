@@ -45,6 +45,10 @@ enum Constants {
     return typeMarker;
   }
 
+  public int wireMarker() {
+    return -typeMarker;
+  }
+
   public static Constants fromMarker(byte marker) {
     Constants result = null;
     for (Constants c : values()) {

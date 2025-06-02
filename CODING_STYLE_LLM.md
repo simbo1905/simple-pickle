@@ -42,6 +42,16 @@ IMPORTANT: Never disable tests written for logic that we are yet to write we do 
 * Limit private to security-related code
 * Avoid anti-patterns: boilerplate OOP, excessive layering, dependency injection overuse
 
+## Constants and Magic Numbers
+
+* **NEVER use magic numbers** - always use enum constants
+* **Wire protocol markers**: Use `Constants.TYPE.wireMarker()` not hardcoded negative numbers like `-2`
+* **Type markers**: Use `Constants.TYPE.marker()` not hardcoded positive numbers like `2`
+* **Type lookups**: Use `Constants.fromMarker(byte)` for reverse lookups
+* **Examples**: 
+  * ❌ `ZigZagEncoding.putInt(buffer, -2)` 
+  * ✅ `ZigZagEncoding.putInt(buffer, Constants.BOOLEAN.wireMarker())`
+
 ## Functional Style
 
 * Combine Records + static methods for functional programming
