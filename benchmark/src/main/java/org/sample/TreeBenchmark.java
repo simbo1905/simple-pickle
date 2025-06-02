@@ -31,7 +31,7 @@ public class TreeBenchmark {
   private ByteArrayOutputStream byteArrayOutputStream;
 
   // Pickler for TreeNode sealed interface
-  private static final Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
+  private static final Pickler<TreeNode> treeNodePickler = Pickler.of(TreeNode.class);
 
   @Setup(Level.Trial)
   public void setupTrial() {
@@ -43,7 +43,7 @@ public class TreeBenchmark {
   public void setupInvocation() {
     // Calculate precise buffer size for Pickler
     int bufferSize = treeNodePickler.maxSizeOf(rootNode);
-    writeBuffer = treeNodePickler.allocateForWriting(bufferSize);
+    writeBuffer = treeNodeByteBuffer.allocate(bufferSize);
 
     // Allocate a buffer for Protobuf and JDK serialization (use same size for fair comparison)
     buffer = ByteBuffer.allocate(Math.max(bufferSize, 1024)); // At least 1KB for other methods
@@ -125,14 +125,14 @@ public class TreeBenchmark {
     final ByteBuffer readyToReadBack;
     
     // Write phase - serialize tree
-    try (final var writeBuffer = treeNodePickler.allocateForWriting(2048)) { // Fair size: NFP=1096, JDK=1690, rounded to 2KB
+    try (final var writeBuffer = treeNodeByteBuffer.allocate(2048)) { // Fair size: NFP=1096, JDK=1690, rounded to 2KB
       treeNodePickler.serialize(writeBuffer, rootNode);
       readyToReadBack = writeBuffer.flip(); // flip() calls close(), buffer is now unusable
       // In real usage: transmit readyToReadBack bytes to network or save to file
     }
 
     // Read phase - read back from transmitted/saved bytes
-    final var readBuffer = treeNodePickler.wrapForReading(readyToReadBack);
+    final var readBuffer = treeNode(readyToReadBack);
     TreeNode deserializedRoot = treeNodePickler.deserialize(readBuffer);
     bh.consume(deserializedRoot);
   }

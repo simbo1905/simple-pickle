@@ -49,10 +49,10 @@ public class PrimitiveBenchmark {
     @Setup(Level.Trial)
     public void setupTrial() throws Exception {
         // Initialize NFP pickler once
-        nfpPickler = Pickler.forRecord(AllPrimitives.class);
+        nfpPickler = Pickler.of(AllPrimitives.class);
         
         // Pre-serialize data for read-only benchmarks
-        try (final var setupWriteBuffer = nfpPickler.allocateForWriting(256)) {
+        try (final var setupWriteBuffer = nfpByteBuffer.allocate(256)) {
             nfpPickler.serialize(setupWriteBuffer, testData);
             nfpSerializedData = setupWriteBuffer.flip();
         }
@@ -70,7 +70,7 @@ public class PrimitiveBenchmark {
         // Reset JDK streams for fair comparison
         baos = new ByteArrayOutputStream();
         // WriteBuffer cannot be reused after flip() - need fresh allocation per invocation
-        nfpWriteBuffer = nfpPickler.allocateForWriting(256);
+        nfpWriteBuffer = nfpByteBuffer.allocate(256);
     }
 
     @Benchmark
@@ -81,7 +81,7 @@ public class PrimitiveBenchmark {
             final var readyToReadBack = writeBuffer.flip();
             
             // Deserialize
-            final var readBuffer = nfpPickler.wrapForReading(readyToReadBack);
+            final var readBuffer = nfp(readyToReadBack);
             AllPrimitives result = nfpPickler.deserialize(readBuffer);
             bh.consume(result);
         }
@@ -124,7 +124,7 @@ public class PrimitiveBenchmark {
     @Benchmark
     public void primitivesReadNfp(Blackhole bh) throws Exception {
         // NFP read-only performance using pre-serialized data
-        final var readBuffer = nfpPickler.wrapForReading(nfpSerializedData.duplicate());
+        final var readBuffer = nfp(nfpSerializedData.duplicate());
         AllPrimitives result = nfpPickler.deserialize(readBuffer);
         bh.consume(result);
     }

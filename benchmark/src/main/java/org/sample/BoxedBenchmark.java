@@ -47,18 +47,18 @@ public class BoxedBenchmark {
     @Setup(Level.Invocation)
     public void setup() {
         // Initialize NFP pickler
-        nfpPickler = Pickler.forRecord(AllBoxed.class);
+        nfpPickler = Pickler.of(AllBoxed.class);
     }
 
     @Benchmark
     public void boxedNfp(Blackhole bh) throws Exception {
         // NFP serialization
-        try (final var writeBuffer = nfpPickler.allocateForWriting(512)) { // Fair size based on measurements
+        try (final var writeBuffer = nfpByteBuffer.allocate(512)) { // Fair size based on measurements
             nfpPickler.serialize(writeBuffer, testData);
             final var readyToReadBack = writeBuffer.flip();
             
             // Deserialize
-            final var readBuffer = nfpPickler.wrapForReading(readyToReadBack);
+            final var readBuffer = nfp(readyToReadBack);
             AllBoxed result = nfpPickler.deserialize(readBuffer);
             bh.consume(result);
         }
@@ -83,12 +83,12 @@ public class BoxedBenchmark {
     @Benchmark
     public void boxedWithNullsNfp(Blackhole bh) throws Exception {
         // NFP serialization with nulls
-        try (final var writeBuffer = nfpPickler.allocateForWriting(512)) {
+        try (final var writeBuffer = nfpByteBuffer.allocate(512)) {
             nfpPickler.serialize(writeBuffer, testDataWithNulls);
             final var readyToReadBack = writeBuffer.flip();
             
             // Deserialize
-            final var readBuffer = nfpPickler.wrapForReading(readyToReadBack);
+            final var readBuffer = nfp(readyToReadBack);
             AllBoxed result = nfpPickler.deserialize(readBuffer);
             bh.consume(result);
         }

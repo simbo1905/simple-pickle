@@ -22,18 +22,13 @@ class Companion {
 
   ///  Here we are typing things as `Record` to avoid the need for a cast
   @SuppressWarnings("unchecked")
-  static <R extends Record> Pickler<R> manufactureRecordPickler(final Class<R> recordClass) {
+  static <R extends Record> RecordPickler<R> manufactureRecordPickler(final Class<R> recordClass) {
     Objects.requireNonNull(recordClass);
     // Check registry first to prevent infinite recursion
-    Pickler<?> existing = REGISTRY.get(recordClass);
-    if (existing != null) {
-      return (Pickler<R>) existing;
-    }
-    
+
     // Phase 1: Create main pickler (analysis only) and add to registry
     final var result = new RecordPickler<>(recordClass);
-    REGISTRY.putIfAbsent(recordClass, result);
-    
+
     // Phase 2: Create delegate picklers for discovered nested types
     populateDelegatePicklers(result);
     
@@ -47,8 +42,8 @@ class Companion {
       if (!REGISTRY.containsKey(discoveredType)) {
         LOGGER.info("Creating delegate pickler for nested record: " + discoveredType.getName());
         Class<? extends Record> recordType = (Class<? extends Record>) discoveredType;
-        Pickler<?> delegatePickler = manufactureRecordPickler(recordType);
-        pickler.delegatePicklers.put(discoveredType, delegatePickler);
+        RecordPickler<? extends Record> delegatePickler = manufactureRecordPickler(recordType);
+        //pickler.delegatePicklers.put(discoveredType, delegatePickler);
       } else {
         LOGGER.info("Using existing pickler from registry for: " + discoveredType.getName());
         pickler.delegatePicklers.put(discoveredType, REGISTRY.get(discoveredType));
@@ -81,7 +76,17 @@ class Companion {
 
             current.isRecord()
                 ? Arrays.stream(current.getRecordComponents())
-                .map(RecordComponent::getType)
+                .flatMap(component -> {
+                  LOGGER.finer(() -> "Analyzing component " + component.getName() + " with type " + component.getGenericType());
+                  try {
+                    TypeStructure structure = TypeStructure.analyze(component.getGenericType());
+                    LOGGER.finer(() -> "Component " + component.getName() + " discovered types: " + structure.types().stream().map(Class::getSimpleName).toList());
+                    return structure.types().stream();
+                  } catch (Exception e) {
+                    LOGGER.finer(() -> "Failed to analyze component " + component.getName() + ": " + e.getMessage());
+                    return Stream.of(component.getType()); // Fallback to direct type
+                  }
+                })
                 .filter(t -> t.isRecord() || t.isSealed() || t.isEnum())
                 : Stream.empty()
         ).flatMap(child -> recordClassHierarchy(child, visited))
@@ -98,10 +103,6 @@ class Companion {
       "double", double.class
   );
 
-  /// This method cannot be inlined as it is required as a type witness to allow the compiler to downcast the pickler
-  @SuppressWarnings({"unchecked", "rawtypes"})
-  static void serializeWithPickler(WriteBufferImpl buf, Pickler<?> pickler, Object object) {
-    ((RecordPickler) pickler).serialize(buf, (Record) object);
-  }
+
 
 }

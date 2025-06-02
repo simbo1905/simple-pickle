@@ -58,4 +58,17 @@ enum Constants {
     }
     return result;
   }
+  
+  public static Constants fromClass(Class<?> clazz) {
+    Constants result = null;
+    for (Constants c : values()) {
+      if (c.clazz != null && c.clazz.equals(clazz)) {
+        result = c;
+      }
+    }
+    if (result == null) {
+      throw new IllegalArgumentException("Unknown class: " + clazz);
+    }
+    return result;
+  }
 }

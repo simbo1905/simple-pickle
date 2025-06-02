@@ -13,13 +13,13 @@ import static io.github.simbo1905.no.framework.Companion.nameToBasicClass;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.Constants.*;
 
-class SealedPickler<S> implements Pickler<S> {
-  final Map<Class<? extends S>, Pickler<? extends S>> subPicklers;
-  final Map<String, Class<?>> recordClassByName;
-  final Map<String, Class<?>> nameToRecordClass = new HashMap<>(nameToBasicClass);
+class SealedPickler<S>  {
+   Map<Class<? extends S>, Pickler<? extends S>> subPicklers;
+   Map<String, Class<?>> recordClassByName;
+   Map<String, Class<?>> nameToRecordClass = new HashMap<>(nameToBasicClass);
   
   // Combined class name mappings from all delegatee RecordPicklers
-  final ClassNameMappings combinedClassNameMappings;
+   ClassNameMappings combinedClassNameMappings;
 
   public SealedPickler(
       Map<Class<? extends S>, Pickler<? extends S>> subPicklers,
@@ -32,10 +32,10 @@ class SealedPickler<S> implements Pickler<S> {
     this.nameToRecordClass.putAll(classesByShortName);
     
     // Collect ClassNameMappings from all delegatee RecordPicklers and merge them
-    ClassNameMappings[] mappingsArray = subPicklers.values().stream()
-        .filter(pickler -> pickler instanceof RecordPickler<?>)
-        .map(pickler -> ((RecordPickler<?>) pickler).getClassNameMappings())
-        .toArray(ClassNameMappings[]::new);
+//    ClassNameMappings[] mappingsArray = subPicklers.values().stream()
+//        .filter(pickler -> pickler instanceof RecordPickler<?>)
+//        .map(pickler -> ((RecordPickler<?>) pickler).getClassNameMappings())
+//        .toArray(ClassNameMappings[]::new);
     
     // Create additional mappings for enum classes that don't have picklers
     Map<Class<?>, String> enumClassMappings = classesByShortName.entrySet().stream()
@@ -55,24 +55,22 @@ class SealedPickler<S> implements Pickler<S> {
     ClassNameMappings enumMappings = new ClassNameMappings(enumClassMappings, enumNameMappings);
     
     // TODO revert to FINER logging after bug fix
-    LOGGER.info(() -> "SealedPickler: collected " + mappingsArray.length + " class name mappings from delegatee picklers");
     LOGGER.info(() -> "SealedPickler: collected " + enumClassMappings.size() + " enum class mappings");
     
-    // Merge record pickler mappings with enum mappings
-    ClassNameMappings[] allMappings = new ClassNameMappings[mappingsArray.length + 1];
-    System.arraycopy(mappingsArray, 0, allMappings, 0, mappingsArray.length);
-    allMappings[mappingsArray.length] = enumMappings;
-    
-    this.combinedClassNameMappings = ClassNameMappings.merge(allMappings);
+//    // Merge record pickler mappings with enum mappings
+//    ClassNameMappings[] allMappings = new ClassNameMappings[mappingsArray.length + 1];
+//    System.arraycopy(mappingsArray, 0, allMappings, 0, mappingsArray.length);
+//    allMappings[mappingsArray.length] = enumMappings;
+//
+//    this.combinedClassNameMappings = ClassNameMappings.merge(allMappings);
     // TODO revert to FINER logging after bug fix
-    LOGGER.info(() -> "SealedPickler: final combined class mappings: " + 
-        combinedClassNameMappings.classToInternedName().entrySet().stream()
-            .map(e -> e.getKey().getSimpleName() + "->" + e.getValue())
-            .collect(Collectors.toList()));
+//    LOGGER.info(() -> "SealedPickler: final combined class mappings: " +
+//        combinedClassNameMappings.classToInternedName().entrySet().stream()
+//            .map(e -> e.getKey().getSimpleName() + "->" + e.getValue())
+//            .collect(Collectors.toList()));
   }
 
   /// Serialize sealed interface permit - either a record or an enum.
-  @Override
   public int serialize(WriteBuffer buffer, S object) {
     Objects.requireNonNull(buffer, "buffer");
     if (buffer.isClosed()) {
@@ -98,7 +96,7 @@ class SealedPickler<S> implements Pickler<S> {
         throw new IllegalStateException("No pickler found for record type: " + concreteType.getName());
       }
       Writers.writeCompressedClassName(buf, object.getClass());
-      Companion.serializeWithPickler(buf, pickler, object);
+      //Companion.serializeWithPickler(buf, pickler, object);
     } else if (concreteType.isEnum()) {
       // Handle enum permit - write ENUM marker and serialize directly without class name compression
       LOGGER.finer(() -> "SealedPickler.serialize: writing ENUM marker for " + concreteType.getSimpleName());
@@ -126,7 +124,6 @@ class SealedPickler<S> implements Pickler<S> {
     return buf.position() - startPosition;
   }
 
-  @Override
   public S deserialize(ReadBuffer readBuffer) {
     final var buf = (ReadBufferImpl) readBuffer;
     final var buffer = buf.buffer;
@@ -148,14 +145,14 @@ class SealedPickler<S> implements Pickler<S> {
       buffer.get(); // consume RECORD marker
       LOGGER.finer(() -> "SealedPickler.deserialize: deserializing RECORD permit");
       Class<?> clazz = Writers.readCompressedClassName(buf);
-      final RecordPickler<?> pickler = (RecordPickler<?>) subPicklers.get(clazz);
+      final RecordPickler<?> pickler = null;// (RecordPickler<?>) subPicklers.get(clazz);
       if (pickler == null) {
         throw new IllegalStateException("No pickler found for record " + clazz.getName() + " in sealed hierarchy: " +
             String.join(",", this.recordClassByName.keySet()));
       }
       try {
         //noinspection unchecked
-        return (S) pickler.deserialize(buf);
+        return (S) null;
       } catch (RuntimeException e) {
         throw e;
       } catch (Throwable t) {
@@ -202,7 +199,6 @@ class SealedPickler<S> implements Pickler<S> {
     }
   }
 
-  @Override
   public WriteBuffer allocateForWriting(int size) {
     return new WriteBufferImpl(
         ByteBuffer.allocate(size),
@@ -210,7 +206,6 @@ class SealedPickler<S> implements Pickler<S> {
     );
   }
 
-  @Override
   public WriteBuffer wrapForWriting(ByteBuffer buf) {
     return new WriteBufferImpl(
         buf,
@@ -218,7 +213,6 @@ class SealedPickler<S> implements Pickler<S> {
     );
   }
 
-  @Override
   public int maxSizeOf(S record) {
     if (record == null) {
       return 1; // NULL marker
@@ -244,7 +238,6 @@ class SealedPickler<S> implements Pickler<S> {
     }
   }
 
-  @Override
   public ReadBuffer allocateForReading(int size) {
     ReadBufferImpl readBuffer = new ReadBufferImpl(
         ByteBuffer.allocate(size),
@@ -254,13 +247,12 @@ class SealedPickler<S> implements Pickler<S> {
     return readBuffer;
   }
 
-  @Override
   public ReadBuffer wrapForReading(ByteBuffer buf) {
     ReadBufferImpl readBuffer = new ReadBufferImpl(
         buf,
         combinedClassNameMappings.shortNameToClass()::get
     );
-    LOGGER.finer(() -> "SealedPickler.wrapForReading: created ReadBuffer with parentReflection=" + (readBuffer.parentReflection != null ? "present" : "null"));
+    LOGGER.finer(() -> "Sealed: created ReadBuffer with parentReflection=" + (readBuffer.parentReflection != null ? "present" : "null"));
     return readBuffer;
   }
 }

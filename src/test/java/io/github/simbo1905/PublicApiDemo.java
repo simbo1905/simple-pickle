@@ -3,6 +3,7 @@ package io.github.simbo1905;
 import io.github.simbo1905.no.framework.Pickler;
 import org.junit.jupiter.api.Assertions;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -44,30 +45,29 @@ public class PublicApiDemo {
   static List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
   public static void main(String[] args) throws Exception {
-    Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
+    Pickler<Animal> pickler = Pickler.of(Animal.class);
     // TODO: fix the allocateSufficient of WriteBuffer
 
-    final var buffer = pickler.allocateForWriting(1024);
+    final var buffer = ByteBuffer.allocate(1024);
 
-    buffer.putVarInt(animals.size());
+    buffer.putInt(animals.size());
 
     for (Animal animal : animals) {
       pickler.serialize(buffer, animal);
     }
 
     // Prepare the buffer for reading
-    try (final var buf = pickler.wrapForReading(buffer.flip())) {
+    buffer.flip();
 
-      final int size = buf.getVarInt();
+    final int size = buffer.getInt();
 
-      IntStream.range(0, size).forEach(i -> {
-        Animal animal = animals.get(i);
-        Animal deserializedAnimal = pickler.deserialize(buf);
-        Assertions.assertEquals(animal, deserializedAnimal);
-      });
+    IntStream.range(0, size).forEach(i -> {
+      Animal animal = animals.get(i);
+      Animal deserializedAnimal = pickler.deserialize(buffer);
+      Assertions.assertEquals(animal, deserializedAnimal);
+    });
 
-      System.out.println("All animals serialized and deserialized correctly!");
-    }
+    System.out.println("All animals serialized and deserialized correctly!");
   }
 }
 

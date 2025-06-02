@@ -181,18 +181,7 @@ record RecordReflection<R extends Record>(MethodHandle constructor, MethodHandle
         discoveredRecordTypes);
   }
 
-  /// Package-private method to create delegate picklers using the global registry
-  @SuppressWarnings("unchecked")
-  static <T extends Record> RecordPickler<T> manufactureDelegateeRecordPickler(Class<T> delegateClass, RecordReflection<?> parentReflection) {
-    // Check global registry first
-    Pickler<?> existingPickler = Companion.REGISTRY.get(delegateClass);
-    if (existingPickler != null) {
-      return (RecordPickler<T>) existingPickler;
-    }
 
-    // Create new pickler using standard factory method - this will handle registry caching
-    return (RecordPickler<T>) Companion.manufactureRecordPickler(delegateClass);
-  }
 
   /// This method returns a function that when passed our record will call a direct method handle accessor
   /// and perform a null check guard. If the component is null it will write a NULL marker to the buffer.
@@ -324,9 +313,18 @@ record TypeStructure(List<Tag> tags, List<Class<?>> types, Class<?> recordClass)
     // TODO this is ugly can be made more stream oriented
     while (true) {
       if (current instanceof Class<?> clazz) {
-        tags.add(Tag.fromClass(clazz));
-        types.add(clazz);
-        return new TypeStructure(tags, types);
+        if (clazz.isArray()) {
+          // Handle array class like Person[].class
+          tags.add(Tag.ARRAY);
+          Class<?> componentType = clazz.getComponentType();
+          current = componentType; // Continue with component type
+          continue;
+        } else {
+          // Regular class - terminal case
+          tags.add(Tag.fromClass(clazz));
+          types.add(clazz);
+          return new TypeStructure(tags, types);
+        }
       }
 
       if (current instanceof ParameterizedType paramType) {
@@ -588,11 +586,9 @@ final class Writers {
     Writers.writeCompressedClassName(writeBufferImpl, value.getClass());
 
     if (value instanceof Record record) {
-      @SuppressWarnings("unchecked")
-      RecordPickler<Record> delegatePickler = (RecordPickler<Record>) RecordReflection.manufactureDelegateeRecordPickler(record.getClass(), writeBufferImpl.parentReflection);
       LOGGER.fine(() -> "DELEGATING_RECORD_WRITER using delegate pickler for " + record.getClass().getSimpleName() + " - about to serialize components");
       // Serialize just the record components using the delegate's reflection
-      delegatePickler.reflection.serialize(writeBufferImpl, record);
+      //delegatePickler.reflection.serialize(writeBufferImpl, record);
       LOGGER.fine(() -> "DELEGATING_RECORD_WRITER completed nested serialization for " + record.getClass().getSimpleName());
     } else {
       throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
@@ -606,10 +602,9 @@ final class Writers {
     LOGGER.fine(() -> "Writing SAME_TYPE - position=" + buffer.position() + " class=" + value.getClass().getSimpleName());
     buffer.put(Constants.SAME_TYPE.marker());
     if (value instanceof Record record) {
-      @SuppressWarnings("unchecked")
-      RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
+//      RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.of(record.getClass());
       // Serialize the record using the pickler
-      nestedPickler.serialize(buf, record);
+      //nestedPickler.serialize(buf, record);
     } else {
       throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
     }
@@ -736,9 +731,8 @@ final class Writers {
         Writers.writeCompressedClassName(writeBufferImpl, componentType);
         
         for (Record record : records) {
-          @SuppressWarnings("unchecked")
-          RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-          nestedPickler.serialize(buf, record);
+//          RecordPickler<Record> nestedPickler = (RecordPickler<Record>) Pickler.of(record.getClass());
+//          nestedPickler.serialize(buf, record);
         }
       }
       case short[] shorts -> {
@@ -1114,11 +1108,10 @@ final class Readers {
     // Use shared class name decompression logic
     Class<?> clazz = Writers.readCompressedClassName(readBuffer);
 
-    @SuppressWarnings("unchecked")
-    RecordPickler<Record> delegatePickler = (RecordPickler<Record>) RecordReflection.manufactureDelegateeRecordPickler((Class<? extends Record>) clazz, readBuffer.parentReflection);
+//    RecordPickler<Record> delegatePickler = (RecordPickler<Record>) RecordReflection.manufactureDelegateeRecordPickler((Class<? extends Record>) clazz, readBuffer.parentReflection);
     // We must pass the same ReadBufferImpl instance to maintain class name compression
     try {
-      return delegatePickler.reflection.deserialize(readBuffer);
+      return null;// delegatePickler.reflection.deserialize(readBuffer);
     } catch (Throwable e) {
       throw new RuntimeException("Failed to deserialize record of type " + clazz.getName(), e);
     }
@@ -1129,7 +1122,7 @@ final class Readers {
     RecordPickler<Record> nestedPickler;
     if( recordClass != null && recordClass.isRecord()) {
       Class<? extends Record> typedRecordClass = (Class<? extends Record>) recordClass;
-      nestedPickler = (RecordPickler<Record>) Pickler.forRecord(typedRecordClass);
+      nestedPickler = null;// (RecordPickler<Record>) Pickler.of(typedRecordClass);
     } else {
       throw new IllegalArgumentException("Expected a Record class but got: " + recordClass);
     }
@@ -1276,7 +1269,7 @@ final class Readers {
         
         IntStream.range(0, length).forEach(i -> {
           // TODO resolve the interned name and deserialize the record
-          records[i] = null; // nestedPickler.deserialize(pickler.wrapForReading(buffer));
+          records[i] = null; // nestedPickler.deserialize((buffer));
         });
         return records;
       }
@@ -1533,12 +1526,11 @@ final class Readers {
     if (!(value instanceof Record record)) {
       throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
     }
-    @SuppressWarnings("unchecked")
-    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
+//    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.of(record.getClass());
     // RECORD marker + class name size + record content
     String className = record.getClass().getSimpleName();
     int classNameSize = ZigZagEncoding.sizeOf(className.length()) + className.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
-    return 1 + classNameSize + pickler.reflection.maxSize(record);
+    return 1 + classNameSize ; // + pickler.reflection.maxSize(record);
   };
 
   static ToIntFunction<Object> ARRAY_SIZE = (value) -> {
@@ -1636,9 +1628,8 @@ final class Readers {
     if (!(value instanceof Record record)) {
       throw new IllegalArgumentException("Expected a Record but got: " + value.getClass().getName());
     }
-    @SuppressWarnings("unchecked")
-    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.forRecord(record.getClass());
-    return 1 + pickler.reflection.maxSize(record); // 1 byte for SAME_TYPE marker + recursive size
+//    RecordPickler<Record> pickler = (RecordPickler<Record>) Pickler.of(record.getClass());
+    return 1 ; //+ pickler.reflection.maxSize(record); // 1 byte for SAME_TYPE marker + recursive size
   };
 
   static ToIntFunction<Object> ENUM_SIZE = (value) -> {

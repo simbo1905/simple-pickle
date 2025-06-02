@@ -36,9 +36,9 @@ public class SizeCalculator {
         System.out.println("Tree nodes: 100 (balanced tree)");
         
         // NFP size
-        final Pickler<TreeNode> treePickler = Pickler.forSealedInterface(TreeNode.class);
+        final Pickler<TreeNode> treePickler = Pickler.of(TreeNode.class);
         int nfpSize;
-        try (final var writeBuffer = treePickler.allocateForWriting(8192)) { // Large buffer to avoid overflow
+        try (final var writeBuffer = treeByteBuffer.allocate(8192)) { // Large buffer to avoid overflow
             nfpSize = treePickler.serialize(writeBuffer, rootNode);
         }
         
@@ -68,9 +68,9 @@ public class SizeCalculator {
         System.out.println("AllPrimitives record: " + testData);
         
         // NFP size
-        final Pickler<PrimitiveBenchmark.AllPrimitives> primitivePickler = Pickler.forRecord(PrimitiveBenchmark.AllPrimitives.class);
+        final Pickler<PrimitiveBenchmark.AllPrimitives> primitivePickler = Pickler.of(PrimitiveBenchmark.AllPrimitives.class);
         int nfpSize;
-        try (final var writeBuffer = primitivePickler.allocateForWriting(1024)) { // Safe buffer size
+        try (final var writeBuffer = primitiveByteBuffer.allocate(1024)) { // Safe buffer size
             nfpSize = primitivePickler.serialize(writeBuffer, testData);
         }
         

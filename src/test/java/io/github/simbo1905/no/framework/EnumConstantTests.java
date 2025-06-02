@@ -2,6 +2,7 @@ package io.github.simbo1905.no.framework;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.ByteBuffer;
 import java.util.HashSet;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -37,13 +38,13 @@ class EnumConstantTests {
 
       final var allClasses = Companion.recordClassHierarchy(DataCommand.class, new HashSet<>()).toArray();
 
-       final var pickler2 = Pickler.forRecord(DataCommand.class);
+       final var pickler2 = Pickler.of(DataCommand.class);
 
-        final var pickler = Pickler.forSealedInterface(Command.class);
+        final var pickler = Pickler.of(Command.class);
         
         // This should work but currently fails
         assertDoesNotThrow(() -> {
-            final var buffer = pickler.allocateForWriting(1024);
+            final var buffer = ByteBuffer.allocate(1024);
             pickler.serialize(buffer, NoOperation.NOOP);
         }, "Enum constant serialization should not throw NPE");
     }
@@ -52,11 +53,11 @@ class EnumConstantTests {
     void testEnumInRecordSerialization() {
         // FIXME: This test may also fail due to enum handling
         
-        final var pickler = Pickler.forRecord(NoOperation.class);
+        final var pickler = Pickler.of(NoOperation.class);
         final var operation = new NoOperation(Operation.READ);
         
         assertDoesNotThrow(() -> {
-            final var buffer = pickler.allocateForWriting(256);
+            final var buffer = ByteBuffer.allocate(256);
             pickler.serialize(buffer, operation);
         }, "Enum in record serialization should work");
     }

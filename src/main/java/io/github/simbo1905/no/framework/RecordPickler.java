@@ -5,7 +5,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-final class RecordPickler<R extends Record> implements Pickler<R> {
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+
+final class RecordPickler<R extends Record> {
 
   final RecordReflection<R> reflection;
   private final Class<R> recordClass;
@@ -46,12 +48,10 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     return reflection.shortNameToClass().get(name);
   }
 
-  @Override
   public WriteBuffer wrapForWriting(ByteBuffer buf) {
     return new WriteBufferImpl(buf, this::classToInternedName);
   }
 
-  @Override
   public ReadBuffer allocateForReading(int size) {
     return new ReadBufferImpl(ByteBuffer.allocate(size), this::internedNameToClass);
   }
@@ -62,7 +62,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     return buffer;
   }
 
-  @Override
   public int serialize(WriteBuffer buffer, R object) {
     // Validations
     Objects.requireNonNull(buffer);
@@ -77,17 +76,10 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     return buffer.position() - startPos;
   }
 
-  @Override
-  public R deserialize(ReadBuffer readBuffer) {
-    Objects.requireNonNull(readBuffer);
-    if (readBuffer.isClosed()) {
-      throw new IllegalStateException("PackedBuffer is closed");
-    }
-    final var buf = ((ReadBufferImpl) readBuffer);
-    buf.buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
-    buf.currentRecordClass = recordClass;
+  public R deserialize(ByteBuffer buffer) {
+    buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     try {
-      return this.reflection.deserialize(buf);
+      return null;//this.reflection.deserialize(buffer);
     } catch (RuntimeException e) {
       throw e;
     } catch (Throwable t) {
@@ -95,7 +87,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     }
   }
 
-  @Override
   public WriteBuffer allocateForWriting(int totalSize) {
     WriteBufferImpl buffer = new WriteBufferImpl(ByteBuffer.allocate(totalSize), this::classToInternedName);
     buffer.parentReflection = this.reflection;
@@ -118,7 +109,6 @@ final class RecordPickler<R extends Record> implements Pickler<R> {
     return reflection.deserialize(buf);
   }
 
-  @Override
   public int maxSizeOf(R record) {
     return reflection.maxSize(record);
   }

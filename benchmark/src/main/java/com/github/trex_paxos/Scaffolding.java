@@ -14,11 +14,11 @@ public class Scaffolding {
     final long leastSigBits = 0xa716446655440000L;
     final var originalUuid = new UUID(mostSigBits, leastSigBits);
     final var originalRecord = new UserSession("session123", originalUuid, System.currentTimeMillis());
-    final var pickler = Pickler.forRecord(UserSession.class);
+    final var pickler = Pickler.of(UserSession.class);
     final ByteBuffer readyToReadBack;
     
     // Write phase - serialize record
-    try (final var writeBuffer = pickler.allocateForWriting(1024)) { //TODO: migrate all tests to use this pattern - using 1KB for fair comparison
+    try (final var writeBuffer = ByteBuffer.allocate(1024)) { //TODO: migrate all tests to use this pattern - using 1KB for fair comparison
       int actualSize = pickler.serialize(writeBuffer, originalRecord);
       LOGGER.info(() -> "Serialized record, actual size: " + actualSize + " bytes");
       
@@ -28,7 +28,7 @@ public class Scaffolding {
     }
 
     // Read phase - read back from transmitted/saved bytes
-    final var readBuffer = pickler.wrapForReading(readyToReadBack);
+    final var readBuffer = (readyToReadBack);
     final var deserializedRecord = pickler.deserialize(readBuffer);
     LOGGER.info(() -> "Deserialized record: " + deserializedRecord);
 

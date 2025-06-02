@@ -38,26 +38,25 @@ public class PaxosTests {
 
   @Test
   void testPaxosAccepts() throws Exception {
-    final var pickler = Pickler.forRecord(Accept.class);
+    final var pickler = Pickler.of(Accept.class);
     final ByteBuffer readyToReadBack;
-    try( final var writeBuffer = pickler.allocateForWriting(2048)) { // Allocate a buffer for writing
+    final var writeBuffer = ByteBuffer.allocate(2048); // Allocate a buffer for writing
       for (var accept : original) {
         pickler.serialize(writeBuffer, accept); // Serialize each Accept record into the buffer
-      }
-      readyToReadBack = writeBuffer.flip(); // Prepare the buffer for reading
     }
-    try( final var readBuffer = pickler.wrapForReading(readyToReadBack)) { // Allocate a buffer for reading
-      IntStream.range(0, original.length).forEach(i -> {
-        final var deserialized = pickler.deserialize(readBuffer); // Deserialize each Accept record from the buffer
-        assert deserialized.equals(original[i]); // Verify that the deserialized record matches the original
-      });
-    }
+    readyToReadBack = writeBuffer.flip(); // Prepare the buffer for reading
+    
+    final var readBuffer = readyToReadBack; // Allocate a buffer for reading
+    IntStream.range(0, original.length).forEach(i -> {
+      final var deserialized = pickler.deserialize(readBuffer); // Deserialize each Accept record from the buffer
+      assert deserialized.equals(original[i]); // Verify that the deserialized record matches the original
+    });
   }
 
   @Test
   void testAbstractCommandSealedInterface() throws Exception {
     // Test direct serialization of sealed interface with enum and record permits
-    final var commandPickler = Pickler.forSealedInterface(com.github.trex_paxos.AbstractCommand.class);
+    final var commandPickler = Pickler.of(com.github.trex_paxos.AbstractCommand.class);
     
     com.github.trex_paxos.AbstractCommand[] commands = {
         NoOperation.NOOP,
@@ -65,17 +64,16 @@ public class PaxosTests {
     };
     
     final ByteBuffer readyToReadBack;
-    try( final var writeBuffer = commandPickler.allocateForWriting(1024)) {
+    final var writeBuffer = ByteBuffer.allocate(1024);
       for (var command : commands) {
         commandPickler.serialize(writeBuffer, command);
-      }
-      readyToReadBack = writeBuffer.flip();
     }
-    try( final var readBuffer = commandPickler.wrapForReading(readyToReadBack)) {
-      IntStream.range(0, commands.length).forEach(i -> {
-        final var deserialized = commandPickler.deserialize(readBuffer);
-        assert deserialized.equals(commands[i]);
-      });
-    }
+    readyToReadBack = writeBuffer.flip();
+    
+    final var readBuffer = readyToReadBack;
+    IntStream.range(0, commands.length).forEach(i -> {
+      final var deserialized = commandPickler.deserialize(readBuffer);
+      assert deserialized.equals(commands[i]);
+    });
   }
 }
