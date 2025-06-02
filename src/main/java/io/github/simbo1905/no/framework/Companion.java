@@ -12,7 +12,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
-
+/**
+ * A companion class providing utility methods for working with records and their components.
+ * This class is not intended to be instantiated directly.
+ */
 class Companion {
   /// We cache the picklers for each class to avoid creating them multiple times
   static ConcurrentHashMap<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
@@ -54,10 +57,13 @@ class Companion {
   }
 
   /// Implementation that traverses the hierarchy using a visited set to avoid cycles.
+  /// This is java doc comments
+  ///
   ///
   /// @param current the current class being processed
   /// @param visited set of already visited classes
   /// @return stream of classes in the hierarchy
+  /// @throws NullPointerException if current is null
   static Stream<Class<?>> recordClassHierarchy(
       final Class<?> current,
       final Set<Class<?>> visited

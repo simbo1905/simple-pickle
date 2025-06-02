@@ -911,8 +911,6 @@ final class Writers {
   // Build writer chain from type structure
   static BiConsumer<WriteBuffer, Object> buildWriterChain(TypeStructure structure) {
 
-
-
     List<Tag> tags = structure.tags();
     if (tags.isEmpty()) {
       throw new IllegalArgumentException("Type structure must have at least one tag");
