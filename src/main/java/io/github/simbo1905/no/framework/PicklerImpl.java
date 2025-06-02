@@ -523,8 +523,8 @@ final class PicklerImpl<T> implements Pickler<T> {
     LOGGER.finer(() -> "serializeUserType: value=" + userTypeValue + " type=" + userTypeValue.getClass().getSimpleName() + " className=" + userTypeValue.getClass().getName());
 
     Class<?> userClass = userTypeValue.getClass();
-    int physicalIndex = getOrdinal(userClass);
-    int logicalOrdinal = physicalIndex + 1; // Convert: physical array index 0 -> logical ordinal 1
+    int logicalOrdinal = getOrdinal(userClass);  // This returns logical ordinal (1-indexed)
+    int physicalIndex = logicalOrdinal - 1;     // Convert to physical index (0-indexed)
     Tag tag = tags[physicalIndex];
 
     LOGGER.finer(() -> "serializeUserType: physicalIndex=" + physicalIndex + " logicalOrdinal=" + logicalOrdinal + " tag=" + tag + " userClass=" + userClass.getName());
@@ -546,7 +546,7 @@ final class PicklerImpl<T> implements Pickler<T> {
       case RECORD -> {
         // For records, recursively serialize components
         LOGGER.finer(() -> "serializeUserType: recursively serializing record components");
-        serializeRecordComponents(buffer, userClass, userTypeValue, physicalIndex);
+        serializeRecordComponents(buffer, userClass, userTypeValue, logicalOrdinal);
       }
       default -> throw new IllegalStateException("Unsupported user type tag: " + tag);
     }
@@ -643,11 +643,11 @@ final class PicklerImpl<T> implements Pickler<T> {
       boolean value = buffer.get() != 0;
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Boolean=" + value);
       return value;
-    } else if (positiveMarker == Constants.INTEGER.marker()) {
+    } else if (positiveMarker == Constants.INTEGER.marker() || positiveMarker == Constants.INTEGER_VAR.marker()) {
       int value = ZigZagEncoding.getInt(buffer);
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Integer=" + value);
       return value;
-    } else if (positiveMarker == Constants.LONG.marker()) {
+    } else if (positiveMarker == Constants.LONG.marker() || positiveMarker == Constants.LONG_VAR.marker()) {
       long value = ZigZagEncoding.getLong(buffer);
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Long=" + value);
       return value;
@@ -701,8 +701,9 @@ final class PicklerImpl<T> implements Pickler<T> {
             return itemMarker == 0 ? null : deserializeBuiltInComponent(buffer, -itemMarker);
           })
           .collect(java.util.stream.Collectors.toList());
-      LOGGER.finer(() -> "deserializeBuiltInComponent: completed List=" + list);
-      return list;
+      java.util.List<Object> immutableList = java.util.Collections.unmodifiableList(list);
+      LOGGER.finer(() -> "deserializeBuiltInComponent: completed immutable List=" + immutableList);
+      return immutableList;
     } else if (positiveMarker == Constants.MAP.marker()) {
       int size = ZigZagEncoding.getInt(buffer);
       LOGGER.finer(() -> "deserializeBuiltInComponent: reading Map size=" + size);
@@ -718,8 +719,9 @@ final class PicklerImpl<T> implements Pickler<T> {
                 return valueMarker == 0 ? null : deserializeBuiltInComponent(buffer, -valueMarker);
               }
           ));
-      LOGGER.finer(() -> "deserializeBuiltInComponent: completed Map=" + map);
-      return map;
+      java.util.Map<Object, Object> immutableMap = java.util.Collections.unmodifiableMap(map);
+      LOGGER.finer(() -> "deserializeBuiltInComponent: completed immutable Map=" + immutableMap);
+      return immutableMap;
     } else if (positiveMarker == Constants.ARRAY.marker()) {
       Object array = deserializeArray(buffer);
       LOGGER.finer(() -> "deserializeBuiltInComponent: completed array");
