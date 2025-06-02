@@ -6,7 +6,9 @@ package io.github.simbo1905.no.framework;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -14,6 +16,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
@@ -36,8 +39,8 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     LOGGER.info(() -> "Creating unified pickler for root class: " + rootClass.getName());
 
-    // Phase 1: Discover all reachable user types using existing recordClassHierarchy
-    Set<Class<?>> allReachableClasses = Companion.recordClassHierarchy(rootClass, new HashSet<>())
+    // Phase 1: Discover all reachable user types using recordClassHierarchy
+    Set<Class<?>> allReachableClasses = recordClassHierarchy(rootClass, new HashSet<>())
         .filter(clazz -> clazz.isRecord() || clazz.isEnum() || clazz.isSealed())
         .collect(Collectors.toSet());
 
@@ -988,5 +991,93 @@ final class PicklerImpl<T> implements Pickler<T> {
     ByteBuffer buffer = ByteBuffer.allocate(bytes);
     buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
     return buffer;
+  }
+
+  /// Discover all reachable types from a root class including sealed hierarchies and record components
+  static Stream<Class<?>> recordClassHierarchy(final Class<?> current, final Set<Class<?>> visited) {
+    if (!visited.add(current)) {
+      return Stream.empty();
+    }
+
+    return Stream.concat(
+        Stream.of(current),
+        Stream.concat(
+            current.isSealed()
+                ? Arrays.stream(current.getPermittedSubclasses())
+                : Stream.empty(),
+
+            current.isRecord()
+                ? Arrays.stream(current.getRecordComponents())
+                .flatMap(component -> {
+                  LOGGER.finer(() -> "Analyzing component " + component.getName() + " with type " + component.getGenericType());
+                  try {
+                    TypeStructure structure = TypeStructure.analyze(component.getGenericType());
+                    LOGGER.finer(() -> "Component " + component.getName() + " discovered types: " + structure.types().stream().map(Class::getSimpleName).toList());
+                    return structure.types().stream();
+                  } catch (Exception e) {
+                    LOGGER.finer(() -> "Failed to analyze component " + component.getName() + ": " + e.getMessage());
+                    return Stream.of(component.getType()); // Fallback to direct type
+                  }
+                })
+                .filter(t -> t.isRecord() || t.isSealed() || t.isEnum())
+                : Stream.empty()
+        ).flatMap(child -> recordClassHierarchy(child, visited))
+    );
+  }
+
+  /// TypeStructure record for analyzing generic types
+  record TypeStructure(List<Tag> tags, List<Class<?>> types) {
+    
+    /// Analyze a generic type and extract its structure
+    static TypeStructure analyze(Type type) {
+      List<Tag> tags = new ArrayList<>();
+      List<Class<?>> types = new ArrayList<>();
+      
+      Object current = type;
+      
+      while (current != null) {
+        if (current instanceof ParameterizedType paramType) {
+          Type rawType = paramType.getRawType();
+          
+          if (rawType.equals(java.util.List.class)) {
+            tags.add(Tag.LIST);
+            Type[] typeArgs = paramType.getActualTypeArguments();
+            current = typeArgs.length > 0 ? typeArgs[0] : null;
+            continue;
+          } else if (rawType.equals(java.util.Map.class)) {
+            tags.add(Tag.MAP);
+            // For maps, we need to handle both key and value types, but for simplicity we'll skip for now
+            return new TypeStructure(tags, types);
+          } else if (rawType.equals(java.util.Optional.class)) {
+            tags.add(Tag.OPTIONAL);
+            Type[] typeArgs = paramType.getActualTypeArguments();
+            current = typeArgs.length > 0 ? typeArgs[0] : null;
+            continue;
+          } else {
+            // Unknown parameterized type, treat as raw type
+            current = rawType;
+            continue;
+          }
+        } else if (current instanceof Class<?> clazz) {
+          if (clazz.isArray()) {
+            // Handle array class like Person[].class
+            tags.add(Tag.ARRAY);
+            Class<?> componentType = clazz.getComponentType();
+            current = componentType; // Continue with component type
+            continue;
+          } else {
+            // Regular class - terminal case
+            tags.add(Tag.fromClass(clazz));
+            types.add(clazz);
+            return new TypeStructure(tags, types);
+          }
+        } else {
+          // Unknown type, return what we have
+          return new TypeStructure(tags, types);
+        }
+      }
+      
+      return new TypeStructure(tags, types);
+    }
   }
 }

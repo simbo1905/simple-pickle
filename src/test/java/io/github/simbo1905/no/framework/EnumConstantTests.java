@@ -36,7 +36,7 @@ class EnumConstantTests {
         // Error: Cannot invoke "String.getBytes(java.nio.charset.Charset)" because "internedName" is null
         // at io.github.simbo1905.no.framework.Writers.writeCompressedClassName
 
-      final var allClasses = Companion.recordClassHierarchy(DataCommand.class, new HashSet<>()).toArray();
+      // Skip this test analysis - using unified architecture now
 
        final var pickler2 = Pickler.of(DataCommand.class);
 
