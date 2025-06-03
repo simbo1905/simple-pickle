@@ -59,11 +59,11 @@ public class MyBenchmark {
 
 //  @Benchmark
   public void testPickler1(Blackhole bh) throws Exception {
-    final Pickler<Push> pickler = Pickler.of(Push.class);
+    final Pickler<Push> pickler = Pickler.forRecord(Push.class);
     final ByteBuffer readyToReadBack;
     
     // Write phase - serialize all Push records with automatic class name compression
-    try (final var writeBuffer = ByteBuffer.allocate(1024)) { //TODO: use maxSizeOf for precise allocation
+    try (final var writeBuffer = pickler.allocateForWriting(1024)) { //TODO: use maxSizeOf for precise allocation
       for (var push : original) {
         pickler.serialize(writeBuffer, push);
       }
@@ -73,7 +73,7 @@ public class MyBenchmark {
     }
     
     // Read phase - read back from transmitted/saved bytes
-    final var readBuffer = (readyToReadBack);
+    final var readBuffer = pickler.wrapForReading(readyToReadBack);
     final var back = new java.util.ArrayList<Push>();
     for (int i = 0; i < original.length; i++) {
       back.add(pickler.deserialize(readBuffer));

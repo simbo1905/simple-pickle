@@ -52,11 +52,11 @@ public class PaxosBenchmark {
 
   @Benchmark
   public void paxosNfp(Blackhole bh) throws Exception {
-    final Pickler<Accept> pickler = Pickler.of(Accept.class);
+    final Pickler<Accept> pickler = Pickler.forRecord(Accept.class);
     final ByteBuffer readyToReadBack;
     
     // Write phase - serialize all Accept records with automatic class name compression
-    try (final var writeBuffer = ByteBuffer.allocate(2048)) { //TODO: set back to fair size after measuring actual data size separately
+    try (final var writeBuffer = pickler.allocateForWriting(2048)) { //TODO: set back to fair size after measuring actual data size separately
       for (var accept : original) {
         pickler.serialize(writeBuffer, accept);
       }
@@ -66,7 +66,7 @@ public class PaxosBenchmark {
     }
     
     // Read phase - read back from transmitted/saved bytes
-    final var readBuffer = (readyToReadBack);
+    final var readBuffer = pickler.wrapForReading(readyToReadBack);
     final var back = new ArrayList<Accept>();
     for (int i = 0; i < original.length; i++) {
       back.add(pickler.deserialize(readBuffer));
@@ -235,9 +235,9 @@ public class PaxosBenchmark {
     System.out.println("JDK Serialization size: " + jdkSize + " bytes");
     
     // Test No Framework Pickler
-    final Pickler<Accept> pickler = Pickler.of(Accept.class);
+    final Pickler<Accept> pickler = Pickler.forRecord(Accept.class);
     final ByteBuffer readyToReadBack;
-    try (final var writeBuffer = ByteBuffer.allocate(1024)) { //TODO: use maxSizeOf for precise allocation
+    try (final var writeBuffer = pickler.allocateForWriting(1024)) { //TODO: use maxSizeOf for precise allocation
       for (var accept : original) {
         pickler.serialize(writeBuffer, accept);
       }

@@ -12,9 +12,9 @@ class SizeCalc {
         );
         
         // NFP size
-        final var primitivePickler = Pickler.of(PrimitiveBenchmark.AllPrimitives.class);
+        final var primitivePickler = Pickler.forRecord(PrimitiveBenchmark.AllPrimitives.class);
         int nfpSize;
-        try (final var writeBuffer = primitiveByteBuffer.allocate(1024)) {
+        try (final var writeBuffer = primitivePickler.allocateForWriting(1024)) {
             nfpSize = primitivePickler.serialize(writeBuffer, testData);
         }
         
