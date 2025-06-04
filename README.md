@@ -34,7 +34,9 @@ Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer and load it back out again:
 treeNodePickler.serialize(rootNode, buffer);
+// And have the bytes available for reading
 buffer.flip();
+// Then we can deserialise the tree of nodes
 TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
 
 // Then it has elegantly and safely reconstructed the entire tree structure
@@ -43,7 +45,7 @@ if( TreeNode.areTreesEqual(originalRoot, deserializedRoot) ){
 }
 ```
 
-**No Framework Pickler is Java** where in a single line of code creates a typesafe pickler for a sealed interface hierarchy of records. There are no annotations. There are no build-time steps. There are n generated data structures you need to map to your regular code. There is no special configuration files. There is no manual just Java. You get all the convenience that the built-in JDK serialization with none of the downsides. 
+**No Framework Pickler is Java** where in a single line of code creates a typesafe pickler for a sealed interface hierarchy of records. There are no annotations. There are no build-time steps. There are no generated data structures that you need to map to your regular code. There is no special configuration files. There is no manual just Java. You get all the convenience that the built-in JDK serialization with none of the downsides. 
 
 **No Framework Pickler is fast** as it avoids reflection on the hot path by using the JDK's `unreflect` on the resolved constructors and component accessors of the Java records. This work is one once when the type-safe pickler is constructed. The cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh) then do the actual work. On some workloads it can be 2x faster than standard Java serialization while creating a binary payload that is 0.5x the size.
 
