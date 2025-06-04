@@ -6,3 +6,7 @@ benchmark/.vscode/
 .claude/
 CLAUDE.md
 CLAUDE.local.md
+benchmark/**.class
+benchmark/**.jfr
+benchmark/results*.njson
+benchmark/jmh-result*.json
