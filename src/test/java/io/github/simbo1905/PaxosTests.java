@@ -19,16 +19,7 @@ public class PaxosTests {
 
   @BeforeAll
   static void setupLogging() {
-    String logLevel = System.getProperty("java.util.logging.ConsoleHandler.level");
-    if (logLevel != null) {
-      System.out.println("Logging initialized at level: " + logLevel);
-      Level level = Level.parse(logLevel);
-      Logger rootLogger = Logger.getLogger("");
-      ConsoleHandler consoleHandler = new ConsoleHandler();
-      consoleHandler.setLevel(level);
-      rootLogger.addHandler(consoleHandler);
-      rootLogger.setLevel(level);
-    }
+    LoggingControl.setupCleanLogging();
   }
 
   static final Accept[] original = {

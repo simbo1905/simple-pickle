@@ -34,16 +34,4 @@ public sealed interface Pickler<T> permits PicklerImpl {
   static <T> Pickler<T> of(Class<T> clazz) {
     return new PicklerImpl<>(clazz);
   }
-
-  /// Legacy factory method for records - delegates to unified pickler
-  /// @deprecated Use {@link #of(Class)} instead
-  static <R extends Record> Pickler<R> forRecord(Class<R> recordClass) {
-    return new PicklerImpl<>(recordClass);
-  }
-
-  /// Legacy factory method for sealed interfaces - delegates to unified pickler  
-  /// @deprecated Use {@link #of(Class)} instead
-  static <S> Pickler<S> forSealedInterface(Class<S> sealedClass) {
-    return new PicklerImpl<>(sealedClass);
-  }
 }

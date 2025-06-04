@@ -5,8 +5,7 @@ import com.github.trex_paxos.Command;
 import com.github.trex_paxos.NoOperation;
 import com.github.trex_paxos.msg.Accept;
 import io.github.simbo1905.no.framework.Pickler;
-import io.github.simbo1905.no.framework.WriteBuffer;
-import io.github.simbo1905.no.framework.ReadBuffer;
+// Using direct ByteBuffer with new unified API
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 import org.sample.proto.*;
@@ -27,12 +26,30 @@ public class PaxosBenchmark {
   final ByteBuffer buffer = ByteBuffer.allocate(1024);
   final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(1024);
   final ByteArrayOutputStream protobufOutputStream = new ByteArrayOutputStream(1024);
+  
+  // Pre-allocated NFP components
+  private Pickler<Accept> nfpPickler;
+  private ByteBuffer nfpBuffer;
 
+  @Setup(Level.Trial)
+  public void setupTrial() throws Exception {
+    // Initialize NFP pickler once
+    nfpPickler = Pickler.of(Accept.class);
+    
+    // Calculate max size needed for all records
+    int totalMaxSize = 0;
+    for (var accept : original) {
+      totalMaxSize += nfpPickler.maxSizeOf(accept);
+    }
+    nfpBuffer = ByteBuffer.allocate(totalMaxSize);
+  }
+  
   @Setup(Level.Invocation)
   public void setupInvocation() {
     buffer.clear();
     byteArrayOutputStream.reset();
     protobufOutputStream.reset();
+    nfpBuffer.clear();
   }
 
   static final Accept[] original = {
@@ -52,24 +69,18 @@ public class PaxosBenchmark {
 
   @Benchmark
   public void paxosNfp(Blackhole bh) throws Exception {
-    final Pickler<Accept> pickler = Pickler.forRecord(Accept.class);
-    final ByteBuffer readyToReadBack;
-    
-    // Write phase - serialize all Accept records with automatic class name compression
-    try (final var writeBuffer = pickler.allocateForWriting(2048)) { //TODO: set back to fair size after measuring actual data size separately
-      for (var accept : original) {
-        pickler.serialize(writeBuffer, accept);
-      }
-      readyToReadBack = writeBuffer.flip(); // flip() calls close(), buffer is now unusable
-      nfp = readyToReadBack.remaining();
-      // In real usage: transmit readyToReadBack bytes to network or save to file
+    // Write phase - serialize all Accept records
+    nfpBuffer.clear();
+    for (var accept : original) {
+      nfpPickler.serialize(nfpBuffer, accept);
     }
+    nfpBuffer.flip();
+    nfp = nfpBuffer.remaining();
     
-    // Read phase - read back from transmitted/saved bytes
-    final var readBuffer = pickler.wrapForReading(readyToReadBack);
+    // Read phase - deserialize back
     final var back = new ArrayList<Accept>();
     for (int i = 0; i < original.length; i++) {
-      back.add(pickler.deserialize(readBuffer));
+      back.add(nfpPickler.deserialize(nfpBuffer));
     }
     bh.consume(back);
   }
@@ -235,15 +246,20 @@ public class PaxosBenchmark {
     System.out.println("JDK Serialization size: " + jdkSize + " bytes");
     
     // Test No Framework Pickler
-    final Pickler<Accept> pickler = Pickler.forRecord(Accept.class);
-    final ByteBuffer readyToReadBack;
-    try (final var writeBuffer = pickler.allocateForWriting(1024)) { //TODO: use maxSizeOf for precise allocation
-      for (var accept : original) {
-        pickler.serialize(writeBuffer, accept);
-      }
-      readyToReadBack = writeBuffer.flip(); // flip() calls close(), buffer is now unusable
+    final Pickler<Accept> pickler = Pickler.of(Accept.class);
+    
+    // Calculate total size needed
+    int totalSize = 0;
+    for (var accept : original) {
+      totalSize += pickler.maxSizeOf(accept);
     }
-    int nfpSize = readyToReadBack.remaining();
+    
+    ByteBuffer writeBuffer = ByteBuffer.allocate(totalSize);
+    for (var accept : original) {
+      pickler.serialize(writeBuffer, accept);
+    }
+    writeBuffer.flip();
+    int nfpSize = writeBuffer.remaining();
     System.out.println("No Framework Pickler size: " + nfpSize + " bytes");
     
     // Test Protobuf

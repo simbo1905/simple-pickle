@@ -1,8 +1,7 @@
 package org.sample;
 
 import io.github.simbo1905.no.framework.Pickler;
-import io.github.simbo1905.no.framework.WriteBuffer;
-import io.github.simbo1905.no.framework.ReadBuffer;
+// Using direct ByteBuffer with new unified API
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 import org.sample.proto.*;
@@ -23,33 +22,34 @@ public class TreeBenchmark {
   // Buffer for Protobuf and JDK serialization
   private ByteBuffer buffer;
 
-  // Buffers for Pickler (new API)
-  private WriteBuffer writeBuffer;
-  private ReadBuffer readBuffer;
+  // ByteBuffer for Pickler (unified API)
+  private ByteBuffer picklerBuffer;
 
   // Buffer for JDK serialization
   private ByteArrayOutputStream byteArrayOutputStream;
 
-  // Pickler for TreeNode sealed interface
-  private static final Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
+  // Pickler for TreeNode sealed interface (unified API)
+  private static final Pickler<TreeNode> treeNodePickler = Pickler.of(TreeNode.class);
 
   @Setup(Level.Trial)
   public void setupTrial() {
     // Create a balanced tree with 100 leaf nodes
     rootNode = createBalancedTree(100);
+    
+    // Pre-calculate and allocate NFP buffer once
+    int bufferSize = treeNodePickler.maxSizeOf(rootNode);
+    picklerBuffer = ByteBuffer.allocate(bufferSize);
+    
+    // Pre-allocate other buffers
+    buffer = ByteBuffer.allocate(Math.max(bufferSize, 1024));
+    byteArrayOutputStream = new ByteArrayOutputStream(Math.max(bufferSize, 1024));
   }
 
   @Setup(Level.Invocation)
   public void setupInvocation() {
-    // Calculate precise buffer size for Pickler
-    int bufferSize = treeNodePickler.maxSizeOf(rootNode);
-    writeBuffer = treeNodePickler.allocateForWriting(bufferSize);
-
-    // Allocate a buffer for Protobuf and JDK serialization (use same size for fair comparison)
-    buffer = ByteBuffer.allocate(Math.max(bufferSize, 1024)); // At least 1KB for other methods
+    // Reset buffers for each invocation
+    picklerBuffer.clear();
     buffer.clear();
-
-    byteArrayOutputStream = new ByteArrayOutputStream(Math.max(bufferSize, 1024));
     byteArrayOutputStream.reset();
   }
 
@@ -122,18 +122,17 @@ public class TreeBenchmark {
 
   @Benchmark
   public void treeNfp(Blackhole bh) throws Exception {
-    final ByteBuffer readyToReadBack;
+    // Clear the buffer for writing
+    picklerBuffer.clear();
     
-    // Write phase - serialize tree
-    try (final var writeBuffer = treeNodePickler.allocateForWriting(2048)) { // Fair size: NFP=1096, JDK=1690, rounded to 2KB
-      treeNodePickler.serialize(writeBuffer, rootNode);
-      readyToReadBack = writeBuffer.flip(); // flip() calls close(), buffer is now unusable
-      // In real usage: transmit readyToReadBack bytes to network or save to file
-    }
-
-    // Read phase - read back from transmitted/saved bytes
-    final var readBuffer = treeNodePickler.wrapForReading(readyToReadBack);
-    TreeNode deserializedRoot = treeNodePickler.deserialize(readBuffer);
+    // Serialize tree using new unified API
+    int actualSize = treeNodePickler.serialize(picklerBuffer, rootNode);
+    
+    // Prepare buffer for reading
+    picklerBuffer.flip();
+    
+    // Deserialize tree
+    TreeNode deserializedRoot = treeNodePickler.deserialize(picklerBuffer);
     bh.consume(deserializedRoot);
   }
 

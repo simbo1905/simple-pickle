@@ -67,7 +67,7 @@ public class PublicApiDemo {
       Assertions.assertEquals(animal, deserializedAnimal);
     });
 
-    System.out.println("All animals serialized and deserialized correctly!");
+    // All animals serialized and deserialized correctly
   }
 }
 

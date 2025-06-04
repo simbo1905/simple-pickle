@@ -16,16 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MachineryTests {
 
   @BeforeAll
-  static void configureLogging() {
-    final var systemProperty = System.getProperty("java.util.logging.ConsoleHandler.level");
-    if (systemProperty != null) {
-      final var consoleHandler = new ConsoleHandler();
-      consoleHandler.setLevel(Level.parse(systemProperty));
-      final var logger = Logger.getLogger("io.github.simbo1905.no.framework");
-      logger.addHandler(consoleHandler);
-      logger.setLevel(Level.parse(systemProperty));
-      LOGGER.info(() -> "Logging initialized at level: " + systemProperty);
-    }
+  static void setupLogging() {
+    io.github.simbo1905.LoggingControl.setupCleanLogging();
   }
 
   /// Nested record to test discovery
@@ -79,7 +71,7 @@ class MachineryTests {
     final var impl = (PicklerImpl<ArrayRecord>) pickler;
     final var discoveredClasses = impl.discoveredClasses;
     
-    LOGGER.info(() -> "Array discovered: " + java.util.Arrays.toString(discoveredClasses));
+    // Array type discovery test
     assertThat(discoveredClasses).hasSize(2).contains(ArrayRecord.class, NestedRecord.class);
   }
 
@@ -89,7 +81,7 @@ class MachineryTests {
     final var impl = (PicklerImpl<ListRecord>) pickler;
     final var discoveredClasses = impl.discoveredClasses;
     
-    LOGGER.info(() -> "List discovered: " + java.util.Arrays.toString(discoveredClasses));
+    // List type discovery test
     assertThat(discoveredClasses).hasSize(2).contains(ListRecord.class, NestedRecord.class);
   }
 
@@ -99,7 +91,7 @@ class MachineryTests {
     final var impl = (PicklerImpl<OptionalRecord>) pickler;
     final var discoveredClasses = impl.discoveredClasses;
     
-    LOGGER.info(() -> "Optional discovered: " + java.util.Arrays.toString(discoveredClasses));
+    // Optional type discovery test
     assertThat(discoveredClasses).hasSize(2).contains(OptionalRecord.class, NestedRecord.class);
   }
 
@@ -109,7 +101,7 @@ class MachineryTests {
     final var impl = (PicklerImpl<DirectRecord>) pickler;
     final var discoveredClasses = impl.discoveredClasses;
     
-    LOGGER.info(() -> "Direct discovered: " + java.util.Arrays.toString(discoveredClasses));
+    // Direct type discovery test
     assertThat(discoveredClasses).hasSize(2).contains(DirectRecord.class, NestedRecord.class);
   }
 }

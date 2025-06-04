@@ -29,35 +29,7 @@ public class RefactorTests {
 
   @BeforeAll
   static void setupLogging() {
-    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "FINER");
-    final Level level = Level.parse(logLevel);
-
-    // Configure the primary LOGGER instance
-    LOGGER.setLevel(level);
-    // Remove all existing handlers to prevent duplicates if this method is called multiple times
-    // or if there are handlers configured by default.
-    for (Handler handler : LOGGER.getHandlers()) {
-      LOGGER.removeHandler(handler);
-    }
-
-    ConsoleHandler consoleHandler = new ConsoleHandler();
-    consoleHandler.setLevel(level);
-
-    // Create and set a custom formatter
-    Formatter simpleFormatter = new Formatter() {
-      @Override
-      public String format(LogRecord record) {
-        return record.getMessage() + "\n";
-      }
-    };
-    consoleHandler.setFormatter(simpleFormatter);
-
-    LOGGER.addHandler(consoleHandler);
-
-    // Ensure parent handlers are not used to prevent duplicate logging from higher-level loggers
-    LOGGER.setUseParentHandlers(false);
-
-    LOGGER.info("Logging initialized at level: " + level);
+    LoggingControl.setupCleanLogging();
   }
 
   @Test
@@ -182,7 +154,7 @@ public class RefactorTests {
 
   @Test
   void testLinkedNode() {
-    LOGGER.info("Starting testLinkedNode");
+    // Test linked list serialization
     final var linkedList = new LinkedListNode(1, new LinkedListNode(2, new LinkedListNode(3)));
     Pickler<LinkedListNode> linkedListPickler = Pickler.of(LinkedListNode.class);
     final var buffer = ByteBuffer.allocate(1024);
@@ -195,7 +167,7 @@ public class RefactorTests {
 
   @Test
   void testTreeNodeSerialization() {
-    LOGGER.info("Starting testTreeNodeSerialization");
+    // Test tree node serialization
     // Arrange
     final var originalRoot = new TreeNode.InternalNode("Root",
         new TreeNode.InternalNode("Branch1", new TreeNode.LeafNode(42), new TreeNode.LeafNode(99)),
@@ -1102,7 +1074,7 @@ public class RefactorTests {
 
   @Test
   void testUuidRoundTripSerialization() {
-    LOGGER.info("Starting UUID round-trip serialization test");
+    // Test UUID serialization round-trip
 
     // Create a UUID from known values for predictable testing
     final long mostSigBits = 0x550e8400e29b41d4L;
@@ -1121,11 +1093,11 @@ public class RefactorTests {
 
     // Allocate buffer for writing
     final var writeBuffer = ByteBuffer.allocate(1024);
-    LOGGER.info("Allocated write buffer");
+    // Allocated write buffer
 
     // Serialize the record
     final int actualSize = pickler.serialize(writeBuffer, originalRecord);
-    LOGGER.info(() -> "Serialized record, actual size: " + actualSize + " bytes");
+    // Serialized record
 
     // Create read buffer from write buffer
     final var readBuffer = (writeBuffer.flip());

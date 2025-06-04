@@ -202,45 +202,39 @@ final class PicklerImpl<T> implements Pickler<T> {
 
   /// Serialize all components of a record using method handles and built-in type writers
   void serializeRecordComponents(ByteBuffer buffer, Class<?> recordClass, Object record, int ordinal) {
-    LOGGER.finer(() -> "*** serializeRecordComponents: starting for " + recordClass.getSimpleName() + " ordinal=" + ordinal + " recordClass=" + recordClass.getName() + " actualRecord=" + record.getClass().getName()); // TODO revert to FINER logging after bug fix
+    LOGGER.finest(() -> "*** HOT PATH TRACE: serializeRecordComponents starting for " + recordClass.getSimpleName());
+    LOGGER.finer(() -> "serializeRecordComponents: starting for " + recordClass.getSimpleName() + " ordinal=" + ordinal);
 
     // Get component accessors for this record type from analysis
     int physicalIndex = ordinal - 1; // Convert logical ordinal to physical array index
     var accessors = componentAccessors[physicalIndex];
-    LOGGER.finer(() -> "*** serializeRecordComponents: ordinal=" + ordinal + " physicalIndex=" + physicalIndex + " accessors.length=" + (accessors != null ? accessors.length : "null")); // TODO revert to FINER logging after bug fix
+    LOGGER.finer(() -> "serializeRecordComponents: physicalIndex=" + physicalIndex + " accessors.length=" + (accessors != null ? accessors.length : "null"));
     if (accessors == null) {
       LOGGER.finer(() -> "serializeRecordComponents: no components for " + recordClass.getSimpleName());
       return;
     }
 
+
     LOGGER.finer(() -> "serializeRecordComponents: found " + accessors.length + " components");
 
     // Serialize each component using its accessor
+    LOGGER.finest(() -> "*** HOT PATH TRACE: about to serialize " + accessors.length + " components");
     IntStream.range(0, accessors.length).forEach(componentIndex -> {
       try {
+        LOGGER.finest(() -> "*** HOT PATH TRACE: accessing component " + componentIndex);
         var accessor = accessors[componentIndex];
         Object componentValue = accessor.invoke(record);
-        LOGGER.finer(() -> "*** serializeRecordComponents: component[" + componentIndex + "] value=" + componentValue + " type=" + (componentValue != null ? componentValue.getClass().getSimpleName() : "null") + " className=" + (componentValue != null ? componentValue.getClass().getName() : "null")); // TODO revert to FINER logging after bug fix
+        LOGGER.finest(() -> "*** HOT PATH TRACE: component[" + componentIndex + "] value=" + componentValue + " classToOrdinal.size=" + classToOrdinal.size());
+        LOGGER.finer(() -> "serializeRecordComponents: component[" + componentIndex + "] value=" + componentValue + " type=" + (componentValue != null ? componentValue.getClass().getSimpleName() : "null"));
 
-        // Check if this is a user type or built-in type
-        boolean result = false;
-        if (componentValue != null) {
-          LOGGER.finer(() -> "*** serializeRecordComponents: checking if component[" + componentIndex + "] is user type, class=" + componentValue.getClass().getName()); // TODO revert to FINER logging after bug fix
-          try {
-            int componentOrdinal = getOrdinal(componentValue.getClass());
-            LOGGER.finer(() -> "*** serializeRecordComponents: component[" + componentIndex + "] is user type with ordinal=" + componentOrdinal); // TODO revert to FINER logging after bug fix
-            result = true;
-          } catch (IllegalArgumentException e) {
-            result = false;
-          }
-        }
-        if (componentValue != null && result) {
+        // Check if this is a user type or built-in type using direct map lookup
+        if (componentValue != null && classToOrdinal.containsKey(componentValue.getClass())) {
           // Recursively serialize user types using their ordinals
-          LOGGER.finer(() -> "*** serializeRecordComponents: component[" + componentIndex + "] serializing as user type " + componentValue.getClass().getSimpleName()); // TODO revert to FINER logging after bug fix
+          LOGGER.finer(() -> "serializeRecordComponents: component[" + componentIndex + "] serializing as user type " + componentValue.getClass().getSimpleName());
           serializeUserType(buffer, componentValue);
         } else {
           // Handle built-in types directly
-          LOGGER.finer(() -> "*** serializeRecordComponents: component[" + componentIndex + "] serializing as built-in type, componentValue=" + (componentValue != null ? componentValue.getClass().getSimpleName() : "null")); // TODO revert to FINER logging after bug fix
+          LOGGER.finer(() -> "serializeRecordComponents: component[" + componentIndex + "] serializing as built-in type");
           serializeBuiltInComponent(buffer, componentValue);
         }
 
@@ -265,7 +259,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     // Handle built-in types with negative markers (using Constants mapping)
     switch (componentValue) {
       case String str -> {
-        ZigZagEncoding.putInt(buffer, Constants.STRING.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.STRING.ordinal);
         byte[] bytes = str.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ZigZagEncoding.putInt(buffer, bytes.length);
         buffer.put(bytes);
@@ -273,73 +267,73 @@ final class PicklerImpl<T> implements Pickler<T> {
       }
       case Integer intValue -> {
         if (ZigZagEncoding.sizeOf(intValue) < Integer.BYTES) {
-          ZigZagEncoding.putInt(buffer, Constants.INTEGER_VAR.wireMarker());
+          ZigZagEncoding.putInt(buffer, Constants.INTEGER_VAR.ordinal);
           ZigZagEncoding.putInt(buffer, intValue);
         } else {
-          ZigZagEncoding.putInt(buffer, Constants.INTEGER.wireMarker());
+          ZigZagEncoding.putInt(buffer, Constants.INTEGER.ordinal);
           buffer.putInt(intValue);
         }
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote Integer=" + intValue);
       }
       case Boolean boolValue -> {
-        ZigZagEncoding.putInt(buffer, Constants.BOOLEAN.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.BOOLEAN.ordinal);
         buffer.put((byte) (boolValue ? 1 : 0));
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote Boolean=" + boolValue);
       }
       case Long longValue -> {
         if (ZigZagEncoding.sizeOf(longValue) < Long.BYTES) {
-          ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.wireMarker());
+          ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.ordinal);
           ZigZagEncoding.putLong(buffer, longValue);
         } else {
-          ZigZagEncoding.putInt(buffer, Constants.LONG.wireMarker());
+          ZigZagEncoding.putInt(buffer, Constants.LONG.ordinal);
           buffer.putLong(longValue);
         }
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote Long=" + longValue);
       }
       case Float floatValue -> {
-        ZigZagEncoding.putInt(buffer, Constants.FLOAT.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.FLOAT.ordinal);
         buffer.putFloat(floatValue);
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote Float=" + floatValue);
       }
       case Double doubleValue -> {
-        ZigZagEncoding.putInt(buffer, Constants.DOUBLE.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.DOUBLE.ordinal);
         buffer.putDouble(doubleValue);
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote Double=" + doubleValue);
       }
       case Byte byteValue -> {
-        ZigZagEncoding.putInt(buffer, Constants.BYTE.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.BYTE.ordinal);
         buffer.put(byteValue);
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote Byte=" + byteValue);
       }
       case Short shortValue -> {
-        ZigZagEncoding.putInt(buffer, Constants.SHORT.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.SHORT.ordinal);
         buffer.putShort(shortValue);
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote Short=" + shortValue);
       }
       case Character charValue -> {
-        ZigZagEncoding.putInt(buffer, Constants.CHARACTER.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.CHARACTER.ordinal);
         buffer.putChar(charValue);
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote Character=" + charValue);
       }
       case java.util.UUID uuidValue -> {
-        ZigZagEncoding.putInt(buffer, Constants.UUID.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.UUID.ordinal);
         buffer.putLong(uuidValue.getMostSignificantBits());
         buffer.putLong(uuidValue.getLeastSignificantBits());
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote UUID=" + uuidValue);
       }
       case java.util.Optional<?> optional -> {
         if (optional.isEmpty()) {
-          ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_EMPTY.wireMarker());
+          ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_EMPTY.ordinal);
           LOGGER.finer(() -> "serializeBuiltInComponent: wrote Optional.empty()");
         } else {
-          ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_OF.wireMarker());
+          ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_OF.ordinal);
           // Recursively serialize the value inside the Optional
           serializeBuiltInComponent(buffer, optional.get());
           LOGGER.finer(() -> "serializeBuiltInComponent: wrote Optional.of(" + optional.get() + ")");
         }
       }
       case java.util.List<?> list -> {
-        ZigZagEncoding.putInt(buffer, Constants.LIST.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.LIST.ordinal);
         ZigZagEncoding.putInt(buffer, list.size());
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote List size=" + list.size());
         for (Object item : list) {
@@ -348,7 +342,7 @@ final class PicklerImpl<T> implements Pickler<T> {
         LOGGER.finer(() -> "serializeBuiltInComponent: completed List serialization");
       }
       case java.util.Map<?, ?> map -> {
-        ZigZagEncoding.putInt(buffer, Constants.MAP.wireMarker());
+        ZigZagEncoding.putInt(buffer, Constants.MAP.ordinal);
         ZigZagEncoding.putInt(buffer, map.size());
         LOGGER.finer(() -> "serializeBuiltInComponent: wrote Map size=" + map.size());
         for (var entry : map.entrySet()) {
@@ -360,18 +354,18 @@ final class PicklerImpl<T> implements Pickler<T> {
       default -> {
         // Check if it's an array
         if (componentValue.getClass().isArray()) {
-          ZigZagEncoding.putInt(buffer, Constants.ARRAY.wireMarker());
+          ZigZagEncoding.putInt(buffer, Constants.ARRAY.ordinal);
           LOGGER.finer(() -> "serializeArray: value=" + componentValue + " class=" + componentValue.getClass().getSimpleName());
 
           switch (componentValue) {
             case byte[] arr -> {
-              buffer.put(Constants.BYTE.marker());
+              buffer.put(Constants.BYTE.ordinal);
               ZigZagEncoding.putInt(buffer, arr.length);
               buffer.put(arr);
               LOGGER.finer(() -> "serializeArray: byte[] length=" + arr.length);
             }
             case boolean[] booleans -> {
-              buffer.put(Constants.BOOLEAN.marker());
+              buffer.put(Constants.BOOLEAN.ordinal);
               int length = booleans.length;
               ZigZagEncoding.putInt(buffer, length);
               BitSet bitSet = new BitSet(length);
@@ -384,7 +378,7 @@ final class PicklerImpl<T> implements Pickler<T> {
               LOGGER.finer(() -> "serializeArray: boolean[] length=" + length);
             }
             case short[] shorts -> {
-              buffer.put(Constants.SHORT.marker());
+              buffer.put(Constants.SHORT.ordinal);
               ZigZagEncoding.putInt(buffer, shorts.length);
               for (short s : shorts) {
                 buffer.putShort(s);
@@ -392,7 +386,7 @@ final class PicklerImpl<T> implements Pickler<T> {
               LOGGER.finer(() -> "serializeArray: short[] length=" + shorts.length);
             }
             case int[] integers -> {
-              buffer.put(Constants.INTEGER.marker());
+              buffer.put(Constants.INTEGER.ordinal);
               ZigZagEncoding.putInt(buffer, integers.length);
               for (int i : integers) {
                 buffer.putInt(i);
@@ -400,7 +394,7 @@ final class PicklerImpl<T> implements Pickler<T> {
               LOGGER.finer(() -> "serializeArray: int[] length=" + integers.length);
             }
             case long[] longs -> {
-              buffer.put(Constants.LONG.marker());
+              buffer.put(Constants.LONG.ordinal);
               ZigZagEncoding.putInt(buffer, longs.length);
               for (long l : longs) {
                 buffer.putLong(l);
@@ -408,7 +402,7 @@ final class PicklerImpl<T> implements Pickler<T> {
               LOGGER.finer(() -> "serializeArray: long[] length=" + longs.length);
             }
             case float[] floats -> {
-              buffer.put(Constants.FLOAT.marker());
+              buffer.put(Constants.FLOAT.ordinal);
               ZigZagEncoding.putInt(buffer, floats.length);
               for (float f : floats) {
                 buffer.putFloat(f);
@@ -416,7 +410,7 @@ final class PicklerImpl<T> implements Pickler<T> {
               LOGGER.finer(() -> "serializeArray: float[] length=" + floats.length);
             }
             case double[] doubles -> {
-              buffer.put(Constants.DOUBLE.marker());
+              buffer.put(Constants.DOUBLE.ordinal);
               ZigZagEncoding.putInt(buffer, doubles.length);
               for (double d : doubles) {
                 buffer.putDouble(d);
@@ -424,7 +418,7 @@ final class PicklerImpl<T> implements Pickler<T> {
               LOGGER.finer(() -> "serializeArray: double[] length=" + doubles.length);
             }
             case char[] chars -> {
-              buffer.put(Constants.CHARACTER.marker());
+              buffer.put(Constants.CHARACTER.ordinal);
               ZigZagEncoding.putInt(buffer, chars.length);
               for (char c : chars) {
                 buffer.putChar(c);
@@ -432,7 +426,7 @@ final class PicklerImpl<T> implements Pickler<T> {
               LOGGER.finer(() -> "serializeArray: char[] length=" + chars.length);
             }
             case String[] strings -> {
-              buffer.put(Constants.STRING.marker());
+              buffer.put(Constants.STRING.ordinal);
               ZigZagEncoding.putInt(buffer, strings.length);
               for (String s : strings) {
                 byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
@@ -448,15 +442,15 @@ final class PicklerImpl<T> implements Pickler<T> {
               if (componentType == Optional.class) {
                 // Handle Optional[] arrays
                 Optional<?>[] optionals = (Optional<?>[]) componentValue;
-                buffer.put(Constants.OPTIONAL_OF.marker());
+                buffer.put(Constants.OPTIONAL_OF.ordinal);
                 ZigZagEncoding.putInt(buffer, optionals.length);
                 for (Optional<?> opt : optionals) {
                   if (opt.isEmpty()) {
-                    buffer.put(Constants.OPTIONAL_EMPTY.marker());
-                    LOGGER.finer(() -> "serializeArray: wrote OPTIONAL_EMPTY marker=" + Constants.OPTIONAL_EMPTY.marker());
+                    buffer.put(Constants.OPTIONAL_EMPTY.ordinal);
+                    LOGGER.finer(() -> "serializeArray: wrote OPTIONAL_EMPTY marker=" + Constants.OPTIONAL_EMPTY.ordinal);
                   } else {
-                    buffer.put(Constants.OPTIONAL_OF.marker());
-                    LOGGER.finer(() -> "serializeArray: wrote OPTIONAL_OF marker=" + Constants.OPTIONAL_OF.marker() + " for value=" + opt.get());
+                    buffer.put(Constants.OPTIONAL_OF.ordinal);
+                    LOGGER.finer(() -> "serializeArray: wrote OPTIONAL_OF marker=" + Constants.OPTIONAL_OF.ordinal + " for value=" + opt.get());
                     serializeBuiltInComponent(buffer, opt.get());
                   }
                 }
@@ -464,29 +458,21 @@ final class PicklerImpl<T> implements Pickler<T> {
               } else {
                 // Handle Record[] arrays and other object arrays using ordinals (no class names)
                 Object[] objectArray = (Object[]) componentValue;
-                buffer.put(Constants.RECORD.marker()); // Use RECORD marker for object arrays
+                buffer.put(Constants.RECORD.ordinal); // Use RECORD marker for object arrays
                 
                 // Write component type ordinal for empty array support
                 Class<?> arrayComponentType = componentValue.getClass().getComponentType();
                 
-                // Check if component type is user type or built-in type
-                boolean isUserType;
-                try {
-                  getOrdinal(arrayComponentType);
-                  isUserType = true;
-                } catch (IllegalArgumentException e) {
-                  isUserType = false;
-                }
-                
-                if (isUserType) {
+                // Check if component type is user type or built-in type using direct map lookup
+                if (classToOrdinal.containsKey(arrayComponentType)) {
                   int componentOrdinal = getOrdinal(arrayComponentType);
-                  LOGGER.info(() -> "*** Writing user type ordinal=" + componentOrdinal + " for componentType=" + arrayComponentType.getSimpleName()); // TODO revert to FINER logging after bug fix
+                  LOGGER.finer(() -> "serializeArray: writing user type ordinal=" + componentOrdinal + " for componentType=" + arrayComponentType.getSimpleName());
                   ZigZagEncoding.putInt(buffer, componentOrdinal); // Positive ordinal for user types
                 } else {
                   // Built-in type - use negative marker
                   Constants constant = Constants.fromClass(arrayComponentType);
-                  LOGGER.info(() -> "*** Writing built-in wireMarker=" + constant.wireMarker() + " for componentType=" + arrayComponentType.getSimpleName()); // TODO revert to FINER logging after bug fix
-                  ZigZagEncoding.putInt(buffer, constant.wireMarker()); // Negative marker for built-in types
+                  LOGGER.finer(() -> "serializeArray: writing built-in wireMarker=" + constant.ordinal + " for componentType=" + arrayComponentType.getSimpleName());
+                  ZigZagEncoding.putInt(buffer, constant.ordinal); // Negative marker for built-in types
                 }
                 
                 ZigZagEncoding.putInt(buffer, objectArray.length);
@@ -496,14 +482,7 @@ final class PicklerImpl<T> implements Pickler<T> {
                   if (item == null) {
                     ZigZagEncoding.putInt(buffer, 0); // NULL marker
                   } else {
-                    boolean result;
-                    try {
-                      getOrdinal(item.getClass());
-                      result = true;
-                    } catch (IllegalArgumentException e) {
-                      result = false;
-                    }
-                    if (result) {
+                    if (classToOrdinal.containsKey(item.getClass())) {
                       serializeUserType(buffer, item);
                     } else {
                       serializeBuiltInComponent(buffer, item);
@@ -581,7 +560,7 @@ final class PicklerImpl<T> implements Pickler<T> {
         try {
           int physicalIndex = ordinal - 1; // Convert logical ordinal to physical array index  
           MethodHandle constructor = constructors[physicalIndex];
-          LOGGER.finer(() -> "*** deserializeUserType: ordinal=" + ordinal + " physicalIndex=" + physicalIndex + " constructor"); // TODO revert to FINER logging after bug fix
+          LOGGER.finer(() -> "deserializeUserType: ordinal=" + ordinal + " physicalIndex=" + physicalIndex);
           Object recordInstance = constructor.invokeWithArguments(componentValues);
           LOGGER.finer(() -> "deserializeUserType: created record instance=" + recordInstance);
           yield (T) recordInstance;
@@ -619,7 +598,7 @@ final class PicklerImpl<T> implements Pickler<T> {
             return null;
           } else if (marker < 0) {
             // Built-in type with negative marker
-            Object value = deserializeBuiltInComponent(buffer, -marker);
+            Object value = deserializeBuiltInComponent(buffer, marker);
             LOGGER.finer(() -> "deserializeRecordComponents: component[" + componentIndex + "] = " + value + " (built-in)");
             return value;
           } else {
@@ -639,75 +618,75 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Deserialize a component value that is a built-in type using negative marker
-  Object deserializeBuiltInComponent(ByteBuffer buffer, int positiveMarker) {
-    LOGGER.finer(() -> "deserializeBuiltInComponent: positiveMarker=" + positiveMarker);
+  Object deserializeBuiltInComponent(ByteBuffer buffer, int negativeMarker) {
+    LOGGER.finer(() -> "deserializeBuiltInComponent: negativeMarker=" + negativeMarker);
 
-    if (positiveMarker == Constants.BOOLEAN.marker()) {
+    if (negativeMarker == Constants.BOOLEAN.ordinal) {
       boolean value = buffer.get() != 0;
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Boolean=" + value);
       return value;
-    } else if (positiveMarker == Constants.INTEGER.marker() || positiveMarker == Constants.INTEGER_VAR.marker()) {
+    } else if (negativeMarker == Constants.INTEGER.ordinal || negativeMarker == Constants.INTEGER_VAR.ordinal) {
       int value = ZigZagEncoding.getInt(buffer);
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Integer=" + value);
       return value;
-    } else if (positiveMarker == Constants.LONG.marker() || positiveMarker == Constants.LONG_VAR.marker()) {
+    } else if (negativeMarker == Constants.LONG.ordinal || negativeMarker == Constants.LONG_VAR.ordinal) {
       long value = ZigZagEncoding.getLong(buffer);
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Long=" + value);
       return value;
-    } else if (positiveMarker == Constants.FLOAT.marker()) {
+    } else if (negativeMarker == Constants.FLOAT.ordinal) {
       float value = buffer.getFloat();
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Float=" + value);
       return value;
-    } else if (positiveMarker == Constants.DOUBLE.marker()) {
+    } else if (negativeMarker == Constants.DOUBLE.ordinal) {
       double value = buffer.getDouble();
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Double=" + value);
       return value;
-    } else if (positiveMarker == Constants.BYTE.marker()) {
+    } else if (negativeMarker == Constants.BYTE.ordinal) {
       byte value = buffer.get();
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Byte=" + value);
       return value;
-    } else if (positiveMarker == Constants.SHORT.marker()) {
+    } else if (negativeMarker == Constants.SHORT.ordinal) {
       short value = buffer.getShort();
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Short=" + value);
       return value;
-    } else if (positiveMarker == Constants.CHARACTER.marker()) {
+    } else if (negativeMarker == Constants.CHARACTER.ordinal) {
       char value = buffer.getChar();
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Character=" + value);
       return value;
-    } else if (positiveMarker == Constants.UUID.marker()) {
+    } else if (negativeMarker == Constants.UUID.ordinal) {
       long mostSigBits = buffer.getLong();
       long leastSigBits = buffer.getLong();
       java.util.UUID value = new java.util.UUID(mostSigBits, leastSigBits);
       LOGGER.finer(() -> "deserializeBuiltInComponent: read UUID=" + value);
       return value;
-    } else if (positiveMarker == Constants.STRING.marker()) {
+    } else if (negativeMarker == Constants.STRING.ordinal) {
       int length = ZigZagEncoding.getInt(buffer);
       byte[] bytes = new byte[length];
       buffer.get(bytes);
       String value = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
       LOGGER.finer(() -> "deserializeBuiltInComponent: read String length=" + length + " value=" + value);
       return value;
-    } else if (positiveMarker == Constants.OPTIONAL_OF.marker()) {
-      Object innerValue = deserializeBuiltInComponent(buffer, -ZigZagEncoding.getInt(buffer));
+    } else if (negativeMarker == Constants.OPTIONAL_OF.ordinal) {
+      Object innerValue = deserializeBuiltInComponent(buffer, ZigZagEncoding.getInt(buffer));
       java.util.Optional<Object> value = java.util.Optional.of(innerValue);
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Optional.of(" + innerValue + ")");
       return value;
-    } else if (positiveMarker == Constants.OPTIONAL_EMPTY.marker()) {
+    } else if (negativeMarker == Constants.OPTIONAL_EMPTY.ordinal) {
       LOGGER.finer(() -> "deserializeBuiltInComponent: read Optional.empty()");
       return java.util.Optional.empty();
-    } else if (positiveMarker == Constants.LIST.marker()) {
+    } else if (negativeMarker == Constants.LIST.ordinal) {
       int size = ZigZagEncoding.getInt(buffer);
       LOGGER.finer(() -> "deserializeBuiltInComponent: reading List size=" + size);
       java.util.List<Object> list = IntStream.range(0, size)
           .mapToObj(i -> {
             int itemMarker = ZigZagEncoding.getInt(buffer);
-            return itemMarker == 0 ? null : deserializeBuiltInComponent(buffer, -itemMarker);
+            return itemMarker == 0 ? null : deserializeBuiltInComponent(buffer, itemMarker);
           })
           .collect(java.util.stream.Collectors.toList());
       java.util.List<Object> immutableList = java.util.Collections.unmodifiableList(list);
       LOGGER.finer(() -> "deserializeBuiltInComponent: completed immutable List=" + immutableList);
       return immutableList;
-    } else if (positiveMarker == Constants.MAP.marker()) {
+    } else if (negativeMarker == Constants.MAP.ordinal) {
       int size = ZigZagEncoding.getInt(buffer);
       LOGGER.finer(() -> "deserializeBuiltInComponent: reading Map size=" + size);
       java.util.Map<Object, Object> map = IntStream.range(0, size)
@@ -715,22 +694,22 @@ final class PicklerImpl<T> implements Pickler<T> {
           .collect(java.util.stream.Collectors.toMap(
               i -> {
                 int keyMarker = ZigZagEncoding.getInt(buffer);
-                return keyMarker == 0 ? null : deserializeBuiltInComponent(buffer, -keyMarker);
+                return keyMarker == 0 ? null : deserializeBuiltInComponent(buffer, keyMarker);
               },
               i -> {
                 int valueMarker = ZigZagEncoding.getInt(buffer);
-                return valueMarker == 0 ? null : deserializeBuiltInComponent(buffer, -valueMarker);
+                return valueMarker == 0 ? null : deserializeBuiltInComponent(buffer, valueMarker);
               }
           ));
       java.util.Map<Object, Object> immutableMap = java.util.Collections.unmodifiableMap(map);
       LOGGER.finer(() -> "deserializeBuiltInComponent: completed immutable Map=" + immutableMap);
       return immutableMap;
-    } else if (positiveMarker == Constants.ARRAY.marker()) {
+    } else if (negativeMarker == Constants.ARRAY.ordinal) {
       Object array = deserializeArray(buffer);
       LOGGER.finer(() -> "deserializeBuiltInComponent: completed array");
       return array;
     } else {
-      throw new IllegalArgumentException("Unsupported built-in marker: " + positiveMarker);
+      throw new IllegalArgumentException("Unsupported built-in marker: " + negativeMarker);
     }
   }
 
@@ -832,24 +811,24 @@ final class PicklerImpl<T> implements Pickler<T> {
           // Positive ordinal - user type
           int physicalIndex = componentMarker - 1; // Convert logical ordinal to array index
           componentType = discoveredClasses[physicalIndex];
-          LOGGER.info(() -> "*** Read user type ordinal=" + componentMarker + " physicalIndex=" + physicalIndex + " componentType=" + componentType.getSimpleName()); // TODO revert to FINER logging after bug fix
+          LOGGER.finer(() -> "deserializeArray: read user type ordinal=" + componentMarker + " physicalIndex=" + physicalIndex + " componentType=" + componentType.getSimpleName());
         } else {
           // Negative marker - built-in type
-          Constants constant = Constants.fromMarker((byte) (-componentMarker));
+          Constants constant = Constants.fromMarker((byte) componentMarker);
           componentType = constant.clazz;
-          LOGGER.info(() -> "*** Read built-in wireMarker=" + componentMarker + " componentType=" + componentType.getSimpleName()); // TODO revert to FINER logging after bug fix
+          LOGGER.finer(() -> "deserializeArray: read built-in wireMarker=" + componentMarker + " componentType=" + componentType.getSimpleName());
         }
         
         int length = ZigZagEncoding.getInt(buffer);
         LOGGER.finer(() -> "Read RECORD Array len=" + length + " componentType=" + componentType.getSimpleName());
 
         // Create properly typed array using component type from ordinal
-        LOGGER.info(() -> "*** Creating array of componentType=" + componentType.getSimpleName() + " length=" + length); // TODO revert to FINER logging after bug fix
+        LOGGER.finer(() -> "deserializeArray: creating array of componentType=" + componentType.getSimpleName() + " length=" + length);
         Object array = Array.newInstance(componentType, length);
-        LOGGER.info(() -> "*** Created array: " + array.getClass().getSimpleName()); // TODO revert to FINER logging after bug fix
+        LOGGER.finer(() -> "deserializeArray: created array: " + array.getClass().getSimpleName());
         
         if (length == 0) {
-          LOGGER.info(() -> "*** Returning empty typed array: " + array.getClass().getSimpleName()); // TODO revert to FINER logging after bug fix
+          LOGGER.finer(() -> "deserializeArray: returning empty typed array: " + array.getClass().getSimpleName());
           return array; // Return empty typed array
         }
 
@@ -865,7 +844,7 @@ final class PicklerImpl<T> implements Pickler<T> {
           Object element = deserialize(buffer);
           Array.set(array, 0, element);
         } else {
-          Object element = deserializeBuiltInComponent(buffer, -firstMarker);
+          Object element = deserializeBuiltInComponent(buffer, firstMarker);
           Array.set(array, 0, element);
         }
 
@@ -879,7 +858,7 @@ final class PicklerImpl<T> implements Pickler<T> {
             buffer.position(buffer.position() - ZigZagEncoding.sizeOf(marker));
             element = deserialize(buffer);
           } else {
-            element = deserializeBuiltInComponent(buffer, -marker);
+            element = deserializeBuiltInComponent(buffer, marker);
           }
           Array.set(array, i, element);
         });
@@ -894,13 +873,13 @@ final class PicklerImpl<T> implements Pickler<T> {
         java.util.stream.IntStream.range(0, length).forEach(i -> {
           byte optMarker = buffer.get();
           LOGGER.finer(() -> "deserializeArray: reading Optional[" + i + "] optMarker=" + optMarker);
-          if (optMarker == Constants.OPTIONAL_EMPTY.marker()) {
+          if (optMarker == Constants.OPTIONAL_EMPTY.ordinal) {
             optionals[i] = java.util.Optional.empty();
             LOGGER.finer(() -> "deserializeArray: created empty Optional[" + i + "]");
-          } else if (optMarker == Constants.OPTIONAL_OF.marker()) {
+          } else if (optMarker == Constants.OPTIONAL_OF.ordinal) {
             // Read the next value - negative marker for built-in types
             int negativeMarker = ZigZagEncoding.getInt(buffer);
-            byte valueMarker = (byte) (-negativeMarker); // Convert negative marker to positive
+            byte valueMarker = (byte) negativeMarker; // Already negative
             LOGGER.finer(() -> "deserializeArray: negativeMarker=" + negativeMarker + " valueMarker=" + valueMarker);
             Object value = switch (Constants.fromMarker(valueMarker)) {
               case STRING -> {
@@ -910,14 +889,14 @@ final class PicklerImpl<T> implements Pickler<T> {
                 yield new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
               }
               case INTEGER, INTEGER_VAR -> {
-                if (valueMarker == Constants.INTEGER.marker()) {
+                if (valueMarker == Constants.INTEGER.ordinal) {
                   yield buffer.getInt();
                 } else {
                   yield ZigZagEncoding.getInt(buffer);
                 }
               }
               case LONG, LONG_VAR -> {
-                if (valueMarker == Constants.LONG.marker()) {
+                if (valueMarker == Constants.LONG.ordinal) {
                   yield buffer.getLong();
                 } else {
                   yield ZigZagEncoding.getLong(buffer);

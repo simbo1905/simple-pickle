@@ -14,22 +14,22 @@ public class Scaffolding {
     final long leastSigBits = 0xa716446655440000L;
     final var originalUuid = new UUID(mostSigBits, leastSigBits);
     final var originalRecord = new UserSession("session123", originalUuid, System.currentTimeMillis());
-    final var pickler = Pickler.forRecord(UserSession.class);
-    final ByteBuffer readyToReadBack;
+    final var pickler = Pickler.of(UserSession.class);
     
-    // Write phase - serialize record
-    try (final var writeBuffer = pickler.allocateForWriting(1024)) { //TODO: migrate all tests to use this pattern - using 1KB for fair comparison
-      int actualSize = pickler.serialize(writeBuffer, originalRecord);
-      LOGGER.info(() -> "Serialized record, actual size: " + actualSize + " bytes");
-      
-      readyToReadBack = writeBuffer.flip(); // flip() calls close(), buffer is now unusable
-      LOGGER.info(() -> "Buffer ready for transmission, limit: " + readyToReadBack.limit());
-      // In real usage: transmit readyToReadBack bytes to network or save to file
-    }
-
-    // Read phase - read back from transmitted/saved bytes
-    final var readBuffer = pickler.wrapForReading(readyToReadBack);
-    final var deserializedRecord = pickler.deserialize(readBuffer);
+    // Allocate buffer for serialization
+    int maxSize = pickler.maxSizeOf(originalRecord);
+    ByteBuffer buffer = ByteBuffer.allocate(maxSize);
+    
+    // Serialize record
+    int actualSize = pickler.serialize(buffer, originalRecord);
+    LOGGER.info(() -> "Serialized record, actual size: " + actualSize + " bytes");
+    
+    // Prepare for reading
+    buffer.flip();
+    LOGGER.info(() -> "Buffer ready for transmission, limit: " + buffer.limit());
+    
+    // Deserialize record
+    final var deserializedRecord = pickler.deserialize(buffer);
     LOGGER.info(() -> "Deserialized record: " + deserializedRecord);
 
     if( !originalRecord.equals(deserializedRecord)) {

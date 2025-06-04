@@ -121,6 +121,52 @@ mvn exec:java -Dexec.mainClass="org.sample.UtilityClass" -q
 - **Records must be public**: NFP requires public records for reflection access
 
 
+## Modern Java Singleton Pattern: Sealed Interfaces
+
+**Anti-Pattern**: Traditional singleton classes with private constructors and static instances are legacy should be avoided.
+
+**Modern Pattern**: Use sealed interfaces, with nested  with static methods that only has a nested record that is the configuration object to use with 
+the default methods
+
+### Implementation
+
+```java
+/// Modern Java companion object pattern avoiding singleton anti-patterns
+public sealed interface LoggingControl permits LoggingControl.Config {
+
+  /// Configuration record for immutable state
+  record Config(Level defaultLevel) implements LoggingControl {}
+  
+  /// Static methods provide functionality without instantiation
+  static void setupCleanLogging(Config config) {
+    // Implementation here - no instances required
+  }
+  
+  /// Convenience methods with sensible defaults
+  static void setupCleanLogging() {
+    setupCleanLogging(new Config(Level.WARNING));
+  }
+}
+```
+
+### Benefits
+
+1. **No instantiation possible**: Interface cannot be constructed directly
+2. **Functional style**: Static methods provide clean API without state
+3. **Type safety**: Sealed interface with permits controls allowed implementations  
+4. **Configuration via records**: Immutable configuration objects instead of mutable state
+5. **Modern Java idioms**: Uses features introduced in Java 17+ (sealed types, records)
+
+### Usage
+
+```java
+// Clean functional calls - no instances, no singletons
+LoggingControl.setupCleanLogging(); // Uses default config
+LoggingControl.setupCleanLogging(new LoggingControl.Config(Level.FINER)); // Custom config
+```
+
+This pattern replaces traditional singleton anti-patterns with modern, functional Java that is easier to test, reason about, and maintain.
+
 ## JEP References
 
 [JEP 467](https://openjdk.org/jeps/467): Markdown Documentation in JavaDoc

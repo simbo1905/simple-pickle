@@ -42,21 +42,19 @@ public class WritePathProfiler {
     }
     
     private static void warmUp(AllPrimitives testData) throws Exception {
-        final var pickler = Pickler.forRecord(AllPrimitives.class);
+        final var pickler = Pickler.of(AllPrimitives.class);
         
         // Warm up NFP
         for (int i = 0; i < 10000; i++) {
-            try (final var writeBuffer = pickler.allocateForWriting(256)) {
-                pickler.serialize(writeBuffer, testData);
-                writeBuffer.flip(); // Complete the write operation
-            }
+            var buffer = java.nio.ByteBuffer.allocate(pickler.maxSizeOf(testData));
+            pickler.serialize(buffer, testData);
         }
         
         System.out.println("Warmup complete");
     }
     
     private static void profileNfpWrites(AllPrimitives testData) throws Exception {
-        final var pickler = Pickler.forRecord(AllPrimitives.class);
+        final var pickler = Pickler.of(AllPrimitives.class);
         final long startTime = System.currentTimeMillis();
         final long endTime = startTime + 10_000; // Run for 10 seconds
         
@@ -64,11 +62,9 @@ public class WritePathProfiler {
         
         // Tight loop focusing only on write operations
         while (System.currentTimeMillis() < endTime) {
-            try (final var writeBuffer = pickler.allocateForWriting(256)) {
-                pickler.serialize(writeBuffer, testData);
-                writeBuffer.flip(); // Complete the write operation
-                iterations++;
-            }
+            var buffer = java.nio.ByteBuffer.allocate(pickler.maxSizeOf(testData));
+            pickler.serialize(buffer, testData);
+            iterations++;
         }
         
         final long actualDuration = System.currentTimeMillis() - startTime;

@@ -9,50 +9,42 @@ import java.util.Optional;
 
 /// Enum containing constants used throughout the Pickler implementation
 enum Constants {
-  NULL((byte) 1, 0, null),
-  BOOLEAN((byte) 2, 1, boolean.class),
-  BYTE((byte) 3, Byte.BYTES, byte.class),
-  SHORT((byte) 4, Short.BYTES, short.class),
-  CHARACTER((byte) 5, Character.BYTES, char.class),
-  INTEGER((byte) 6, Integer.BYTES, int.class),
-  INTEGER_VAR((byte) 7, Integer.BYTES, int.class),
-  LONG((byte) 8, Long.BYTES, long.class),
-  LONG_VAR((byte) 9, Long.BYTES, long.class),
-  FLOAT((byte) 10, Float.BYTES, float.class),
-  DOUBLE((byte) 11, Double.BYTES, double.class),
-  STRING((byte) 12, 0, String.class),
-  OPTIONAL_EMPTY((byte) 13, 0, Optional.class),
-  OPTIONAL_OF((byte) 14, 0, Optional.class),
-  ENUM((byte) 15, 0, Enum.class),
-  ARRAY((byte) 16, 0, null),
-  MAP((byte) 17, 0, Map.class),
-  LIST((byte) 18, 0, List.class),
-  RECORD((byte) 19, 0, Record.class),
-  SAME_TYPE((byte) 20, 0, Record.class),
-  UUID((byte) 21, 16, java.util.UUID.class);
+  NULL((byte) 0, 0, null),
+  BOOLEAN((byte) -1, 1, boolean.class),
+  BYTE((byte) -2, Byte.BYTES, byte.class),
+  SHORT((byte) -3, Short.BYTES, short.class),
+  CHARACTER((byte) -4, Character.BYTES, char.class),
+  INTEGER((byte) -5, Integer.BYTES, int.class),
+  INTEGER_VAR((byte) -6, Integer.BYTES, int.class),
+  LONG((byte) -7, Long.BYTES, long.class),
+  LONG_VAR((byte) -8, Long.BYTES, long.class),
+  FLOAT((byte) -9, Float.BYTES, float.class),
+  DOUBLE((byte) -10, Double.BYTES, double.class),
+  STRING((byte) -11, 0, String.class),
+  OPTIONAL_EMPTY((byte) -12, 0, Optional.class),
+  OPTIONAL_OF((byte) -13, 0, Optional.class),
+  ENUM((byte) -14, 0, Enum.class),
+  ARRAY((byte) -15, 0, null),
+  MAP((byte) -16, 0, Map.class),
+  LIST((byte) -17, 0, List.class),
+  RECORD((byte) -18, 0, Record.class),
+  SAME_TYPE((byte) -19, 0, Record.class),
+  UUID((byte) -20, 16, java.util.UUID.class);
 
-  private final byte typeMarker;
+  final byte ordinal;
   final int sizeInBytes;
   final Class<?> clazz;
 
-  Constants(byte typeMarker, int sizeInBytes, Class<?> clazz) {
-    this.typeMarker = typeMarker;
+  Constants(byte ordinal, int sizeInBytes, Class<?> clazz) {
+    this.ordinal = ordinal;
     this.sizeInBytes = sizeInBytes;
     this.clazz = clazz;
-  }
-
-  public byte marker() {
-    return typeMarker;
-  }
-
-  public int wireMarker() {
-    return -typeMarker;
   }
 
   public static Constants fromMarker(byte marker) {
     Constants result = null;
     for (Constants c : values()) {
-      if (c.typeMarker == marker) {
+      if (c.ordinal == marker) {
         result = c;
       }
     }
