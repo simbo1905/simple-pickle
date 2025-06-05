@@ -509,6 +509,7 @@ public class RefactorTests {
 
   @Test
   void testDogRoundTripArray() throws Exception {
+
     // Given a dog instance
     final var dog = new Dog("Fido", 2);
     final var dog2 = new Dog("Scooby", 56);
@@ -907,7 +908,7 @@ public class RefactorTests {
   }
 
   @Test
-  void testTreeNodeDemo() {
+  void testTreeNodeDemo()   {
     final var leaf1 = new LeafNode(42);
     final var leaf2 = new LeafNode(99);
     final var leaf3 = new LeafNode(123);

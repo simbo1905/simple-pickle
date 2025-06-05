@@ -45,6 +45,7 @@ IMPORTANT: Never disable tests written for logic that we are yet to write we do 
 ## Constants and Magic Numbers
 
 * **NEVER use magic numbers** - always use enum constants
+* **NEVER write large if-else-if statements over known types** - will not be exhaustive and creates bugs when new types are added. Use exhaustive switch statements over bounded sets such as enum values or sealed interface permits
 * **Wire protocol markers**: Use `Constants.TYPE.wireMarker()` not hardcoded negative numbers like `-2`
 * **Type markers**: Use `Constants.TYPE.marker()` not hardcoded positive numbers like `2`
 * **Type lookups**: Use `Constants.fromMarker(byte)` for reverse lookups

@@ -37,6 +37,12 @@ Ask not "What Can Valhalla Do For Me?" but "What Can I Do For Valhalla?" by usin
 - Build global lookup tables indexed by ordinal for O(1) operations
 - Cache method handles for record constructors and field accessors
 - Sort discovered classes lexicographically for stable ordinals
+- **TypeStructure Analysis**: Create parallel `tags` and `types` lists for generic components
+  - Example: `UserRecord[]` → tags: `[ARRAY, RECORD]`, types: `[Arrays.class, UserRecord.class]`
+  - Pre-resolve all user type ordinals and close over them in writers/readers/sizers
+  - Eliminates need for runtime type inspection or map lookups on hot path
+- **Tag vs Constants Distinction**: `Tag` enum represents logical types at static analysis (OPTIONAL, ARRAY, RECORD). `Constants` enum represents runtime wire markers (OPTIONAL_EMPTY, OPTIONAL_OF, specific ordinals)
+- **Array Writer Pattern**: Arrays are leaf nodes in delegation chains. Element type known from TypeStructure tags: user types (RECORD/ENUM) write `userOrdinal + 1`, built-in types write `-1 * Constants.TYPE.ordinal()`. No runtime type checking needed.
 
 **Runtime Phase (Hot Path):**
 - Direct array indexing: `discoveredClasses[ordinal]`, `constructors[ordinal]`
