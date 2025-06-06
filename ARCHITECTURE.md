@@ -143,6 +143,21 @@ Total: 9 bytes
 - **ENUM**: Read constant name, use `Enum.valueOf()`
 - **RECORD**: Read all components, invoke constructor via `MethodHandle`
 
+### TypeStructure Container Analysis Pattern
+
+**Container Type Symmetry**: All container types follow the same pattern for tags/types lists to enable uniform processing:
+
+- **Arrays**: `short[]` → tags: `[ARRAY, SHORT]`, types: `[Arrays.class, short.class]`
+- **Lists**: `List<String>` → tags: `[LIST, STRING]`, types: `[List.class, String.class]`  
+- **Optionals**: `Optional<Integer>` → tags: `[OPTIONAL, INTEGER]`, types: `[Optional.class, Integer.class]`
+- **Maps**: `Map<K,V>` → tags: `[MAP, K_TAG, V_TAG]`, types: `[Map.class, K.class, V.class]`
+
+**Design Principle**: Use marker classes (`Arrays.class`, `List.class`, etc.) rather than concrete types (`short[].class`) to avoid needing `isArray()` checks. The tag indicates the container logic, the marker class provides uniform handling.
+
+**Writer Chain Processing**: Processes tags right-to-left (leaf-to-container):
+1. Rightmost tag (element) → Create element writer/reader
+2. Container tag → Create container logic that uses tag-based dispatch, not delegation
+
 ### Performance Characteristics
 
 **O(1) Operations**: 
@@ -193,11 +208,15 @@ In the older generation architecture we wrote class names and enum names so that
 
 **Problem**: Array deserialization needs component type but was trying to peek at elements or read class names.
 
-**Solution**: Use the existing global analysis tables to resolve component types:
-1. **Component Type from Context**: When deserializing a record field like `Person[] people`, the record component analysis already knows this is `Person[]`
-2. **Global Ordinal Lookup**: Use `analysis.discoveredClasses()[ordinal]` to get the exact `Class<?>` for any user type
+**Performance Issue**: It is crazy to loop over an array of bytes and write out each byte one at a time with a byte marker. We write out the marker for the byte once when writing the array then do buffer.put(bytes) to write the whole byte array in one go. We pack a boolean[] as a BitSet that we convert to a `byte[]` for writing. This means that 8 booleans are packed into one byte. The only thing that we just delegate the writing are the user types of RECORD and ENUM. 
+
+**Solution** 
+
+1. The analysis of types will give us a tag list for Optional<List<byte[]>>> will give us a tag list of `[OPTIONAL, LIST, ARRAY, BYTE]` and a type list of `[Optional.class, List.class, Arrays.class, byte[].class]`. 
+2. The write chain is built right to left which is inner leaf node to outer container types. In the above example the ordering is `byte[]`, `Arrays.class`, `List.class`, `Optional.class`. The leaf node is the `byte[]` which is written as a byte array. The next outer node is the `Arrays.class` which is written as an ARRAY marker. The next outer node is the `List.class` which is written as a LIST marker. The final outer node is the `Optional.class` which is written as an OPTIONAL marker.
+
 3. **Typed Array Creation**: `Array.newInstance(componentType, length)` using the resolved class
-4. **Element Deserialization**: Use existing ordinal-based element deserialization
+4. **Element Deserialization**: The ARRAY_WRITER has logic to explicitly optimise how an array is written. If it is a `byte[]` we just `butter.put( bytes )` it would be insane to loop over ever byte to write out the byte marker and the byte. Clearly to read it back we need to know the number elements to allocate a `byte[]`. The `boolean[]` is converted to a bitset which is converted to `byte[]`. With `int[]` and `long[]` at write time we check the first part of the array to see if compresses well. If so we write it as INTEGER_ARRAY or LONG_ARRAY. If not we write it as INTEGER or LONG 
 
 **Key Insight**: No need to peek at elements or extend wire protocol - all type information is already available in the global lookup tables by design.
 

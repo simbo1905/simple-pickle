@@ -12,8 +12,6 @@ import org.junit.jupiter.api.Test;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.logging.*;
-import java.util.logging.Formatter;
 import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -68,7 +66,7 @@ public class RefactorTests {
   }
 
   @Test
-  void testAnimalListSerialization() throws Exception {
+  void testAnimalListSerialization() {
     // Arrange
     Dog dog = new Dog("Buddy", 3);
     Dog dog2 = new Dog("Fido", 2);
@@ -373,6 +371,23 @@ public class RefactorTests {
       float[] floatArray,
       double[] doubleArray
   ) {
+  }
+
+  public record DoubleArrayRecord(double[] values) {
+  }
+
+  @Test
+  void testDoubleArrayRecordSerialization() {
+    // Arrange
+    DoubleArrayRecord record = new DoubleArrayRecord(new double[]{1.0, 2.5, 3.14, Double.MAX_VALUE, Double.MIN_VALUE});
+    Pickler<DoubleArrayRecord> pickler = of(DoubleArrayRecord.class);
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(record));
+    // Act
+    pickler.serialize(buffer, record);
+    final var buf = buffer.flip();
+    DoubleArrayRecord deserialized = pickler.deserialize(buf);
+    // Assert
+    assertArrayEquals(record.values(), deserialized.values(), "Double array contents should match");
   }
 
   @Test
@@ -1097,7 +1112,7 @@ public class RefactorTests {
     // Allocated write buffer
 
     // Serialize the record
-    final int actualSize = pickler.serialize(writeBuffer, originalRecord);
+    pickler.serialize(writeBuffer, originalRecord);
     // Serialized record
 
     // Create read buffer from write buffer
@@ -1125,7 +1140,7 @@ public class RefactorTests {
   }
 
   @Test
-  void testAllPrimitivesWrite() throws Exception {
+  void testAllPrimitivesWrite() {
     LOGGER.info("=== Testing AllPrimitives write performance issue ===");
 
     final var testData = new AllPrimitives(

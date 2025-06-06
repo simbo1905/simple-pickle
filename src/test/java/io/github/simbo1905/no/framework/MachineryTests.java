@@ -1,14 +1,8 @@
 package io.github.simbo1905.no.framework;
 
-import io.github.simbo1905.no.framework.model.Person;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.util.logging.ConsoleHandler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
-import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /// Package-private tests for core machinery components
@@ -69,7 +63,7 @@ class MachineryTests {
   void testArrayTypeDiscovery() {
     final var pickler = Pickler.of(ArrayRecord.class);
     final var impl = (PicklerImpl<ArrayRecord>) pickler;
-    final var discoveredClasses = impl.discoveredClasses;
+    final var discoveredClasses = impl.userTypes;
     
     // Array type discovery test
     assertThat(discoveredClasses).hasSize(2).contains(ArrayRecord.class, NestedRecord.class);
@@ -79,7 +73,7 @@ class MachineryTests {
   void testListTypeDiscovery() {
     final var pickler = Pickler.of(ListRecord.class);
     final var impl = (PicklerImpl<ListRecord>) pickler;
-    final var discoveredClasses = impl.discoveredClasses;
+    final var discoveredClasses = impl.userTypes;
     
     // List type discovery test
     assertThat(discoveredClasses).hasSize(2).contains(ListRecord.class, NestedRecord.class);
@@ -89,7 +83,7 @@ class MachineryTests {
   void testOptionalTypeDiscovery() {
     final var pickler = Pickler.of(OptionalRecord.class);
     final var impl = (PicklerImpl<OptionalRecord>) pickler;
-    final var discoveredClasses = impl.discoveredClasses;
+    final var discoveredClasses = impl.userTypes;
     
     // Optional type discovery test
     assertThat(discoveredClasses).hasSize(2).contains(OptionalRecord.class, NestedRecord.class);
@@ -99,7 +93,7 @@ class MachineryTests {
   void testDirectTypeDiscovery() {
     final var pickler = Pickler.of(DirectRecord.class);
     final var impl = (PicklerImpl<DirectRecord>) pickler;
-    final var discoveredClasses = impl.discoveredClasses;
+    final var discoveredClasses = impl.userTypes;
     
     // Direct type discovery test
     assertThat(discoveredClasses).hasSize(2).contains(DirectRecord.class, NestedRecord.class);
