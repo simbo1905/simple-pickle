@@ -3,7 +3,6 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
-import java.util.HashSet;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -38,9 +37,9 @@ class EnumConstantTests {
 
       // Skip this test analysis - using unified architecture now
 
-       final var pickler2 = Pickler.of(DataCommand.class);
+       final var pickler2 = Pickler.forClass(DataCommand.class);
 
-        final var pickler = Pickler.of(Command.class);
+        final var pickler = Pickler.forClass(Command.class);
         
         // This should work but currently fails
         assertDoesNotThrow(() -> {
@@ -53,7 +52,7 @@ class EnumConstantTests {
     void testEnumInRecordSerialization() {
         // FIXME: This test may also fail due to enum handling
         
-        final var pickler = Pickler.of(NoOperation.class);
+        final var pickler = Pickler.forClass(NoOperation.class);
         final var operation = new NoOperation(Operation.READ);
         
         assertDoesNotThrow(() -> {

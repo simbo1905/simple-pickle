@@ -31,7 +31,7 @@ public sealed interface Pickler<T> permits PicklerImpl {
   /// Factory method for creating a unified pickler for any type
   /// @param clazz The root class (record, enum, or sealed interface)
   /// @return A pickler instance
-  static <T> Pickler<T> of(Class<T> clazz) {
+  static <T> Pickler<T> forClass(Class<T> clazz) {
     return new PicklerImpl<>(clazz);
   }
 }

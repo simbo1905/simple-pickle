@@ -26,7 +26,7 @@ public class HotPathProfiler {
         System.out.println("Test data: " + testData);
         
         // Create pickler and buffer
-        final var nfpPickler = Pickler.of(TestRecord.class);
+        final var nfpPickler = Pickler.forClass(TestRecord.class);
         final var nfpBuffer = ByteBuffer.allocate(nfpPickler.maxSizeOf(testData));
         
         System.out.println("\n=== SINGLE SERIALIZATION WITH FINEST TRACING ===");

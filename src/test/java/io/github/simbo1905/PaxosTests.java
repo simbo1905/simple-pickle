@@ -10,9 +10,6 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.logging.ConsoleHandler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.IntStream;
 
 public class PaxosTests {
@@ -29,7 +26,7 @@ public class PaxosTests {
 
   @Test
   void testPaxosAccepts() throws Exception {
-    final var pickler = Pickler.of(Accept.class);
+    final var pickler = Pickler.forClass(Accept.class);
     final ByteBuffer readyToReadBack;
     final var writeBuffer = ByteBuffer.allocate(2048); // Allocate a buffer for writing
       for (var accept : original) {
@@ -47,7 +44,7 @@ public class PaxosTests {
   @Test
   void testAbstractCommandSealedInterface() throws Exception {
     // Test direct serialization of sealed interface with enum and record permits
-    final var commandPickler = Pickler.of(com.github.trex_paxos.AbstractCommand.class);
+    final var commandPickler = Pickler.forClass(com.github.trex_paxos.AbstractCommand.class);
     
     com.github.trex_paxos.AbstractCommand[] commands = {
         NoOperation.NOOP,

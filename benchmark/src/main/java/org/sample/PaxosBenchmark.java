@@ -34,7 +34,7 @@ public class PaxosBenchmark {
   @Setup(Level.Trial)
   public void setupTrial() throws Exception {
     // Initialize NFP pickler once
-    nfpPickler = Pickler.of(Accept.class);
+    nfpPickler = Pickler.forClass(Accept.class);
     
     // Calculate max size needed for all records
     int totalMaxSize = 0;
@@ -246,7 +246,7 @@ public class PaxosBenchmark {
     System.out.println("JDK Serialization size: " + jdkSize + " bytes");
     
     // Test No Framework Pickler
-    final Pickler<Accept> pickler = Pickler.of(Accept.class);
+    final Pickler<Accept> pickler = Pickler.forClass(Accept.class);
     
     // Calculate total size needed
     int totalSize = 0;

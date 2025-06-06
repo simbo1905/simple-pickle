@@ -3,6 +3,9 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /// Package-private tests for core machinery components
@@ -61,7 +64,7 @@ class MachineryTests {
 
   @Test
   void testArrayTypeDiscovery() {
-    final var pickler = Pickler.of(ArrayRecord.class);
+    final var pickler = Pickler.forClass(ArrayRecord.class);
     final var impl = (PicklerImpl<ArrayRecord>) pickler;
     final var discoveredClasses = impl.userTypes;
     
@@ -71,7 +74,7 @@ class MachineryTests {
 
   @Test
   void testListTypeDiscovery() {
-    final var pickler = Pickler.of(ListRecord.class);
+    final var pickler = Pickler.forClass(ListRecord.class);
     final var impl = (PicklerImpl<ListRecord>) pickler;
     final var discoveredClasses = impl.userTypes;
     
@@ -81,7 +84,7 @@ class MachineryTests {
 
   @Test
   void testOptionalTypeDiscovery() {
-    final var pickler = Pickler.of(OptionalRecord.class);
+    final var pickler = Pickler.forClass(OptionalRecord.class);
     final var impl = (PicklerImpl<OptionalRecord>) pickler;
     final var discoveredClasses = impl.userTypes;
     
@@ -91,11 +94,63 @@ class MachineryTests {
 
   @Test
   void testDirectTypeDiscovery() {
-    final var pickler = Pickler.of(DirectRecord.class);
+    final var pickler = Pickler.forClass(DirectRecord.class);
     final var impl = (PicklerImpl<DirectRecord>) pickler;
     final var discoveredClasses = impl.userTypes;
     
     // Direct type discovery test
     assertThat(discoveredClasses).hasSize(2).contains(DirectRecord.class, NestedRecord.class);
+  }
+
+  // Test record for TypeStructure analysis
+  public record OptionalArrayTestRecord(
+      java.util.Optional<String>[] stringOptionals,
+      java.util.Optional<Integer>[] intOptionals
+  ) {}
+
+  @Test
+  void testTypeStructureAnalysisForOptionalArrays() {
+    // Get the generic type from record component - this retains generic info
+    var recordClass = OptionalArrayTestRecord.class;
+    var components = recordClass.getRecordComponents();
+    
+    // Test Optional<String>[] field
+    var stringOptionalArrayType = components[0].getGenericType();
+    var result = TypeStructure.analyze(stringOptionalArrayType);
+    
+    assertThat(result.tagTypes()).hasSize(3);
+    // Should be: [ARRAY, OPTIONAL, STRING] with [Arrays.class, Optional.class, String.class]
+    assertThat(result.tagTypes().get(0).tag()).isEqualTo(Tag.ARRAY);
+    assertThat(result.tagTypes().get(0).type()).isEqualTo(Arrays.class);
+    assertThat(result.tagTypes().get(1).tag()).isEqualTo(Tag.OPTIONAL);
+    assertThat(result.tagTypes().get(1).type()).isEqualTo(Optional.class);
+    assertThat(result.tagTypes().get(2).tag()).isEqualTo(Tag.STRING);
+    assertThat(result.tagTypes().get(2).type()).isEqualTo(String.class);
+  }
+
+  // Test record for Optional of Array - the flipped case
+  public record OptionalOfArrayTestRecord(
+      java.util.Optional<String[]> optionalStringArray,
+      java.util.Optional<Integer[]> optionalIntArray
+  ) {}
+
+  @Test
+  void testTypeStructureAnalysisForOptionalOfArray() {
+    // Test the flipped case - Optional<String[]> instead of Optional<String>[]
+    var recordClass = OptionalOfArrayTestRecord.class;
+    var components = recordClass.getRecordComponents();
+    
+    // Test Optional<String[]> field
+    var optionalStringArrayType = components[0].getGenericType();
+    var result = TypeStructure.analyze(optionalStringArrayType);
+    
+    assertThat(result.tagTypes()).hasSize(3);
+    // Should be: [OPTIONAL, ARRAY, STRING] with [Optional.class, Arrays.class, String.class]
+    assertThat(result.tagTypes().get(0).tag()).isEqualTo(Tag.OPTIONAL);
+    assertThat(result.tagTypes().get(0).type()).isEqualTo(Optional.class);
+    assertThat(result.tagTypes().get(1).tag()).isEqualTo(Tag.ARRAY);
+    assertThat(result.tagTypes().get(1).type()).isEqualTo(Arrays.class);
+    assertThat(result.tagTypes().get(2).tag()).isEqualTo(Tag.STRING);
+    assertThat(result.tagTypes().get(2).type()).isEqualTo(String.class);
   }
 }

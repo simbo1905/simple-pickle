@@ -158,6 +158,56 @@ Total: 9 bytes
 1. Rightmost tag (element) → Create element writer/reader
 2. Container tag → Create container logic that uses tag-based dispatch, not delegation
 
+### Static Analysis and Generic Type Resolution
+
+**Critical Java Limitation**: Generic type information is erased at runtime except for method signatures. You cannot analyze `Optional<String>[].class` directly because the `<String>` is lost to type erasure. Only method signatures retain generics.
+
+**Solution**: Generic type information is preserved in record component accessor methods. `RecordComponent.getGenericType()` returns the full parameterized type including all generic parameters.
+
+**Java Type Syntax Differences**:
+- **Generics**: Prefix notation `Container<Contained>` (e.g., `List<String>`, `Optional<Integer>`)
+- **Arrays**: Postfix notation `Contained[]` (e.g., `String[]`, `Person[]`)
+- **Arrays are invariant**: Unlike generics which support variance, arrays always know their component type
+
+**TypeStructure Analysis Process**:
+
+1. **Input**: `Type` from `RecordComponent.getGenericType()` (e.g., `List<Optional<Person[]>>`)
+2. **Recursive Unwrapping**: Recursively analyze container types to ANY depth, building parallel lists:
+   - Each container type (List, Optional, Array, etc.) adds its tag and marker class
+   - Continue unwrapping until reaching a leaf type (primitive, String, user record, etc.)
+3. **Output**: Parallel tag/type lists representing the complete nesting structure
+4. **Example**: `List<Optional<Person[]>>` → 
+   - tags: `[LIST, OPTIONAL, ARRAY, RECORD]`
+   - types: `[List.class, Optional.class, Arrays.class, Person.class]`
+5. **Writer/Reader Chain Construction**: Process tags right-to-left (innermost to outermost):
+   - Start with leaf writer/reader (e.g., RECORD writer for Person)
+   - Wrap with ARRAY writer/reader (handles element iteration) 
+   - Wrap with OPTIONAL writer/reader (handles empty/present)
+   - Wrap with LIST writer/reader (handles collection size/elements)
+   - Each layer delegates to the inner writer/reader it wraps
+
+**Chaining writers and Readers**:
+
+The analysis always has containers on the left, of any depth and the leaf types on the right. 
+This means we just walk from right→left to create the inner→outer then have the outer writers delegate to the inner writers. What we delegate to must exist before the thing we delegate from. So we construct right→left and chain them to run left->right→left. The outer writers write their type marker and then delegate. This means that the wire markers look like the tags list: 
+
+`List<Optional<Person[]>>` → 
+`[LIST, OPTIONAL, ARRAY, RECORD]` → 
+`[-1*Constants.LIST.ordinal(), -1*Constants.OPTIONAL.ordinal(), -1*Constants.ARRAY.ordinal(), 1 + classToOrdinal(Person.class)]`
+
+It is then clear that the reader chain will have to read this in wire oder to know that it has to go in the reverse order. We first run through the outer readers which will do null checks and only if they should not use null will delegate to the inner readers. This will walk down the `[LIST, OPTIONAL, ARRAY, RECORD]` and it will be the inner most container, in this case ARRAY that will read the length and invoke the specific record reader for many `Person` instances. 
+
+We should note that `[ARRAY, OPTIONAL, LIST, PERSON]` has absolutely no difference. We can have
+`[ARRAY, OPTIONAL, LIST, LIST, OPTIONAL, ARRAY, PERSON]` or whatever. We are simply doing the same meta programming pattern. 
+
+**Wire Protocol Encoding**:
+- **Built-in types** (String, Integer, etc.): Write negative index (e.g., `-1 * Constants.STRING.ordinal()`)
+- **User types** (Records, Enums): Write positive index into discovered types array (1-indexed: `ordinal + 1`)
+
+**Deserialization Order**: Must materialize leaf-first (inside-out) - you cannot create a container until its contents exist. The reader chain naturally enforces this by reading the deepest elements first.
+
+**Why This Architecture**: The tag abstraction allows uniform handling despite Java's syntax differences between arrays (postfix) and generics (prefix). The parallel tag/type lists enable O(1) lookups during meta-programming without runtime type inspection.
+
 ### Performance Characteristics
 
 **O(1) Operations**: 
@@ -186,21 +236,6 @@ In the older generation architecture we wrote class names and enum names so that
 - **Design Error (Omission)**: Missing specification in documentation
 - **Implementation Error (Commission)**: Adding code not specified by design (e.g., unnecessary `rootOrdinal` field)
 - **When design and implementation match**: Code will be minimal and fast
-
-## Current Status: 90%+ Complete
-
-### Test Results: 30/33 Passing (90%+ Success Rate)
-- **Major wins**: Sealed interfaces ✅, Primitive arrays ✅, Basic records ✅, Enums ✅
-- **Core architecture**: ✅ Working end-to-end
-- **Wire protocol**: ✅ 1-indexed logical ordinals with 0=NULL
-
-### Remaining Issues (Edge Cases Only)
-1. **Array type casting** (2 errors): `Object[]` cannot cast to `Optional[]`/`Person[]` 
-   - Complex issue requiring component type information in wire protocol
-   - NOT blocking unified pickler deployment - edge case only
-2. **Missing UnsupportedOperationException** (1 failure): Simple test expectation fix
-
-**The unified pickler architecture successfully eliminates RecordPickler/SealedPickler separation and is ready for production use.**
 
 ### Array Type Casting Solution
 

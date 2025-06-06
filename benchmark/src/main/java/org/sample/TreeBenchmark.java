@@ -29,7 +29,7 @@ public class TreeBenchmark {
   private ByteArrayOutputStream byteArrayOutputStream;
 
   // Pickler for TreeNode sealed interface (unified API)
-  private static final Pickler<TreeNode> treeNodePickler = Pickler.of(TreeNode.class);
+  private static final Pickler<TreeNode> treeNodePickler = Pickler.forClass(TreeNode.class);
 
   @Setup(Level.Trial)
   public void setupTrial() {

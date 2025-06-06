@@ -42,7 +42,7 @@ public class SizeCalculator {
     }
     
     private static int calculateNfpSize(Accept... accepts) throws Exception {
-        Pickler<Accept> pickler = Pickler.of(Accept.class);
+        Pickler<Accept> pickler = Pickler.forClass(Accept.class);
         int totalSize = 0;
         
         for (Accept accept : accepts) {

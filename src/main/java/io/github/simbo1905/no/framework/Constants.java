@@ -28,7 +28,6 @@ enum Constants {
   MAP(0, Tag.MAP),
   LIST(0, Tag.LIST),
   RECORD(0, Tag.RECORD),
-  SAME_TYPE(0, Tag.SAME_TYPE),
   UUID(16, Tag.UUID);
 
   final int sizeInBytes;

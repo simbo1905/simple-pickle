@@ -19,7 +19,7 @@ public class TreeDemo {
     final var originalRoot = new InternalNode("root", internal1, internal2);
 
 // Get a pickler for the TreeNode sealed interface
-    final var pickler = Pickler.of(TreeNode.class);
+    final var pickler = Pickler.forClass(TreeNode.class);
 
 // Allocate a buffer to hold just the root node
     final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(originalRoot));

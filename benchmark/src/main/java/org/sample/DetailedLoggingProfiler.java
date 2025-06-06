@@ -20,7 +20,7 @@ public class DetailedLoggingProfiler {
         final var testData = new TestRecord("Test", 42, 123456789L, true);
         
         // Single run with logging
-        final var pickler = Pickler.of(TestRecord.class);
+        final var pickler = Pickler.forClass(TestRecord.class);
         final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(testData));
         
         long start = System.nanoTime();

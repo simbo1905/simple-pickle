@@ -14,7 +14,7 @@ public class Scaffolding {
     final long leastSigBits = 0xa716446655440000L;
     final var originalUuid = new UUID(mostSigBits, leastSigBits);
     final var originalRecord = new UserSession("session123", originalUuid, System.currentTimeMillis());
-    final var pickler = Pickler.of(UserSession.class);
+    final var pickler = Pickler.forClass(UserSession.class);
     
     // Allocate buffer for serialization
     int maxSize = pickler.maxSizeOf(originalRecord);

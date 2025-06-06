@@ -17,7 +17,7 @@ public class SimpleWriteProfiler {
         System.out.println("Test data: " + testData);
         
         // Pre-allocate like the benchmark does
-        final var nfpPickler = Pickler.of(TestRecord.class);
+        final var nfpPickler = Pickler.forClass(TestRecord.class);
         final var nfpBuffer = ByteBuffer.allocate(nfpPickler.maxSizeOf(testData));
         final var jdkOutputStream = new ByteArrayOutputStream();
         

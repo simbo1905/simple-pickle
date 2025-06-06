@@ -27,8 +27,7 @@ enum Tag {
   ENUM(Enum.class),
   ARRAY(Arrays.class), // Arrays don't have a single class use Arrays.class as a marker
   RECORD(Record.class),
-  UUID(java.util.UUID.class),
-  SAME_TYPE(Record.class) // Special tag for self-referencing records, used in TypeStructure analysis
+  UUID(java.util.UUID.class)
   ;
 
   final Class<?>[] supportedClasses;

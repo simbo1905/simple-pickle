@@ -21,7 +21,7 @@ public class NfpWriteProfiler {
         
         // Initialize NFP components
         LOGGER.fine("Creating NFP pickler");
-        final var nfpPickler = Pickler.of(TestRecord.class);
+        final var nfpPickler = Pickler.forClass(TestRecord.class);
         
         LOGGER.fine("Calculating max size");
         final int maxSize = nfpPickler.maxSizeOf(testData);

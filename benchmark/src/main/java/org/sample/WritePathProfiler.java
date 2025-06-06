@@ -42,7 +42,7 @@ public class WritePathProfiler {
     }
     
     private static void warmUp(AllPrimitives testData) throws Exception {
-        final var pickler = Pickler.of(AllPrimitives.class);
+        final var pickler = Pickler.forClass(AllPrimitives.class);
         
         // Warm up NFP
         for (int i = 0; i < 10000; i++) {
@@ -54,7 +54,7 @@ public class WritePathProfiler {
     }
     
     private static void profileNfpWrites(AllPrimitives testData) throws Exception {
-        final var pickler = Pickler.of(AllPrimitives.class);
+        final var pickler = Pickler.forClass(AllPrimitives.class);
         final long startTime = System.currentTimeMillis();
         final long endTime = startTime + 10_000; // Run for 10 seconds
         

@@ -22,7 +22,7 @@ public class SingleRunProfiler {
         System.out.println("--- NFP Serialization (Single Run) ---");
         long nfpStart = System.nanoTime();
         
-        final var nfpPickler = Pickler.of(TestRecord.class);
+        final var nfpPickler = Pickler.forClass(TestRecord.class);
         final int maxSize = nfpPickler.maxSizeOf(testData);
         final var nfpBuffer = ByteBuffer.allocate(maxSize);
         

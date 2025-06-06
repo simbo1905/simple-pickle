@@ -39,7 +39,7 @@ public class SimpleBenchmark {
   @Setup(Level.Trial)
   public void setupTrial() throws Exception {
     // Initialize NFP pickler
-    nfpPickler = Pickler.of(TestRecord.class);
+    nfpPickler = Pickler.forClass(TestRecord.class);
     
     // Pre-serialize with JDK for read benchmarks
     jdkOutputStream = new ByteArrayOutputStream();

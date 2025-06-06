@@ -45,7 +45,7 @@ public class PublicApiDemo {
   static List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
   public static void main(String[] args) throws Exception {
-    Pickler<Animal> pickler = Pickler.of(Animal.class);
+    Pickler<Animal> pickler = Pickler.forClass(Animal.class);
     // TODO: fix the allocateSufficient of WriteBuffer
 
     final var buffer = ByteBuffer.allocate(1024);
