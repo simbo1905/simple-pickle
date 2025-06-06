@@ -551,6 +551,20 @@ final class PicklerImpl<T> implements Pickler<T> {
             createLeafWriter(typeWithTag).accept(buffer, innerValue);
           }
       };
+      case RECORD -> (buffer, value) -> {
+        final var records = (Record[]) value;
+        LOGGER.fine(() -> "Writing RECORD array - position=" + buffer.position() + " length=" + records.length);
+        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, -1 * Constants.RECORD.ordinal());
+        int length = records.length;
+        ZigZagEncoding.putInt(buffer, length);
+        // Write component type ordinal using the TagWithType, not runtime lookup
+        Integer ordinal = classToOrdinal.get(typeWithTag.type());
+        ZigZagEncoding.putInt(buffer, ordinal + 1);
+        for (Record record : records) {
+          serializeRecordComponents(buffer, record, ordinal);
+        }
+      };
       default ->
           throw new IllegalArgumentException("Unsupported array type for direct writer: " + typeWithTag.tag());
     };
