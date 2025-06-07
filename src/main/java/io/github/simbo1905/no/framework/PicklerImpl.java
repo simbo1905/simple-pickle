@@ -17,7 +17,6 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Constants.INTEGER_VAR;
-import static io.github.simbo1905.no.framework.Constants.LONG_VAR;
 import static io.github.simbo1905.no.framework.Tag.*;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -275,12 +274,12 @@ final class PicklerImpl<T> implements Pickler<T> {
         case ARRAY -> {
           BiConsumer<ByteBuffer, Object> arrayWriter;
           switch (priorTag.tag()) {
-            // For primitive arrays we can use a direct writer
+            // For value type arrays we can use a direct writer
             case BOOLEAN, BYTE, SHORT, CHARACTER, INTEGER, LONG, FLOAT, DOUBLE, STRING, UUID, ENUM ->
                 arrayWriter = createValueTypeWriter(priorTag);
-            // For optional arrays we need to create a delegating writer
-            case OPTIONAL, LIST, ARRAY -> arrayWriter = (buffer, value) -> {
-              LOGGER.finer(() -> "Delegating ARRAY for tag "+ finalPriorTag.tag()+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+            // For container arrays we need to create a delegating writer
+            case OPTIONAL, LIST, ARRAY, RECORD -> arrayWriter = (buffer, value) -> {
+              LOGGER.finer(() -> "Delegating ARRAY for tag " + finalPriorTag.tag() + " with length=" + Array.getLength(value) + " at position " + buffer.position());
               ZigZagEncoding.putInt(buffer, Constants.ARRAY.marker());
               int length = Array.getLength(value);
               ZigZagEncoding.putInt(buffer, length);
@@ -289,7 +288,8 @@ final class PicklerImpl<T> implements Pickler<T> {
                 lastWriter.accept(buffer, element);
               });
             };
-            default -> throw new IllegalArgumentException("Unsupported prior tag for ARRAY: " + priorTag.tag()); // TODO MAP
+            default ->
+                throw new IllegalArgumentException("Unsupported prior tag for ARRAY: " + priorTag.tag()); // TODO MAP
           }
           yield arrayWriter;
         }
@@ -337,10 +337,10 @@ final class PicklerImpl<T> implements Pickler<T> {
         final Integer intValue = (Integer) value;
         LOGGER.fine(() -> "Writing INTEGER: " + intValue);
         if (ZigZagEncoding.sizeOf(intValue) < Integer.BYTES) {
-          ZigZagEncoding.putInt(buffer, -1 * INTEGER_VAR.ordinal());
+          ZigZagEncoding.putInt(buffer, Constants.INTEGER_VAR.marker());
           ZigZagEncoding.putInt(buffer, intValue);
         } else {
-          ZigZagEncoding.putInt(buffer, -1 * INTEGER.ordinal());
+          ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
           buffer.putInt(intValue);
         }
       };
@@ -348,10 +348,10 @@ final class PicklerImpl<T> implements Pickler<T> {
         final Long longValue = (Long) value;
         LOGGER.fine(() -> "Writing LONG: " + longValue);
         if (ZigZagEncoding.sizeOf(longValue) < Long.BYTES) {
-          ZigZagEncoding.putInt(buffer, -1 * LONG_VAR.ordinal());
+          ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.marker());
           ZigZagEncoding.putLong(buffer, longValue);
         } else {
-          ZigZagEncoding.putInt(buffer, -1 * LONG.ordinal());
+          ZigZagEncoding.putInt(buffer, Constants.LONG.marker());
           buffer.putLong(longValue);
         }
       };
@@ -409,24 +409,24 @@ final class PicklerImpl<T> implements Pickler<T> {
 
   /// Create array writer for primitive arrays using tag-based logic
   BiConsumer<ByteBuffer, Object> createValueTypeWriter(final TagWithType typeWithTag) {
-    final var outerMarker = Constants.ARRAY.marker();
+    final var arrayMarker = Constants.ARRAY.marker();
     LOGGER.finer(() -> "Creating leaf ARRAY writer for element tag: " + typeWithTag.tag() +
         " element type: " + typeWithTag.type().getSimpleName() +
-        " outerMarker: " + outerMarker); // TODO revert to FINER logging after bug fix
+        " outerMarker: " + arrayMarker);
     return switch (typeWithTag.tag()) {
       case BYTE -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ BYTE+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + BYTE + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var bytes = (byte[]) value;
-        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, arrayMarker);
         ZigZagEncoding.putInt(buffer, Constants.BYTE.marker());
         int length = bytes.length;
         ZigZagEncoding.putInt(buffer, length);
         buffer.put(bytes);
       };
       case BOOLEAN -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ BOOLEAN+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + BOOLEAN + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var booleans = (boolean[]) value;
-        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, arrayMarker);
         ZigZagEncoding.putInt(buffer, Constants.BOOLEAN.marker());
         int length = booleans.length;
         ZigZagEncoding.putInt(buffer, length);
@@ -446,16 +446,16 @@ final class PicklerImpl<T> implements Pickler<T> {
         // Here we must be saving one byte per integer to justify the encoding cost
         // TODO we can do a more worst case estimate by looking at the worst case of the total count of one two many bytes for unsaple longs
         if (sampleAverageSize < Integer.BYTES - 1) {
-          LOGGER.finer(() -> "Delegating ARRAY for tag "+ INTEGER_VAR+" with length=" + Array.getLength(value) + " at position " + buffer.position());
-          ZigZagEncoding.putInt(buffer, outerMarker);
-          ZigZagEncoding.putInt(buffer, -1 * INTEGER_VAR.ordinal());
+          LOGGER.finer(() -> "Delegating ARRAY for tag " + INTEGER_VAR + " with length=" + Array.getLength(value) + " at position " + buffer.position());
+          ZigZagEncoding.putInt(buffer, arrayMarker);
+          ZigZagEncoding.putInt(buffer, Constants.INTEGER_VAR.marker());
           ZigZagEncoding.putInt(buffer, length);
           for (int i : integers) {
             ZigZagEncoding.putInt(buffer, i);
           }
         } else {
-          LOGGER.finer(() -> "Delegating ARRAY for tag "+ INTEGER+" with length=" + Array.getLength(value) + " at position " + buffer.position());
-          ZigZagEncoding.putInt(buffer, outerMarker);
+          LOGGER.finer(() -> "Delegating ARRAY for tag " + INTEGER + " with length=" + Array.getLength(value) + " at position " + buffer.position());
+          ZigZagEncoding.putInt(buffer, arrayMarker);
           ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
           ZigZagEncoding.putInt(buffer, length);
           for (int i : integers) {
@@ -464,7 +464,7 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case LONG -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ LONG+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + LONG + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var longs = (long[]) value;
         final var length = Array.getLength(value);
         final var sampleAverageSize = length > 0 ? estimateAverageSizeLong(longs, length) : 1;
@@ -473,15 +473,15 @@ final class PicklerImpl<T> implements Pickler<T> {
         if ((length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) ||
             (length > SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
           LOGGER.fine(() -> "Writing LONG_VAR array - position=" + buffer.position() + " length=" + length);
-          ZigZagEncoding.putInt(buffer, outerMarker);
-          ZigZagEncoding.putInt(buffer, -1 * LONG_VAR.ordinal());
+          ZigZagEncoding.putInt(buffer, arrayMarker);
+          ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.marker());
           ZigZagEncoding.putInt(buffer, length);
           for (long i : longs) {
             ZigZagEncoding.putLong(buffer, i);
           }
         } else {
           LOGGER.fine(() -> "Writing LONG array - position=" + buffer.position() + " length=" + length);
-          ZigZagEncoding.putInt(buffer, outerMarker);
+          ZigZagEncoding.putInt(buffer, arrayMarker);
           ZigZagEncoding.putInt(buffer, Constants.LONG.marker());
           ZigZagEncoding.putInt(buffer, length);
           for (long i : longs) {
@@ -490,10 +490,10 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case FLOAT -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ FLOAT+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + FLOAT + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var floats = (float[]) value;
         final var length = Array.getLength(value);
-        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, arrayMarker);
         ZigZagEncoding.putInt(buffer, Constants.FLOAT.marker());
         ZigZagEncoding.putInt(buffer, length);
         for (float f : floats) {
@@ -501,10 +501,10 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case DOUBLE -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ DOUBLE+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + DOUBLE + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var doubles = (double[]) value;
         final var length = Array.getLength(value);
-        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, arrayMarker);
         ZigZagEncoding.putInt(buffer, Constants.DOUBLE.marker());
         ZigZagEncoding.putInt(buffer, length);
         for (double d : doubles) {
@@ -512,10 +512,10 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case STRING -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ STRING+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + STRING + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var strings = (String[]) value;
         final var length = Array.getLength(value);
-        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, arrayMarker);
         ZigZagEncoding.putInt(buffer, Constants.STRING.marker());
         ZigZagEncoding.putInt(buffer, length);
         for (String s : strings) {
@@ -525,10 +525,10 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case UUID -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ UUID+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + UUID + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var uuids = (UUID[]) value;
         final var length = Array.getLength(value);
-        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, arrayMarker);
         ZigZagEncoding.putInt(buffer, Constants.UUID.marker());
         ZigZagEncoding.putInt(buffer, length);
         for (UUID uuid : uuids) {
@@ -537,10 +537,10 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case SHORT -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ SHORT+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + SHORT + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var shorts = (short[]) value;
         final var length = Array.getLength(value);
-        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, arrayMarker);
         ZigZagEncoding.putInt(buffer, Constants.SHORT.marker());
         ZigZagEncoding.putInt(buffer, length);
         for (short s : shorts) {
@@ -548,10 +548,10 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case CHARACTER -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ CHARACTER+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + CHARACTER + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var chars = (char[]) value;
         final var length = Array.getLength(value);
-        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, arrayMarker);
         ZigZagEncoding.putInt(buffer, Constants.CHARACTER.marker());
         ZigZagEncoding.putInt(buffer, length);
         for (char c : chars) {
@@ -559,9 +559,9 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case OPTIONAL -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ OPTIONAL+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + OPTIONAL + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var optional = (Optional<?>) value;
-        ZigZagEncoding.putInt(buffer, outerMarker);
+        ZigZagEncoding.putInt(buffer, arrayMarker);
         if (optional.isEmpty()) {
           ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_EMPTY.marker());
         } else {
@@ -571,19 +571,16 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case ENUM -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag "+ ENUM+" with length=" + Array.getLength(value) + " at position " + buffer.position());
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + ENUM + " with length=" + Array.getLength(value) + " at position " + buffer.position());
         final var enums = (Enum<?>[]) value;
-        ZigZagEncoding.putInt(buffer, outerMarker);
-        ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
+        ZigZagEncoding.putInt(buffer, arrayMarker);
+        // TODO we can hoist the map lookup into method that returns the writer
+        final var userOrdinal = classToOrdinal.get(typeWithTag.type());
+        ZigZagEncoding.putInt(buffer, userOrdinal);
         int length = enums.length;
         ZigZagEncoding.putInt(buffer, length);
         for (Enum<?> enumValue : enums) {
-          Integer ordinal = classToOrdinal.get(enumValue.getClass());
-          ZigZagEncoding.putInt(buffer, ordinal + 1);
-          String constantName = enumValue.name();
-          byte[] constantBytes = constantName.getBytes(UTF_8);
-          ZigZagEncoding.putInt(buffer, constantBytes.length);
-          buffer.put(constantBytes);
+          ZigZagEncoding.putInt(buffer, enumValue.ordinal());
         }
       };
       default -> throw new IllegalArgumentException("Unsupported array type for direct writer: " + typeWithTag.tag());
@@ -641,6 +638,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     Function<ByteBuffer, Object> typeReader = buildTypeReaderChain(typeStructure);
 
     // Add null guard - check for NULL marker first
+    // TODO primatte types cannot be null so we should have a version that skips the null check based on the left most tag
     return buffer -> {
       buffer.mark();
       int marker = ZigZagEncoding.getInt(buffer);
@@ -670,11 +668,26 @@ final class PicklerImpl<T> implements Pickler<T> {
     while (reversedTags.hasNext()) {
       final Function<ByteBuffer, Object> innerReader = reader;
       TagWithType tag = reversedTags.next();
+      final TagWithType finalPriorTag = priorTag; // Make final for lambda capture
       reader = switch (tag.tag()) {
         case LIST -> createListReader(innerReader);
         case OPTIONAL -> createOptionalReader(innerReader);
         case MAP -> throw new AssertionError("Map deserialization not yet implemented");
-        case ARRAY -> createLeafArrayReader(priorTag);
+        case ARRAY -> {
+          LOGGER.finer(() -> "Building ARRAY reader for priorTag: " + finalPriorTag.tag() + " type: " + finalPriorTag.type().getSimpleName());
+          // Match the writer pattern - check if priorTag is a primitive or complex type
+          yield switch (finalPriorTag.tag()) {
+            // For value type arrays we can use a direct reader
+            case BOOLEAN, BYTE, SHORT, CHARACTER, INTEGER, LONG, FLOAT, DOUBLE, STRING, UUID, ENUM ->
+                createLeafArrayReader(finalPriorTag);
+            // For container arrays we need to create a delegating reader
+            case OPTIONAL, LIST, MAP, ARRAY, RECORD -> {
+              LOGGER.finer(() -> "Creating delegating array reader for complex type: " + finalPriorTag.tag());
+              yield createContainerArrayReader(innerReader, finalPriorTag);
+            }
+            default -> throw new IllegalStateException("Unsupported array element type: " + finalPriorTag.tag());
+          };
+        }
         default -> createLeafReader(tag);
       };
       readers.add(reader);
@@ -725,6 +738,7 @@ final class PicklerImpl<T> implements Pickler<T> {
       case INTEGER -> (buffer) -> {
         // Check if we have a variable-length integer array
         int priorTagValue = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Read INTEGER array element type marker: " + priorTagValue + " expecting INTEGER_VAR=" + Constants.INTEGER_VAR.marker() + " or INTEGER=" + Constants.INTEGER.marker());
         if (priorTagValue == Constants.INTEGER_VAR.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
           int[] integers = new int[length];
@@ -795,42 +809,50 @@ final class PicklerImpl<T> implements Pickler<T> {
         });
         return uuids;
       };
-      case RECORD -> (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.RECORD.marker() : "Expected RECORD marker but got: " + marker;
-        int length = ZigZagEncoding.getInt(buffer);
-        int componentWireOrdinal = ZigZagEncoding.getInt(buffer);
-        int componentOrdinal = componentWireOrdinal - 1;
-        Class<?> componentType = userTypes[componentOrdinal];
-        Record[] records = (Record[]) Array.newInstance(componentType, length);
-        Arrays.setAll(records, i -> deserializeRecord(buffer, componentOrdinal));
-        return records;
-      };
-      case ENUM -> (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.ENUM.marker() : "Expected ENUM marker but got: " + marker;
-        int length = ZigZagEncoding.getInt(buffer);
-        Enum<?>[] enums = (Enum<?>[]) Array.newInstance(userTypes[0], length); // Assuming all enums are of the same type
-        IntStream.range(0, length).forEach(i -> {
-          int wireOrdinal = ZigZagEncoding.getInt(buffer);
-          int ordinal = wireOrdinal - 1;
-          Class<?> enumClass = userTypes[ordinal];
-          int constantLength = ZigZagEncoding.getInt(buffer);
-          byte[] constantBytes = new byte[constantLength];
-          buffer.get(constantBytes);
-          String constantName = new String(constantBytes, UTF_8);
-          //noinspection unchecked
-          enums[i] = Enum.valueOf((Class<Enum>) enumClass, constantName);
-        });
-        return enums;
-      };
+      case ENUM -> createEnumArrayReader(priorTag);
       default -> throw new IllegalStateException("Unsupported array type marker: " + priorTag);
     };
     return buffer -> {
       int marker = ZigZagEncoding.getInt(buffer);
-      LOGGER.finer(() -> "Read ARRAY marker: " + marker + " expected: " + (Constants.ARRAY.marker()) + " at position " + buffer.position());
-      assert (marker == Constants.ARRAY.marker()): "Expected ARRAY marker but got: " + marker;
+      LOGGER.finer(() -> "Read ARRAY marker: " + marker + " expected: " + Constants.ARRAY.marker() + " at position " + buffer.position());
+      assert (marker == Constants.ARRAY.marker()) : "Expected ARRAY marker but got: " + marker;
       return reader.apply(buffer);
+    };
+  }
+
+  /// Create array reader for container element types that delegates to inner reader
+  Function<ByteBuffer, Object> createContainerArrayReader(Function<ByteBuffer, Object> elementReader, TagWithType finalPriorTag) {
+    return buffer -> {
+      int arrayMarker = ZigZagEncoding.getInt(buffer);
+      LOGGER.finer(() -> "Read ARRAY marker in delegating reader: " + arrayMarker + " expected: " + Constants.ARRAY.marker());
+      assert arrayMarker == Constants.ARRAY.marker() : "Expected ARRAY marker but got: " + arrayMarker;
+
+      int length = ZigZagEncoding.getInt(buffer);
+      LOGGER.finer(() -> "Reading delegating array with length: " + length);
+
+      final var array = Array.newInstance(finalPriorTag.type(), length);
+
+      IntStream.range(0, length)
+          .forEach(i -> Array.set(array, i, elementReader.apply(buffer)));
+
+      return array;
+    };
+  }
+
+  Function<ByteBuffer, Object> createEnumArrayReader(TagWithType priorTag) {
+    final var userType = priorTag.type();
+    final var values = userType.getEnumConstants();
+    assert values != null : "Expected ENUM type but got: " + userType.getSimpleName();
+    return (buffer) -> {
+      int marker = ZigZagEncoding.getInt(buffer);
+      assert userType.equals(userTypes[marker - 1]) : "Expected ENUM type " + userTypes[marker - 1].getSimpleName() + " but got: " + userType.getSimpleName();
+      int length = ZigZagEncoding.getInt(buffer);
+      Enum<?>[] enums = (Enum<?>[]) Array.newInstance(userType, length);
+      IntStream.range(0, length).forEach(i -> {
+        int wireOrdinal = ZigZagEncoding.getInt(buffer);
+        enums[i] = (Enum<?>) values[wireOrdinal];
+      });
+      return enums;
     };
   }
 
@@ -875,11 +897,11 @@ final class PicklerImpl<T> implements Pickler<T> {
       };
       case INTEGER -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == -1 * INTEGER_VAR.ordinal()) {
+        if (marker == Constants.INTEGER_VAR.marker()) {
           int value = ZigZagEncoding.getInt(buffer);
           LOGGER.fine(() -> "Read Integer (ZigZag): " + value);
           return value;
-        } else if (marker == -1 * INTEGER.ordinal()) {
+        } else if (marker == Constants.INTEGER.marker()) {
           int value = buffer.getInt();
           LOGGER.fine(() -> "Read Integer: " + value);
           return value;
@@ -889,11 +911,11 @@ final class PicklerImpl<T> implements Pickler<T> {
       };
       case LONG -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == -1 * LONG_VAR.ordinal()) {
+        if (marker == Constants.LONG_VAR.marker()) {
           long value = ZigZagEncoding.getLong(buffer);
           LOGGER.fine(() -> "Read Long (ZigZag): " + value);
           return value;
-        } else if (marker == -1 * LONG.ordinal()) {
+        } else if (marker == Constants.LONG.marker()) {
           long value = buffer.getLong();
           LOGGER.fine(() -> "Read Long: " + value);
           return value;

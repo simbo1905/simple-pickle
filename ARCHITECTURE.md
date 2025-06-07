@@ -66,7 +66,6 @@ Meta-Programming Phase (Construction Time):
 are written as varint/varlong and if not they are written as `putInt` or `putLong` leaf nodes in delegation chains. 
   - `Record[]` and `Enum[]` are written as a RECORD or ENUM marker and then the elements are written using the record or enum writer.
 
-
 ###Wire Protocol Design:**
 - Negative ordinals (-1, -2, -3...): Built-in types (int, String, etc.)
 - Positive ordinals (1, 2, 3...): User types (1-indexed logical, 0-indexed physical)
@@ -157,14 +156,17 @@ Total: 9 bytes
 
 ### TypeStructure Container Analysis Pattern
 
-###Container Type Symmetry**: All container types follow the same pattern for tags/types lists to enable uniform processing:
+**Container Type Symmetry**: All container types follow the same pattern for tags/types lists to enable uniform processing:
 
 - **Arrays**: `short[]` → tags: `[ARRAY, SHORT]`, types: `[Arrays.class, short.class]`
 - **Lists**: `List<String>` → tags: `[LIST, STRING]`, types: `[List.class, String.class]`  
 - **Optionals**: `Optional<Integer>` → tags: `[OPTIONAL, INTEGER]`, types: `[Optional.class, Integer.class]`
 - **Maps**: `Map<K,V>` → tags: `[MAP, K_TAG, V_TAG]`, types: `[Map.class, K.class, V.class]`
 
-###Design Principle**: Use marker classes (`Arrays.class`, `List.class`, etc.) rather than concrete types (`short[].class`) to avoid needing `isArray()` checks. The tag indicates the container logic, the marker class provides uniform handling.
+Use the `Tag`s not the classes to decided how to build a writer chain. So  `List<String>[]` is `[LIST, ARRAY, STRING]` and `List<String[]>` is `[LIST, ARRAY, STRING]`. As these are built-in in types the list of classes which is `[List.class, Arrays.class, String.class]` are completely ignored. It is only where we have user types that we need to use the classes. 
+
+The tags are used to build the writer chain. The tags are not used to write the wire protocol as we do not need to write the tags as we have the type markers. The tags are used to build the writer chain.
+as we never us them we use the Tags  concrete types (`short[].class`) to avoid needing `isArray()` checks. We can instead read the tags The tag indicates the container logic, the marker class provides uniform handling.
 
 ###Writer Chain Processing**: Processes tags right-to-left (leaf-to-container):
 1. Rightmost tag (element) → Create element writer/reader
