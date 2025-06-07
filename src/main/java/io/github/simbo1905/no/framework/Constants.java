@@ -38,4 +38,7 @@ enum Constants {
     this.tag = tag;
   }
 
+  int marker() {
+    return -1 * tag.ordinal();
+  }
 }

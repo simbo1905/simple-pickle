@@ -16,33 +16,42 @@ Ask not "What Can Valhalla Do For Me?" but "What Can I Do For Valhalla?" by usin
 
 ### Primary Components
 
-**Unified Pickler Architecture:**
 - `Pickler.java` - Main interface with `of(Class<?>)` factory method
 - `PicklerImpl.java` - Single unified pickler handling all reachable types with global lookup tables
 - `Constants.java` - Type markers and Tag enum for wire protocol
 - `ZigZagEncoding.java` - Compact integer encoding for ordinals
 
-**Core Design:**
-- Single `PicklerImpl<T>` eliminates RecordPickler/SealedPickler separation
-- Array-based O(1) operations replace HashMap lookups on hot path
-- Direct ByteBuffer operations without wrapper complexity
-- Ordinal-based wire protocol with 1-indexed logical ordinals (0=NULL)
+### Core Design
+
+- Single `PicklerImpl<T>` does all static analysis and type discovery at construction time and creates optional logic using direct method handles and without using either reflection on the hot path or switching over values as the switching can be done as meta-programming at construction time where the types known via static analysis allows a switch to create a lambda that knows the types that will be encountered at runtime. 
+- Array-based O(1) operations replace the majority of HashMap lookups on hot path. Only time maps of user classes to their
+index in an array will remain for a single lookup on the write path. On the read path the index into the array can be used as a jump to the pre-recreated lambdas that where constructed to handle the specific user types. 
+- Ordinal-based wire protocol with 1-indexed logical ordinals (0=NULL) for built in types and positive numbers as array indexes for the user types, These will be small integers that are ZigZag encoded and will normally only take one byte to encode. 
+
+The net effect is that the static type analysis and zigzag encoring means that as long as there are less then 63 user types in any sealed hierarchy a single byte is used to encode the types rather than having to encode the entire use type class name. Then rather than doing 'Class.forName` at runtime we hae lambdas that invoke the unreflected constructor. 
 
 ### No-Reflection Principle
 
-**Core Design Philosophy:** The library avoids reflection on the hot path for performance. All reflective operations are done once during `Pickler.of(Class<?>)` construction to build method handles and global lookup tables.
+*Core Design Philosophy:* The library avoids reflection on the hot path for performance. 
+All reflective operations are done once during `Pickler.of(Class<?>)` construction to build method handles and global lookup tables.
 
-**Meta-Programming Phase (Construction Time):**
+Meta-Programming Phase (Construction Time):
 - Exhaustively discover ALL reachable types from root class
 - Build global lookup tables indexed by ordinal for O(1) operations
 - Cache method handles for record constructors and field accessors
 - Sort discovered classes lexicographically for stable ordinals
-- **TypeStructure Analysis**: Create parallel `tags` and `types` lists for generic components
+- TypeStructure Analysis: Create parallel `tags` and `types` lists for generic components
   - Example: `UserRecord[]` → tags: `[ARRAY, RECORD]`, types: `[Arrays.class, UserRecord.class]`
   - Pre-resolve all user type ordinals and close over them in writers/readers/sizers
   - Eliminates need for runtime type inspection or map lookups on hot path
-- **Tag vs Constants Distinction**: `Tag` enum represents logical types at static analysis (OPTIONAL, ARRAY, RECORD). `Constants` enum represents runtime wire markers (OPTIONAL_EMPTY, OPTIONAL_OF, specific ordinals)
-- **Array Writer Pattern**: Arrays are leaf nodes in delegation chains. Element type known from TypeStructure tags: user types (RECORD/ENUM) write `userOrdinal + 1`, built-in types write `-1 * Constants.TYPE.ordinal()`. No runtime type checking needed.
+- Tag vs Constants Distinction: `Tag` enum represents logical types at static analysis (OPTIONAL, ARRAY, RECORD). `Constants` enum represents runtime wire markers (OPTIONAL_EMPTY, OPTIONAL_OF, specific ordinals)
+- Collections Writer Pattern: Lists, Maps and Arrays have boxed types and delegate to a chained writer per element. 
+- Collections Arrays Pattern: Arrays can optimise _some_ but not all writes:
+  - `bute[]` is directly written as `ByteBuffer#put(bytes)`
+  - `boolean[]` is packed a a `BitSet` then written as `ByteBuffer#put(bytes)`
+  - `int[]`/`long[]` the array is sampled for up to 32 elements to estimate if ZigZagEncoding will save spade. If so they 
+are written as varint/varlong and if not they are written as `putInt` or `putLong` leaf nodes in delegation chains. 
+  - `Record[]` and `Enum[]` are written as a RECORD or ENUM marker and then the elements are written using the record or enum writer.
 
 **Runtime Phase (Hot Path):**
 - Direct array indexing: `discoveredClasses[ordinal]`, `constructors[ordinal]`
