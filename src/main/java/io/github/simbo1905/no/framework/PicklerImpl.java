@@ -700,17 +700,7 @@ final class PicklerImpl<T> implements Pickler<T> {
         case LIST -> createListReader(innerReader);
         case OPTIONAL -> createOptionalReader(innerReader);
         case MAP -> throw new AssertionError("Map deserialization not yet implemented");
-        case ARRAY -> {
-          Function<ByteBuffer, Object> arrayReader = null;
-          switch (priorTag.tag()) {
-            // For primitive arrays we can use a direct reader
-            case BOOLEAN, BYTE, SHORT, CHARACTER, INTEGER, LONG, FLOAT, DOUBLE, STRING, UUID, ENUM, RECORD ->
-                arrayReader = createLeafArrayReader(priorTag);
-            // For optional arrays we need to create a delegating reader
-            case OPTIONAL, LIST, MAP, ARRAY -> arrayReader = createDelegatingArrayReader(innerReader);
-          }
-          yield arrayReader;
-        }
+        case ARRAY -> createLeafArrayReader(priorTag);
         default -> createLeafReader(tag);
       };
       readers.add(reader);
@@ -718,10 +708,6 @@ final class PicklerImpl<T> implements Pickler<T> {
     }
 
     return reader;
-  }
-
-  Function<ByteBuffer, Object> createDelegatingArrayReader(Function<ByteBuffer, Object> innerReader) {
-    throw new AssertionError("not yet implemented");
   }
 
   Function<ByteBuffer, Object> createLeafArrayReader(TagWithType priorTag) {
