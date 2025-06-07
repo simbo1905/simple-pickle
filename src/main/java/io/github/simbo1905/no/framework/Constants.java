@@ -39,6 +39,7 @@ enum Constants {
   }
 
   int marker() {
-    return -1 * tag.ordinal();
+    // Use the Constants enum ordinal, not the tag ordinal!
+    return -1 - this.ordinal();
   }
 }

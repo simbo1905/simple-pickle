@@ -149,14 +149,14 @@ final class PicklerImpl<T> implements Pickler<T> {
     }
 
     LOGGER.finer(() -> "Serializing " + writers.length + " components for " + record.getClass().getSimpleName() +
-        " at position " + buffer.position()); // TODO revert to FINER logging after bug fix
+        " at position " + buffer.position());
 
     // Use pre-built writers - direct array access, no HashMap lookups
     for (int i = 0; i < writers.length; i++) {
       final int componentIndex = i; // final for lambda capture
-      LOGGER.finer(() -> "Writing component " + componentIndex + " at position " + buffer.position()); // TODO revert to FINER logging after bug fix
+      LOGGER.finer(() -> "Writing component " + componentIndex + " at position " + buffer.position());
       writers[i].accept(buffer, record);
-      LOGGER.finer(() -> "Finished component " + componentIndex + " at position " + buffer.position()); // TODO revert to FINER logging after bug fix
+      LOGGER.finer(() -> "Finished component " + componentIndex + " at position " + buffer.position());
     }
   }
 
@@ -170,21 +170,21 @@ final class PicklerImpl<T> implements Pickler<T> {
       throw new IllegalStateException("No readers/constructor for ordinal: " + ordinal);
     }
 
-    LOGGER.finer(() -> "Deserializing " + readers.length + " components at position " + buffer.position()); // TODO revert to FINER logging after bug fix
+    LOGGER.finer(() -> "Deserializing " + readers.length + " components at position " + buffer.position());
 
     // Read components using pre-built readers
     Object[] components = new Object[readers.length];
     for (int i = 0; i < readers.length; i++) {
       final int componentIndex = i; // final for lambda capture
-      LOGGER.finer(() -> "Reading component " + componentIndex + " at position " + buffer.position()); // TODO revert to FINER logging after bug fix
+      LOGGER.finer(() -> "Reading component " + componentIndex + " at position " + buffer.position());
       components[i] = readers[i].apply(buffer);
       final Object componentValue = components[i]; // final for lambda capture
-      LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " at position " + buffer.position()); // TODO revert to FINER logging after bug fix
+      LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " at position " + buffer.position());
     }
 
     // Invoke constructor
     try {
-      LOGGER.finer(() -> "Constructing record with components: " + Arrays.toString(components)); // TODO revert to FINER logging after bug fix
+      LOGGER.finer(() -> "Constructing record with components: " + Arrays.toString(components));
       return (T) constructor.invokeWithArguments(components);
     } catch (Throwable e) {
       throw new RuntimeException("Failed to construct record", e);
@@ -209,7 +209,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   /// Build writer chain for a component - creates type-specific writers at construction time
   BiConsumer<ByteBuffer, Object> buildWriterChain(TypeStructure typeStructure, MethodHandle accessor) {
     LOGGER.finer(() -> "Building writer chain for type structure: " +
-        typeStructure.tagTypes().stream().map(t -> t.tag().name()).collect(Collectors.joining("->"))); // TODO revert to FINER logging after bug fix
+        typeStructure.tagTypes().stream().map(t -> t.tag().name()).collect(Collectors.joining("->")));
 
     // Build the type-specific writer chain
     BiConsumer<ByteBuffer, Object> typeWriter = buildTypeWriterChain(typeStructure);
@@ -219,12 +219,12 @@ final class PicklerImpl<T> implements Pickler<T> {
       try {
         Object componentValue = accessor.invokeWithArguments(record);
         LOGGER.finer(() -> "Extracted component value: " + componentValue + " of type: " +
-            (componentValue != null ? componentValue.getClass().getSimpleName() : "null")); // TODO revert to FINER logging after bug fix
+            (componentValue != null ? componentValue.getClass().getSimpleName() : "null"));
         if (componentValue == null) {
           ZigZagEncoding.putInt(buffer, Constants.NULL.ordinal());
-          LOGGER.finer(() -> "Writing NULL component at position " + buffer.position()); // TODO revert to FINER logging after bug fix
+          LOGGER.finer(() -> "Writing NULL component at position " + buffer.position());
         } else {
-          LOGGER.finer(() -> "Delegating to type writer for value: " + componentValue); // TODO revert to FINER logging after bug fix
+          LOGGER.finer(() -> "Delegating to type writer for value: " + componentValue);
           typeWriter.accept(buffer, componentValue);
         }
       } catch (Throwable e) {
@@ -239,7 +239,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     List<TagWithType> tags = structure.tagTypes();
 
     LOGGER.finer(() -> "Building type writer chain for structure: " +
-        tags.stream().map(tagWithType -> tagWithType.tag() != null ? tagWithType.tag().name() : "null").collect(Collectors.joining(","))); // TODO revert to FINER logging after bug fix
+        tags.stream().map(tagWithType -> tagWithType.tag() != null ? tagWithType.tag().name() : "null").collect(Collectors.joining(",")));
 
     // Reverse the tags to process from right to left
     Iterator<TagWithType> reversedTags = tags.reversed().iterator();
@@ -299,7 +299,7 @@ final class PicklerImpl<T> implements Pickler<T> {
       priorTag = nextTag; // Update prior tag for next iteration
     }
 
-    LOGGER.finer(() -> "Final writer chain has " + writers.size() + " writers"); // TODO revert to FINER logging after bug fix
+    LOGGER.finer(() -> "Final writer chain has " + writers.size() + " writers");
     return writer;
   }
 
@@ -685,7 +685,6 @@ final class PicklerImpl<T> implements Pickler<T> {
               LOGGER.finer(() -> "Creating delegating array reader for complex type: " + finalPriorTag.tag());
               yield createContainerArrayReader(innerReader, finalPriorTag);
             }
-            default -> throw new IllegalStateException("Unsupported array element type: " + finalPriorTag.tag());
           };
         }
         default -> createLeafReader(tag);
@@ -966,6 +965,7 @@ final class PicklerImpl<T> implements Pickler<T> {
       };
       case ENUM -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
+        // TODO we can `assert` that what we read back is the actual marlker of the leafTag.type() in the classToOrdinal map
         int wireOrdinal = ZigZagEncoding.getInt(buffer);
         int ordinal = wireOrdinal - 1;
         Class<?> enumClass = userTypes[ordinal];
@@ -1118,11 +1118,10 @@ final class PicklerImpl<T> implements Pickler<T> {
           case char[] chars -> 1 + 4 + chars.length * Character.BYTES;
           case String[] strings -> {
             int overhead = 1 + 4; // component type + length
-            int contentSize = Arrays.stream(strings).mapToInt(s -> ((ToIntFunction<Object>) obj -> {
-              String s1 = (String) obj;
-              byte[] bytes = s1.getBytes(UTF_8);
-              return 1 + ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
-            }).applyAsInt(s) - 1).sum();
+            int contentSize = Arrays.stream(strings).mapToInt(s -> {
+              byte[] bytes = s.getBytes(UTF_8);
+              return 1 + ZigZagEncoding.sizeOf(bytes.length) + bytes.length - 1;
+            }).sum();
             yield overhead + contentSize;
           }
           case UUID[] uuids -> 1 + 4 + uuids.length * (2 * Long.BYTES);
@@ -1320,50 +1319,54 @@ record TypeStructure(List<TagWithType> tagTypes) {
     Object current = type;
 
     while (current != null) {
-      if (current instanceof ParameterizedType paramType) {
-        Type rawType = paramType.getRawType();
+      switch (current) {
+        case ParameterizedType paramType -> {
+          Type rawType = paramType.getRawType();
 
-        if (rawType.equals(List.class)) {
-          tags.add(LIST);
-          types.add(List.class); // Container class for symmetry with Arrays.class pattern
-          Type[] typeArgs = paramType.getActualTypeArguments();
-          current = typeArgs.length > 0 ? typeArgs[0] : null;
-        } else if (rawType.equals(Map.class)) {
-          tags.add(MAP);
-          types.add(Map.class); // Container class for symmetry  
-          // For maps, we need to handle both key and value types, but for simplicity we'll skip for now
-          return new TypeStructure(tags, types);
-        } else if (rawType.equals(Optional.class)) {
-          tags.add(OPTIONAL);
-          types.add(Optional.class); // Container class for symmetry
-          Type[] typeArgs = paramType.getActualTypeArguments();
-          current = typeArgs.length > 0 ? typeArgs[0] : null;
-        } else {
-          // Unknown parameterized type, treat as raw type
-          current = rawType;
+          if (rawType.equals(List.class)) {
+            tags.add(LIST);
+            types.add(List.class); // Container class for symmetry with Arrays.class pattern
+            Type[] typeArgs = paramType.getActualTypeArguments();
+            current = typeArgs.length > 0 ? typeArgs[0] : null;
+          } else if (rawType.equals(Map.class)) {
+            tags.add(MAP);
+            types.add(Map.class); // Container class for symmetry
+            // For maps, we need to handle both key and value types, but for simplicity we'll skip for now
+            return new TypeStructure(tags, types);
+          } else if (rawType.equals(Optional.class)) {
+            tags.add(OPTIONAL);
+            types.add(Optional.class); // Container class for symmetry
+            Type[] typeArgs = paramType.getActualTypeArguments();
+            current = typeArgs.length > 0 ? typeArgs[0] : null;
+          } else {
+            // Unknown parameterized type, treat as raw type
+            current = rawType;
+          }
         }
-      } else if (current instanceof GenericArrayType arrayType) {
-        // Handle arrays of parameterized types like Optional<String>[]
-        tags.add(ARRAY);
-        types.add(Arrays.class); // Arrays.class as marker
-        Type componentType = arrayType.getGenericComponentType();
-        current = componentType; // Continue processing element type
-      } else if (current instanceof Class<?> clazz) {
-        if (clazz.isArray()) {
-          // Array container with element type, e.g. short[] -> [ARRAY, SHORT]
+        case GenericArrayType arrayType -> {
+          // Handle arrays of parameterized types like Optional<String>[]
           tags.add(ARRAY);
-          types.add(Arrays.class); // Arrays.class as marker, not concrete array type
-          Type componentType = clazz.getComponentType();
-          current = componentType; // Continue processing element type
-        } else {
-          // Regular class - terminal case
-          tags.add(fromClass(clazz));
-          types.add(clazz);
+          types.add(Arrays.class); // Arrays.class as marker
+
+          current = arrayType.getGenericComponentType(); // Continue processing element type
+        }
+        case Class<?> clazz -> {
+          if (clazz.isArray()) {
+            // Array container with element type, e.g. short[] -> [ARRAY, SHORT]
+            tags.add(ARRAY);
+            types.add(Arrays.class); // Arrays.class as marker, not concrete array type
+            current = clazz.getComponentType(); // Continue processing element type
+          } else {
+            // Regular class - terminal case
+            tags.add(fromClass(clazz));
+            types.add(clazz);
+            return new TypeStructure(tags, types);
+          }
+        }
+        default -> {
+          // Unknown type, return what we have
           return new TypeStructure(tags, types);
         }
-      } else {
-        // Unknown type, return what we have
-        return new TypeStructure(tags, types);
       }
     }
 
