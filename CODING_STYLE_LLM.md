@@ -168,6 +168,16 @@ LoggingControl.setupCleanLogging(new LoggingControl.Config(Level.FINER)); // Cus
 
 This pattern replaces traditional singleton anti-patterns with modern, functional Java that is easier to test, reason about, and maintain.
 
+### Assertions and Input Validation
+
+1.  On the public API entry points use `Objects.assertNonNull()` to ensure that the inputs are legal.
+  - e.g. the input of  `Pickler.forClass(Class<T> type)` is immediate checked for null.
+2. After that on internal method that should be passed only valid data use `assert` to ensure that the data is valid.
+  - e.g. use `assert x==y: "unexpected x="+x+" y="+y;` as `mvn` base should be run with `-ea` to enable assertions.
+3. Often there is an `orElseThrow()` which can be used so the only reason to use `assert` is to add more logging to the error message.
+4. Consider using the validations of `Object` and `Arrays` ane the like to ensure that the data is valid.
+  - e.g. `Objects.requireNonNull(type, "type must not be null")` or `Arrays.checkIndex(index, array.length)`.
+
 ## JEP References
 
 [JEP 467](https://openjdk.org/jeps/467): Markdown Documentation in JavaDoc

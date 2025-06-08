@@ -367,10 +367,10 @@ public class RefactorTests {
       byte[] byteArray,
       short[] shortArray,
       char[] charArray,
+      int[] intArray,
       long[] longArray,
       float[] floatArray,
       double[] doubleArray
-      // TODO: Add int[] intArray after fixing varlong case for complete varint protection
   ) {
   }
 
@@ -402,10 +402,13 @@ public class RefactorTests {
     double[] doubleArray = {1.0, 2.5, 3.14, Double.MAX_VALUE, Double.MIN_VALUE};
 
     // Create an instance
+    int[] intArray = {10, 20, 30, Integer.MAX_VALUE, Integer.MIN_VALUE};
+    
     PrimitiveArraysRecord original = new PrimitiveArraysRecord(
         byteArray, 
         shortArray, 
         charArray, 
+        intArray,
         longArray,
         floatArray, 
         doubleArray);
@@ -428,6 +431,7 @@ public class RefactorTests {
     assertArrayEquals(original.byteArray(), deserialized.byteArray());
     assertArrayEquals(original.shortArray(), deserialized.shortArray());
     assertArrayEquals(original.charArray(), deserialized.charArray());
+    assertArrayEquals(original.intArray(), deserialized.intArray());
     assertArrayEquals(original.longArray(), deserialized.longArray());
     assertArrayEquals(original.floatArray(), deserialized.floatArray(), 0.0f);
     assertArrayEquals(original.doubleArray(), deserialized.doubleArray(), 0.0);

@@ -61,8 +61,10 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     LOGGER.info(() -> "Filtered to " + userTypes.length + " concrete types (removed sealed interfaces)");
 
-    LOGGER.fine(() -> "Lexicographically sorted classes: " +
-        Arrays.stream(userTypes).map(Class::getSimpleName).toList());
+    LOGGER.fine(() -> "Discovered types with indices: " + 
+        IntStream.range(0, userTypes.length)
+            .mapToObj(i -> "[" + i + "]=" + userTypes[i].getName())
+            .collect(Collectors.joining(", ")));
 
     // Build the ONE HashMap for class->ordinal lookup (O(1) for hot path)
     this.classToOrdinal = IntStream.range(0, userTypes.length)
@@ -293,7 +295,7 @@ final class PicklerImpl<T> implements Pickler<T> {
               });
             };
             default ->
-                throw new IllegalArgumentException("Unsupported prior tag for ARRAY: " + priorTag.tag()); // TODO MAP
+                throw new AssertionError("not implemented for ARRAY with prior tag: " + priorTag.tag() + " (" + priorTag + ")");
           }
           yield arrayWriter;
         }
@@ -328,6 +330,56 @@ final class PicklerImpl<T> implements Pickler<T> {
         LOGGER.finer(() -> "Writing value: " + entry.getValue() + " of type " + entry.getValue().getClass().getSimpleName());
         valueWriter.accept(buffer, entry.getValue());
       });
+    };
+  }
+
+  /// Create enum writer with pre-computed ordinal
+  BiConsumer<ByteBuffer, Object> createEnumWriter(Class<?> enumClass) {
+    final Integer ordinal = classToOrdinal.get(enumClass);
+    assert ordinal != null : "Unknown enum type: " + enumClass;
+    return (buffer, value) -> {
+      Enum<?> enumValue = (Enum<?>) value;
+      LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumClass.getName());
+      ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
+      ZigZagEncoding.putInt(buffer, ordinal + 1);
+      String constantName = enumValue.name();
+      byte[] constantBytes = constantName.getBytes(UTF_8);
+      ZigZagEncoding.putInt(buffer, constantBytes.length);
+      buffer.put(constantBytes);
+    };
+  }
+
+  /// Create record writer with pre-computed ordinal
+  BiConsumer<ByteBuffer, Object> createRecordWriter(Class<?> recordClass) {
+    return (buffer, value) -> {
+      final Integer ordinal = classToOrdinal.get(value.getClass());
+      LOGGER.finer(() -> "Writing RECORD ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + recordClass.getName());
+      ZigZagEncoding.putInt(buffer, Constants.RECORD.marker());
+      if (value instanceof Record record) {
+        ZigZagEncoding.putInt(buffer, ordinal + 1);
+        serializeRecordComponents(buffer, record, ordinal);
+      }
+    };
+  }
+
+  /// Create enum sizer with pre-computed ordinal
+  ToIntFunction<Object> createEnumSizer(Class<?> enumClass) {
+    final Integer ordinal = classToOrdinal.get(enumClass);
+    assert ordinal != null : "Unknown enum type: " + enumClass;
+    return obj -> {
+      Enum<?> enumValue = (Enum<?>) obj;
+      String constantName = enumValue.name();
+      byte[] nameBytes = constantName.getBytes(UTF_8);
+      return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
+    };
+  }
+
+  /// Create record sizer with pre-computed ordinal  
+  ToIntFunction<Object> createRecordSizer(Class<?> recordClass) {
+    return obj -> {
+      Record record = (Record) obj;
+      final Integer ordinal = classToOrdinal.get(record.getClass());
+      return ZigZagEncoding.sizeOf(ordinal + 1) + maxSizeOfRecordComponents(record, ordinal);
     };
   }
 
@@ -402,31 +454,27 @@ final class PicklerImpl<T> implements Pickler<T> {
         buffer.putLong(uuid.getMostSignificantBits());
         buffer.putLong(uuid.getLeastSignificantBits());
       };
-      case ENUM -> (buffer, value) -> {
-        Enum<?> enumValue = (Enum<?>) value;
-        ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
-        Integer ordinal = classToOrdinal.get(enumValue.getClass());
-        ZigZagEncoding.putInt(buffer, ordinal + 1);
-        String constantName = enumValue.name();
-        byte[] constantBytes = constantName.getBytes(UTF_8);
-        ZigZagEncoding.putInt(buffer, constantBytes.length);
-        buffer.put(constantBytes);
-      };
-      case RECORD -> (buffer, value) -> {
-        LOGGER.fine(() -> "Writing nested RECORD: " + value.getClass().getSimpleName());
-        ZigZagEncoding.putInt(buffer, Constants.RECORD.marker());
-        // Delegate to this pickler's serialize method for nested records
-        if (value instanceof Record record) {
-          Integer ordinal = classToOrdinal.get(record.getClass());
-          if (ordinal != null) {
-            ZigZagEncoding.putInt(buffer, ordinal + 1);
-            serializeRecordComponents(buffer, record, ordinal);
-          } else {
-            throw new IllegalArgumentException("Unknown record type: " + record.getClass());
-          }
-        }
-      };
+      case ENUM -> createEnumWriter(leaftype.type());
+      case RECORD -> createRecordWriter(leaftype.type());
       default -> throw new IllegalArgumentException("No leaf writer for tag: " + leaftype);
+    };
+  }
+
+  /// Create array writer for enum arrays with pre-computed ordinal
+  BiConsumer<ByteBuffer, Object> createEnumArrayWriter(Class<?> enumClass) {
+    final var arrayMarker = Constants.ARRAY.marker();
+    final var userOrdinal = classToOrdinal.get(enumClass);
+    assert userOrdinal != null : "Unknown enum array type: " + enumClass;
+    return (buffer, value) -> {
+      LOGGER.finer(() -> "Delegating ARRAY for tag " + ENUM + " with length=" + Array.getLength(value) + " at position " + buffer.position());
+      final var enums = (Enum<?>[]) value;
+      ZigZagEncoding.putInt(buffer, arrayMarker);
+      ZigZagEncoding.putInt(buffer, userOrdinal + 1);  // 1-indexed on wire
+      int length = enums.length;
+      ZigZagEncoding.putInt(buffer, length);
+      for (Enum<?> enumValue : enums) {
+        ZigZagEncoding.putInt(buffer, enumValue.ordinal());
+      }
     };
   }
 
@@ -593,19 +641,7 @@ final class PicklerImpl<T> implements Pickler<T> {
           createLeafWriter(typeWithTag).accept(buffer, innerValue);
         }
       };
-      case ENUM -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag " + ENUM + " with length=" + Array.getLength(value) + " at position " + buffer.position());
-        final var enums = (Enum<?>[]) value;
-        ZigZagEncoding.putInt(buffer, arrayMarker);
-        // TODO we can hoist the map lookup into method that returns the writer
-        final var userOrdinal = classToOrdinal.get(typeWithTag.type());
-        ZigZagEncoding.putInt(buffer, userOrdinal);
-        int length = enums.length;
-        ZigZagEncoding.putInt(buffer, length);
-        for (Enum<?> enumValue : enums) {
-          ZigZagEncoding.putInt(buffer, enumValue.ordinal());
-        }
-      };
+      case ENUM -> createEnumArrayWriter(typeWithTag.type());
       default -> throw new IllegalArgumentException("Unsupported array type for direct writer: " + typeWithTag.tag());
     };
   }
@@ -1163,51 +1199,9 @@ final class PicklerImpl<T> implements Pickler<T> {
         return 1 + ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
       };
       case UUID -> obj -> 1 + 2 * Long.BYTES;
-      case ARRAY -> value -> {
-        if (value == null) {
-          return 1; // NULL marker size
-        }
-        return 1 + switch (value) {
-          case byte[] arr -> 1 + 4 + arr.length; // marker + type + length + data
-          case boolean[] booleans -> {
-            int bitSetBytes = (booleans.length + 7) / 8;
-            yield 1 + 4 + 4 + bitSetBytes; // marker + type + length + bitset length + bitset
-          }
-          case int[] integers -> 1 + 4 + integers.length * Integer.BYTES; // worst case
-          case long[] longs -> 1 + 4 + longs.length * Long.BYTES; // worst case
-          case float[] floats -> 1 + 4 + floats.length * Float.BYTES;
-          case double[] doubles -> 1 + 4 + doubles.length * Double.BYTES;
-          case short[] shorts -> 1 + 4 + shorts.length * Short.BYTES;
-          case char[] chars -> 1 + 4 + chars.length * Character.BYTES;
-          case String[] strings -> {
-            int overhead = 1 + 4; // component type + length
-            int contentSize = Arrays.stream(strings).mapToInt(s -> {
-              byte[] bytes = s.getBytes(UTF_8);
-              return 1 + ZigZagEncoding.sizeOf(bytes.length) + bytes.length - 1;
-            }).sum();
-            yield overhead + contentSize;
-          }
-          case UUID[] uuids -> 1 + 4 + uuids.length * (2 * Long.BYTES);
-          default -> throw new AssertionError("not implemented for array type: " + value.getClass());
-        };
-      };
-      case ENUM -> obj -> {
-        Enum<?> enumValue = (Enum<?>) obj;
-        Integer ordinal = classToOrdinal.get(enumValue.getClass());
-        String constantName = enumValue.name();
-        byte[] nameBytes = constantName.getBytes(UTF_8);
-        return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
-      };
-      case RECORD -> obj -> {
-        Record record = (Record) obj;
-        Integer ordinal = classToOrdinal.get(record.getClass());
-        if (ordinal != null) {
-          return ZigZagEncoding.sizeOf(ordinal + 1) + maxSizeOfRecordComponents(record, ordinal);
-        } else {
-          throw new IllegalArgumentException("Unknown record type: " + record.getClass());
-        }
-      };
-      default -> throw new IllegalArgumentException("No leaf sizer for tag: " + leafTag);
+      case ENUM -> createEnumSizer(leafTag.type());
+      case RECORD -> createRecordSizer(leafTag.type());
+      default -> throw new IllegalArgumentException("No leaf sizer for tag is it a container tag? " + leafTag);
     };
   }
 
@@ -1263,11 +1257,11 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     // Find ordinal for the root object's class using the ONE HashMap lookup
     final Integer ordinalObj = classToOrdinal.get(object.getClass());
-    if (ordinalObj == null) {
+    if (ordinalObj == null) { // todo convert this to Objects.requireNonNull
       throw new IllegalArgumentException("Unknown class: " + object.getClass().getName());
     }
     final int ordinal = ordinalObj;
-    LOGGER.finer(() -> "Serializing ordinal " + ordinal + " (" + object.getClass().getSimpleName() + ")");
+    LOGGER.finer(() -> "Serializing ordinal " + ordinal + " (" + object.getClass().getSimpleName() + ") wire=" + (ordinal + 1));
 
     // Write ordinal marker (1-indexed on wire)
     ZigZagEncoding.putInt(buffer, ordinal + 1);
