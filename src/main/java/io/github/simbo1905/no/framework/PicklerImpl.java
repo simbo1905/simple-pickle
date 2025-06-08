@@ -1,4 +1,4 @@
-t// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-FileCopyrightText: 2025 Simon Massey
 // SPDX-License-Identifier: MIT
 
 package io.github.simbo1905.no.framework;
@@ -364,13 +364,13 @@ final class PicklerImpl<T> implements Pickler<T> {
     };
   }
 
-  /// Create enum writer with pre-computed ordinal
+  /// Create enum writer with runtime ordinal lookup
   BiConsumer<ByteBuffer, Object> createEnumWriter(Class<?> enumClass) {
-    final Integer ordinal = classToOrdinal.get(enumClass);
-    assert ordinal != null : "Unknown enum type: " + enumClass;
     return (buffer, value) -> {
       Enum<?> enumValue = (Enum<?>) value;
-      LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumClass.getName());
+      final Integer ordinal = classToOrdinal.get(enumValue.getClass());
+      assert ordinal != null : "Unknown enum type: " + enumValue.getClass();
+      LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumValue.getClass().getName());
       ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
       ZigZagEncoding.putInt(buffer, ordinal + 1);
       String constantName = enumValue.name();
