@@ -384,10 +384,10 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Create leaf writer for primitive/basic types - NO runtime type checking
-  BiConsumer<ByteBuffer, Object> createLeafWriter(TagWithType leaftype) {
-    LOGGER.fine(() -> "Creating leaf writer for tag: " + leaftype.tag() +
-        " with type: " + leaftype.type().getSimpleName());
-    return switch (leaftype.tag()) {
+  BiConsumer<ByteBuffer, Object> createLeafWriter(TagWithType leafType) {
+    LOGGER.fine(() -> "Creating leaf writer for tag: " + leafType.tag() +
+        " with type: " + leafType.type().getSimpleName());
+    return switch (leafType.tag()) {
       case BOOLEAN -> (buffer, value) -> {
         LOGGER.fine(() -> "Writing BOOLEAN: " + value);
         ZigZagEncoding.putInt(buffer, Constants.BOOLEAN.marker());
@@ -454,9 +454,9 @@ final class PicklerImpl<T> implements Pickler<T> {
         buffer.putLong(uuid.getMostSignificantBits());
         buffer.putLong(uuid.getLeastSignificantBits());
       };
-      case ENUM -> createEnumWriter(leaftype.type());
-      case RECORD -> createRecordWriter(leaftype.type());
-      default -> throw new IllegalArgumentException("No leaf writer for tag: " + leaftype);
+      case ENUM -> createEnumWriter(leafType.type());
+      case RECORD -> createRecordWriter(leafType.type());
+      default -> throw new IllegalArgumentException("No leaf writer for tag: " + leafType);
     };
   }
 
