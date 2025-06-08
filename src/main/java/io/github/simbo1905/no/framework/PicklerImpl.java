@@ -39,7 +39,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   final ToIntFunction<Object>[][] componentSizers; // [recordOrdinal][componentIndex] -> sizer lambda
 
   /// Create a unified pickler for any root type (record, enum, or sealed interface)
-  @SuppressWarnings({"unchecked", "rawtypes"})
+  @SuppressWarnings({"unchecked"})
   PicklerImpl(Class<T> rootClass) {
     Objects.requireNonNull(rootClass, "rootClass cannot be null");
 
@@ -61,7 +61,7 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     LOGGER.info(() -> "Filtered to " + userTypes.length + " concrete types (removed sealed interfaces)");
 
-    LOGGER.fine(() -> "Discovered types with indices: " + 
+    LOGGER.fine(() -> "Discovered types with indices: " +
         IntStream.range(0, userTypes.length)
             .mapToObj(i -> "[" + i + "]=" + userTypes[i].getName())
             .collect(Collectors.joining(", ")));
@@ -98,7 +98,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Build component metadata for a record type using meta-programming
-  @SuppressWarnings({"unchecked", "rawtypes"})
+  @SuppressWarnings({"unchecked"})
   void metaprogramming(int ordinal, Class<?> recordClass) throws Exception {
     LOGGER.fine(() -> "Building metadata for ordinal " + ordinal + ": " + recordClass.getSimpleName());
 
@@ -134,10 +134,45 @@ final class PicklerImpl<T> implements Pickler<T> {
       // like array, list, map, optional,  etc
       componentTypes[ordinal][i] = typeStructure;
 
-      // Build writer, reader, and sizer chains (simplified for now)
-      componentWriters[ordinal][i] = buildWriterChain(typeStructure, componentAccessors[ordinal][i]);
-      componentReaders[ordinal][i] = buildReaderChain(typeStructure);
-      componentSizers[ordinal][i] = buildSizerChain(typeStructure, componentAccessors[ordinal][i]);
+      if (typeStructure.tagTypes().size() == 1 && typeStructure.tagTypes().getFirst().type().isPrimitive()){
+        final var leafType = typeStructure.tagTypes().getFirst();
+        final var primateWriter = createLeafWriter(leafType);
+        final var accessor = componentAccessors[ordinal][i];
+        componentWriters[ordinal][i] = (buffer, record) -> {
+          Object componentValue;
+          try {
+            componentValue = accessor.invokeWithArguments(record);
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to extract component from record:"+record.getClass(), e);
+          }
+          primateWriter.accept(buffer, componentValue);
+        };
+        final var primitiveReader = createLeafReader(leafType);
+        componentReaders[ordinal][i] = buffer -> {
+          try {
+            return primitiveReader.apply(buffer);
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to read component", e);
+          }
+        };
+        //componentSizers[ordinal][i] = createLeafSizer(leafType);
+        final var primitiveSizer = createLeafSizer(leafType);
+        componentSizers[ordinal][i] = record -> {
+          Object componentValue;
+          try {
+            componentValue = accessor.invokeWithArguments(record);
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to extract component from record:"+record.getClass(), e);
+          }
+          return primitiveSizer.applyAsInt(componentValue);
+        };
+      } else {
+        // Build writer, reader, and sizer chains
+        componentWriters[ordinal][i] = buildWriterChain(typeStructure, componentAccessors[ordinal][i]);
+        componentReaders[ordinal][i] = buildReaderChain(typeStructure);
+        componentSizers[ordinal][i] = buildSizerChain(typeStructure, componentAccessors[ordinal][i]);
+      }
+
     });
 
     LOGGER.fine(() -> "Completed metadata for " + recordClass.getSimpleName() + " with " + numComponents + " components");
@@ -154,12 +189,12 @@ final class PicklerImpl<T> implements Pickler<T> {
         " at position " + buffer.position());
 
     // Use pre-built writers - direct array access, no HashMap lookups
-    for (int i = 0; i < writers.length; i++) {
+    IntStream.range(0, writers.length).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
       LOGGER.finer(() -> "Writing component " + componentIndex + " at position " + buffer.position());
       writers[i].accept(buffer, record);
       LOGGER.finer(() -> "Finished component " + componentIndex + " at position " + buffer.position());
-    }
+    });
   }
 
   /// Deserialize record using pre-built readers and constructor
@@ -196,9 +231,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   /// Calculate max size using pre-built component sizers
   int maxSizeOfRecordComponents(Record record, int ordinal) {
     ToIntFunction<Object>[] sizers = componentSizers[ordinal];
-    if (sizers == null) {
-      throw new IllegalStateException("No sizers for ordinal: " + ordinal);
-    }
+    assert sizers != null: "No sizers for ordinal: " + ordinal;
 
     int totalSize = 0;
     for (ToIntFunction<Object> sizer : sizers) {
@@ -262,7 +295,7 @@ final class PicklerImpl<T> implements Pickler<T> {
       TagWithType nextTag = reversedTags.next();
       TagWithType finalPriorTag = priorTag;
       LOGGER.finer(() -> "Processing outer tag: " + nextTag.tag() + " with type: " + nextTag.type().getSimpleName() +
-                        ", writers.size=" + writers.size() + ", priorTag=" + finalPriorTag.tag());
+          ", writers.size=" + writers.size() + ", priorTag=" + finalPriorTag.tag());
       writer = switch (nextTag.tag()) {
         case LIST -> createListWriter(lastWriter);
         case OPTIONAL -> createOptionalWriter(lastWriter);
@@ -272,10 +305,9 @@ final class PicklerImpl<T> implements Pickler<T> {
           // When building in reverse order, we build value chain first, then key
           // The key writer is in lastWriter, value writer root is at writers.size() - 2
           LOGGER.finer(() -> "MAP case: keyWriter=lastWriter, valueWriter at index " + (writers.size() - 2));
-          final var keyWriter = lastWriter;
           // Value writer is not the last one (that's the key), but the one before it
           final var valueWriter = writers.get(writers.size() - 2);
-          yield createMapWriter(keyWriter, valueWriter);
+          yield createMapWriter(lastWriter, valueWriter);
         }
         case ARRAY -> {
           BiConsumer<ByteBuffer, Object> arrayWriter;
@@ -311,24 +343,23 @@ final class PicklerImpl<T> implements Pickler<T> {
 
   BiConsumer<ByteBuffer, Object> createMapWriter(BiConsumer<ByteBuffer, Object> keyWriter, BiConsumer<ByteBuffer, Object> valueWriter) {
     return (buffer, obj) -> {
-      @SuppressWarnings("unchecked")
       Map<?, ?> map = (Map<?, ?>) obj;
-      
+
       // Write MAP marker
       ZigZagEncoding.putInt(buffer, Constants.MAP.marker());
-      
+
       // Write size
       int size = map.size();
       ZigZagEncoding.putInt(buffer, size);
-      
+
       LOGGER.fine(() -> "Writing Map with " + size + " entries");
-      
+
       // Write each key-value pair
-      map.entrySet().forEach(entry -> {
-        LOGGER.finer(() -> "Writing key: " + entry.getKey() + " of type " + entry.getKey().getClass().getSimpleName());
-        keyWriter.accept(buffer, entry.getKey());
-        LOGGER.finer(() -> "Writing value: " + entry.getValue() + " of type " + entry.getValue().getClass().getSimpleName());
-        valueWriter.accept(buffer, entry.getValue());
+      map.forEach((key, value) -> {
+        LOGGER.finer(() -> "Writing key: " + key + " of type " + key.getClass().getSimpleName());
+        keyWriter.accept(buffer, key);
+        LOGGER.finer(() -> "Writing value: " + value + " of type " + value.getClass().getSimpleName());
+        valueWriter.accept(buffer, value);
       });
     };
   }
@@ -359,27 +390,6 @@ final class PicklerImpl<T> implements Pickler<T> {
         ZigZagEncoding.putInt(buffer, ordinal + 1);
         serializeRecordComponents(buffer, record, ordinal);
       }
-    };
-  }
-
-  /// Create enum sizer with pre-computed ordinal
-  ToIntFunction<Object> createEnumSizer(Class<?> enumClass) {
-    final Integer ordinal = classToOrdinal.get(enumClass);
-    assert ordinal != null : "Unknown enum type: " + enumClass;
-    return obj -> {
-      Enum<?> enumValue = (Enum<?>) obj;
-      String constantName = enumValue.name();
-      byte[] nameBytes = constantName.getBytes(UTF_8);
-      return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
-    };
-  }
-
-  /// Create record sizer with pre-computed ordinal  
-  ToIntFunction<Object> createRecordSizer(Class<?> recordClass) {
-    return obj -> {
-      Record record = (Record) obj;
-      final Integer ordinal = classToOrdinal.get(record.getClass());
-      return ZigZagEncoding.sizeOf(ordinal + 1) + maxSizeOfRecordComponents(record, ordinal);
     };
   }
 
@@ -697,7 +707,6 @@ final class PicklerImpl<T> implements Pickler<T> {
     Function<ByteBuffer, Object> typeReader = buildTypeReaderChain(typeStructure);
 
     // Add null guard - check for NULL marker first
-    // TODO primatte types cannot be null so we should have a version that skips the null check based on the left most tag
     return buffer -> {
       buffer.mark();
       int marker = ZigZagEncoding.getInt(buffer);
@@ -1089,10 +1098,10 @@ final class PicklerImpl<T> implements Pickler<T> {
     return buffer -> {
       int marker = ZigZagEncoding.getInt(buffer);
       assert marker == Constants.MAP.marker() : "Expected MAP marker but got: " + marker;
-      
+
       int size = ZigZagEncoding.getInt(buffer);
       LOGGER.fine(() -> "Reading Map with " + size + " entries");
-      
+
       Map<Object, Object> map = new HashMap<>(size);
       IntStream.range(0, size).forEach(i -> {
         Object key = keyReader.apply(buffer);
@@ -1108,7 +1117,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     return buffer -> {
       int marker = ZigZagEncoding.getInt(buffer);
       assert marker == Constants.LIST.marker() : "Expected LIST marker but got: " + marker;
-      
+
       int size = buffer.getInt();
       LOGGER.fine(() -> "Reading List with " + size + " elements");
       List<Object> list = new ArrayList<>(size);
@@ -1145,7 +1154,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     // For complex types, build chain from right to left
     Iterator<TagWithType> reversedTags = tags.reversed().iterator();
     List<ToIntFunction<Object>> sizers = new ArrayList<>(tags.size());
-    
+
     TagWithType rightmostTag = reversedTags.next();
     ToIntFunction<Object> sizer = createLeafSizer(rightmostTag);
     sizers.add(sizer);
@@ -1199,8 +1208,12 @@ final class PicklerImpl<T> implements Pickler<T> {
         return 1 + ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
       };
       case UUID -> obj -> 1 + 2 * Long.BYTES;
-      case ENUM -> createEnumSizer(leafTag.type());
-      case RECORD -> createRecordSizer(leafTag.type());
+      case ENUM ->obj-> 1 + 2 * Integer.BYTES; // marker + class ordinal + enum constant length
+      case RECORD -> obj -> {
+        Record record = (Record) obj;
+        final Integer ordinal = classToOrdinal.get(record.getClass());
+        return ZigZagEncoding.sizeOf(ordinal + 1) + maxSizeOfRecordComponents(record, ordinal);
+      };
       default -> throw new IllegalArgumentException("No leaf sizer for tag is it a container tag? " + leafTag);
     };
   }
@@ -1312,9 +1325,8 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     // Find ordinal for the object's class using the ONE HashMap lookup
     final Integer ordinalObj = classToOrdinal.get(object.getClass());
-    if (ordinalObj == null) {
-      throw new IllegalArgumentException("Unknown class: " + object.getClass().getName());
-    }
+    assert ordinalObj != null: "Unknown class: " + object.getClass().getName();
+
     final int ordinal = ordinalObj;
 
     // Size = ordinal marker + record component sizes (using pre-built sizers array)
@@ -1405,7 +1417,7 @@ record TypeStructure(List<TagWithType> tagTypes) {
               // Store Map marker, then key structure, then value structure
               TypeStructure keyStructure = analyze(typeArgs[0]);
               TypeStructure valueStructure = analyze(typeArgs[1]);
-              
+
               // Combine: [MAP, ...key tags, ...value tags]
               for (TagWithType tt : keyStructure.tagTypes()) {
                 tags.add(tt.tag());
