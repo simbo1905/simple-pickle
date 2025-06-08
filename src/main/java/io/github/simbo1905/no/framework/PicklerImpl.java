@@ -365,6 +365,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Create enum writer with runtime ordinal lookup
+  // FIXME TODO this should be writing out the enum original not the name - is this code actually reachable? 
   BiConsumer<ByteBuffer, Object> createEnumWriter(Class<?> enumClass) {
     return (buffer, value) -> {
       Enum<?> enumValue = (Enum<?>) value;
@@ -380,17 +381,46 @@ final class PicklerImpl<T> implements Pickler<T> {
     };
   }
 
-  /// Create record writer with pre-computed ordinal
+  /// Create record writer that handles both records and sealed interface polymorphism
   BiConsumer<ByteBuffer, Object> createRecordWriter(Class<?> recordClass) {
-    return (buffer, value) -> {
-      final Integer ordinal = classToOrdinal.get(value.getClass());
-      LOGGER.finer(() -> "Writing RECORD ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + recordClass.getName());
-      ZigZagEncoding.putInt(buffer, Constants.RECORD.marker());
-      if (value instanceof Record record) {
-        ZigZagEncoding.putInt(buffer, ordinal + 1);
-        serializeRecordComponents(buffer, record, ordinal);
-      }
-    };
+    // Check if this is a sealed interface that could be either enum or record at runtime
+    if (recordClass.isInterface() && recordClass.isSealed()) {
+      // Create a polymorphic writer that checks runtime type
+      return (buffer, value) -> {
+        if (value instanceof Enum<?> enumValue) {
+          // Delegate to enum writer logic
+          final Integer ordinal = classToOrdinal.get(enumValue.getClass());
+          assert ordinal != null : "Unknown enum type: " + enumValue.getClass();
+          LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumValue.getClass().getName());
+          ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
+          ZigZagEncoding.putInt(buffer, ordinal + 1);
+          String constantName = enumValue.name();
+          byte[] constantBytes = constantName.getBytes(UTF_8);
+          ZigZagEncoding.putInt(buffer, constantBytes.length);
+          buffer.put(constantBytes);
+        } else if (value instanceof Record record) {
+          // Delegate to record writer logic
+          final Integer ordinal = classToOrdinal.get(record.getClass());
+          LOGGER.finer(() -> "Writing RECORD ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + record.getClass().getName());
+          ZigZagEncoding.putInt(buffer, Constants.RECORD.marker());
+          ZigZagEncoding.putInt(buffer, ordinal + 1);
+          serializeRecordComponents(buffer, record, ordinal);
+        } else {
+          throw new IllegalArgumentException("Unexpected type for sealed interface: " + value.getClass());
+        }
+      };
+    } else {
+      // Regular record writer
+      return (buffer, value) -> {
+        final Integer ordinal = classToOrdinal.get(value.getClass());
+        LOGGER.finer(() -> "Writing RECORD ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + recordClass.getName());
+        ZigZagEncoding.putInt(buffer, Constants.RECORD.marker());
+        if (value instanceof Record record) {
+          ZigZagEncoding.putInt(buffer, ordinal + 1);
+          serializeRecordComponents(buffer, record, ordinal);
+        }
+      };
+    }
   }
 
   /// Create leaf writer for primitive/basic types - NO runtime type checking
@@ -1058,19 +1088,35 @@ final class PicklerImpl<T> implements Pickler<T> {
       };
       case RECORD -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        if (marker != Constants.RECORD.marker()) {
-          throw new IllegalStateException("Expected RECORD marker but got: " + marker);
+        
+        // Handle polymorphic sealed interfaces - could be ENUM or RECORD at runtime
+        if (marker == Constants.ENUM.marker()) {
+          // This is actually an enum implementing a sealed interface
+          int wireOrdinal = ZigZagEncoding.getInt(buffer);
+          int ordinal = wireOrdinal - 1;
+          Class<?> enumClass = userTypes[ordinal];
+          
+          int constantLength = ZigZagEncoding.getInt(buffer);
+          byte[] constantBytes = new byte[constantLength];
+          buffer.get(constantBytes);
+          String constantName = new String(constantBytes, UTF_8);
+          
+          @SuppressWarnings({"unchecked", "rawtypes"})
+          Enum<?> value = Enum.valueOf((Class<? extends Enum>) enumClass, constantName);
+          return value;
+        } else if (marker == Constants.RECORD.marker()) {
+          // This is a record
+          int wireOrdinal = ZigZagEncoding.getInt(buffer);
+          int ordinal = wireOrdinal - 1;
+          
+          if (ordinal < 0 || ordinal >= userTypes.length) {
+            throw new IllegalStateException("Invalid record ordinal: " + ordinal);
+          }
+          
+          return deserializeRecord(buffer, ordinal);
+        } else {
+          throw new IllegalStateException("Expected RECORD or ENUM marker but got: " + marker);
         }
-
-        // Read ordinal (1-indexed on wire)
-        int wireOrdinal = ZigZagEncoding.getInt(buffer);
-        int ordinal = wireOrdinal - 1;
-
-        if (ordinal < 0 || ordinal >= userTypes.length) {
-          throw new IllegalStateException("Invalid record ordinal: " + ordinal);
-        }
-
-        return deserializeRecord(buffer, ordinal);
       };
       default -> throw new IllegalArgumentException("No leaf reader for tag: " + leafTag);
     };
@@ -1210,9 +1256,20 @@ final class PicklerImpl<T> implements Pickler<T> {
       case UUID -> obj -> 1 + 2 * Long.BYTES;
       case ENUM ->obj-> 1 + 2 * Integer.BYTES; // marker + class ordinal + enum constant length
       case RECORD -> obj -> {
-        Record record = (Record) obj;
-        final Integer ordinal = classToOrdinal.get(record.getClass());
-        return ZigZagEncoding.sizeOf(ordinal + 1) + maxSizeOfRecordComponents(record, ordinal);
+        // Handle polymorphic sealed interfaces
+        if (obj instanceof Enum<?> enumValue) {
+          // Size for enum: marker + ordinal + name length + name bytes
+          String name = enumValue.name();
+          byte[] nameBytes = name.getBytes(UTF_8);
+          return 1 + ZigZagEncoding.sizeOf(classToOrdinal.get(enumValue.getClass()) + 1) + 
+                 ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
+        } else if (obj instanceof Record record) {
+          // Size for record: marker + ordinal + components
+          final Integer ordinal = classToOrdinal.get(record.getClass());
+          return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + maxSizeOfRecordComponents(record, ordinal);
+        } else {
+          throw new IllegalArgumentException("Unexpected type for RECORD sizer: " + obj.getClass());
+        }
       };
       default -> throw new IllegalArgumentException("No leaf sizer for tag is it a container tag? " + leafTag);
     };
@@ -1278,11 +1335,16 @@ final class PicklerImpl<T> implements Pickler<T> {
     // Write ordinal marker (1-indexed on wire)
     ZigZagEncoding.putInt(buffer, ordinal + 1);
 
-    // Serialize record components using pre-built writers array (NO HashMap lookups on hot path)
+    // Serialize based on actual runtime type
     if (object instanceof Record record) {
       serializeRecordComponents(buffer, record, ordinal);
+    } else if (object instanceof Enum<?> enumValue) {
+      // Serialize enum constant name
+      byte[] constantBytes = enumValue.name().getBytes(UTF_8);
+      ZigZagEncoding.putInt(buffer, constantBytes.length);
+      buffer.put(constantBytes);
     } else {
-      throw new IllegalArgumentException("Expected Record but got: " + object.getClass().getName());
+      throw new IllegalArgumentException("Expected Record or Enum but got: " + object.getClass().getName());
     }
 
     final var totalBytes = buffer.position() - startPosition;
@@ -1310,11 +1372,21 @@ final class PicklerImpl<T> implements Pickler<T> {
     Class<?> targetClass = userTypes[ordinal];
     LOGGER.finer(() -> "Target class: " + targetClass.getSimpleName());
 
-    // Deserialize using pre-built component readers and constructor (direct array access)
+    // Deserialize based on target class type
     if (targetClass.isRecord()) {
       return deserializeRecord(buffer, ordinal);
+    } else if (targetClass.isEnum()) {
+      // Deserialize enum
+      int constantLength = ZigZagEncoding.getInt(buffer);
+      byte[] constantBytes = new byte[constantLength];
+      buffer.get(constantBytes);
+      String constantName = new String(constantBytes, UTF_8);
+      
+      @SuppressWarnings({"unchecked", "rawtypes"})
+      Enum<?> value = Enum.valueOf((Class<? extends Enum>) targetClass, constantName);
+      return (T) value;
     } else {
-      throw new IllegalArgumentException("Expected Record class but got: " + targetClass.getName());
+      throw new IllegalArgumentException("Expected Record or Enum class but got: " + targetClass.getName());
     }
   }
 
@@ -1328,11 +1400,15 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     final int ordinal = ordinalObj;
 
-    // Size = ordinal marker + record component sizes (using pre-built sizers array)
+    // Size = ordinal marker + type-specific content size
     int size = ZigZagEncoding.sizeOf(ordinal + 1); // 1-indexed on wire
 
     if (object instanceof Record record) {
       size += maxSizeOfRecordComponents(record, ordinal);
+    } else if (object instanceof Enum<?> enumValue) {
+      // Size for enum constant name
+      byte[] nameBytes = enumValue.name().getBytes(UTF_8);
+      size += ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
     }
 
     return size;

@@ -24,9 +24,9 @@ enum Tag {
   MAP(Map.class),
 
   // Complex types
-  ENUM(Enum.class),
+  ENUM(Enum.class), //
   ARRAY(Arrays.class), // Arrays don't have a single class use Arrays.class as a marker
-  RECORD(Record.class),
+  RECORD(Record.class), // FIXME TODO this has been used as a placeholder for enum or record as could be a sealed interface rename to USER
   UUID(java.util.UUID.class)
   ;
 
@@ -48,7 +48,8 @@ enum Tag {
     // Special case for arrays and records
     if (clazz.isArray()) return ARRAY;
     if (clazz.isRecord()) return RECORD;
-    // The only thing can be a sealed interface is a record
+    // For user types (including sealed interfaces), we'll use RECORD tag as a placeholder
+    // The actual type will be determined at runtime
     if (clazz.isInterface() && clazz.isSealed()) return RECORD;
     throw new IllegalArgumentException("Unsupported class: " + clazz.getName());
   }
