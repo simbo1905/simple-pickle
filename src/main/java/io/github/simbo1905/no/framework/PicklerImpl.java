@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Simon Massey
+t// SPDX-FileCopyrightText: 2025 Simon Massey
 // SPDX-License-Identifier: MIT
 
 package io.github.simbo1905.no.framework;
@@ -1223,8 +1223,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   (ToIntFunction<Object> elementSizer) {
     return obj -> {
       Optional<?> optional = (Optional<?>) obj;
-      // OPTIONAL_EMPTY marker
-      // OPTIONAL_OF marker + element
+      // OPTIONAL_EMPTY=marker, OPTIONAL_OF=marker+sizeOf(element)
       return optional.map(o -> 1 + elementSizer.applyAsInt(o)).orElse(1);
     };
   }
