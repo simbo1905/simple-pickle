@@ -4,6 +4,13 @@
 
 **No Framework Pickler** is a lightweight, zero-dependency Java 21+ serialization library that generates type-safe, fast, serializers for records containing value-like types as well as arrays, lists, optionals, and maps of value-like types. The entire core library is contained in a single Java source file (~1,300 lines) with no dependencies.
 
+Core Concept Single PicklerImpl that discovers ALL reachable types upfront with a full static analysis phase. This only
+has the user classes and builds a pickler that has array tables that are used to serialize and deserialize. Picklers are
+aggressively cached so that this work is done once typically at startup time. The pickler is then used to serialize and deserialize objects of the user `record` types that contain lots of internal structure that may be heavily nested. Naive implementations of picklers would use reflection on the hot path and use `switch` statements to dispatch to the correct serialization logic. This would be slow and not scale well. We use static analysis that has the `switch` statements the writes specific lambda into an array for every component. Logically these lambdas are "typed" in that they know whether a component is `Map<Enum,List<String>[]>` or any
+other sophisticated generic type structure. There is then no need to use a switch statement on the hot path we can build a specific lambda to do each of the write, read and size operations. The static analysis phase creates a logical type structure for that example which is `[MAP, ENUM, LIST, ARRAY, STRING]` where each of those is a `TagWithType` which is necessary to record which user type is involve. There are no built-in `Enum<>` types so the `ENUM` is one of possibly several discovered user types. When we are reading back we must instance the specific user type so we can use the `TagWithyType`. We can close over that type in our
+generated lambda such that (once again) there is no need to use a `switch` statement or `Map.get` on the hot path. You should note that that specific example has a list of five `TagWithType` yet in the simple case we have only one. Yet we could have twenty if the users of the pickler have a crazily complex set of nested container types for a component. We are never going to use fixed offsets into such as list. Use are going to recursively delegate and only use relative offsets into that list. Containers may (or may not) need to chain to one adjacent type in the list. The `MAP` has to delegate to two adjacent lambda as it is a container over two inner types. So the list is arbitrary long and we first reverse it as the more specific tagWithTypes are going to be to the right of the container tagWithTypes. We then build the specific lambda for the value types (also know as the "leaf types") and then we build up a chain of lambdas that delegate to the inner lambdas. Once again if we have a trivial component that is only `double` we have a list of one `TagWithType` which is `[DOUBLE]` and the type is `double.class`. The writer chain is then a single lambda that writes/reads/sizes the double value. If we have a more complex component such as `List<Optional<Person[]>>` there a longer specific chain of lambdas that are built. This is a form or generalized meta-programming that is done at static analysis time. The pickler then has a single method that can be used to serialize and deserialize any user type that is reachable from the root class.
+
+
 ## Philosophy
 
 The JDK has [Project Valhalla](https://openjdk.org/projects/valhalla/) and "Project Valhalla is augmenting the Java object model with value objects, combining the abstractions of object-oriented programming with the performance characteristics of simple primitives." In future JDKs when more Valhalla JEPs land we will be able to add support for user types that are `value` objects. At this point in time only` Record` is the existing value-like type when used in a way that has conventions that honour the intent that it be a pure data carrier even though it is a reference type. Users of `record` can currently abuse its nature to make it not at all like a value type. In the future there will be language support to give compile time and runtime ensured value-like semantics to any user types. Yet as-at Java 21, the only value-like user types are `Record` and `Enum` types. Our library will attempt to validate at construction of the pickler that the user types are used in a value-like manner as far as we can (application unit tests must do the rest). 
@@ -25,7 +32,7 @@ The library supports the following container types as record components:
   - That may contain value types (e.g. `record A( Optional<String> a)`) that may be nested (e.g. `Optional<Optional<String>>`) and may contain other container types (e.g. `Optional<List<String>>`).
 4. Maps (e.g. `Map<String, Integer>`) where the keys must be `value` semantics so containers are not supported as keys. The values are delegated so may be any time. 
 
-## Unified Pickler Architecture (Current)
+## Unified Pickler Architecture
 
 ### Primary Components
 
@@ -38,7 +45,7 @@ The library supports the following container types as record components:
 
 - Single `PicklerImpl<T>` does all static analysis and type discovery at construction time and creates optional logic using direct method handles and without using either reflection on the hot path or switching over values as the switching can be done as meta-programming at construction time where the types known via static analysis allows a switch to create a lambda that knows the types that will be encountered at runtime. 
 - Array-based O(1) operations replace the majority of Map lookups on hot path. Only one map of user classes to their
-index in an array will remain for a single lookup on the write path. On the read path the index into the array can be used as a jump to the pre-recreated lambdas that where constructed to handle the specific user types. We might expect a tiny amount of user types in the remaining map such that the lookup will be fast. Yet in an adversarial case with 100s of user types the map lookup is far betteer than a liner search over the array of `userTypes`. The map lookup is O(1) and the linear search is O(n).
+index in an array will remain for a single lookup on the write path. On the read path the index into the array can be used as a jump to the pre-recreated lambdas that where constructed to handle the specific user types. We might expect a tiny amount of user types in the remaining map such that the lookup will be fast. Yet in an adversarial case with 100s of user types the map lookup is far better than a liner search over the array of `userTypes`. The map lookup is O(1) and the linear search is O(n).
 - Ordinal-based wire protocol with 1-indexed logical ordinals (0=NULL) for built-in types and positive numbers as array indexes for the user types, These will be small integers that are ZigZag encoded and will normally only take one byte to encode. 
 
 The net effect is that the static type analysis and zigzag encoring means that as long as there are less then 63 user types in any sealed hierarchy a single byte is used to encode the types rather than having to encode the entire use type class name. Then rather than doing 'Class.forName` at runtime we hae lambdas that invoke the unreflected constructor. 
@@ -46,7 +53,7 @@ The net effect is that the static type analysis and zigzag encoring means that a
 ### No-Reflection Principle
 
 *Core Design Philosophy:* The library avoids reflection on the hot path for performance. 
-All reflective operations are done once during `Pickler.of(Class<?>)` construction to build method handles and global lookup tables.
+All reflective operations are done once during `Pickler.forClass(Class<?>)` construction to build method handles and global lookup tables.
 
 Meta-Programming Phase (Construction Time):
 - Exhaustively discover ALL reachable types from root class
@@ -73,29 +80,34 @@ are written as varint/varlong and if not they are written as `putInt` or `putLon
 
 ### Unified Architecture Solution
 
-Core Concept Single PicklerImpl that discovers ALL reachable types upfront and uses array-based ordinals instead of class name strings.
-
 Key Components:
 
-1. *Exhaustive Type Discovery*: Combine `Companion.recordClassHierarchy()` + `TypeStructure.analyze()` to find all reachable user types (Records, Enums, Sealed Interfaces)
+1. *Exhaustive Type Discovery*: Combination of `Companion.recordClassHierarchy(clazz)` + `TypeStructure.analyze(componentClazz)` to find all reachable user types (Records, Enums, Sealed Interfaces)
 
 2. *Deterministic Ordering*: Sort discovered classes lexicographically to create stable ordinals that enable future compatibility features
 
-3. *Array-Based Architecture*: Replace map lookups with direct array indexing:
-   - `Class<?>[] discoveredClasses` - lexicographically sorted user types  
-   - `Tag[] tags` - corresponding type tags (RECORD, ENUM, etc.)
-   - `MethodHandle[] constructors` - sparse array, only populated for records
-   - `MethodHandle[][] componentAccessors` - sparse array of accessor arrays
+3. *Array-Based Architecture*: The core data structures are in `PicklerImpl` are built from the static analysis of the classes:
+```java
+// Global lookup tables indexed by ordinal - the core of the unified architecture
+final Class<?>[] userTypes;     // Lexicographically sorted user types which are subclasses of Record or Enum
+final Map<Class<?>, Integer> classToOrdinal;  // Fast user type to ordinal lookup for the write path
+// Pre-built component metadata arrays for all discovered record types - the core performance optimization:
+final MethodHandle[] recordConstructors;      // Constructor method handles indexed by ordinal
+final MethodHandle[][] componentAccessors;    // [recordOrdinal][componentIndex] -> accessor method handle
+final TypeStructure[][] componentTypes;       // [recordOrdinal][componentIndex] -> type structure
+final BiConsumer<ByteBuffer, Object>[][] componentWriters;  // [recordOrdinal][componentIndex] -> writer chain of delegating lambda eliminating use of `switch` on write the hot path
+final Function<ByteBuffer, Object>[][] componentReaders;     // [recordOrdinal][componentIndex] -> reader chain of delegating lambda eliminating use of `switch` on read the hot path
+final ToIntFunction<Object>[][] componentSizers; // [recordOrdinal][componentIndex] -> sizer lambda
+```
 
-We must have an set of OUTER ARRAYS that contains all these things or all reacahbale types. This is so that ww can use the built-in marker/ordinal to jump to the array indexes that hold all the information. If it is a user type we will also use the index/marker/ordinal to jump to the code. We are building a set of global lookup tables where the index is the logical type marker/ordinal and in any such array it is a fixed offset `xxxx[index]` to resolve exactly what we need. We can then avoid expensive map lookups and string comparisons on the hot path! 
-
-4. Wire Protocol Simplification:
+4. Wire Protocol:
    - Negative markers: Built-in types (STRING, UUID, primitives) use negative ZigZag encoded values
    - Positive markers: User types use array index as ZigZag encoded ordinal
    - NULL marker: Remains 0 (uninitialized memory safety)
    - No Class Name Serialization: Ordinals eliminate need for class name compression and smart buffer state
    - Our built-in value types that in `Constants` have a `marker()` method that returns `-1*orinal()` which is their position in the enums logical `values()` array yet we do not need to use that physical method as we use the `ordinal()` api.  
-   - The user types are stored in the `discoveredClasses` array and we use the `classToOrdinal(clazz)` to get the ordinal of the class. This is the only remaining Map lookup which is an acceptable performance trade-off.
+   - The user types are stored in the `discoveredClasses` array and we use the `classToOrdinal(clazz)` to get the ordinal of the class. We can then `+1` to not overlap with the built-in ordinals. 
+   - We ZigZag encode the ordinals which are typically tiny so typically only one byte on the wire. This is a vast performance improvement over writing class names as strings.
 
 We will likely never put in more than 63 future built-in types and the application will likely never have more than 63 user types for one pickler so we will get a one byte encoding. Yet we have no such artificial limit we can support up to 2^31 types of each. If we only had two or three user types then scanning `Class<?>[] userTypes` to do an equals will be optimal. That might even by the typical case my most complex protocol that I encode only has a half dozen user types. Yet we may face adversarial cases with 100s of user types. In that case the map lookup is O(1) and the linear search is O(n). The JVM has expecific logic for small maps to change their behaviour as more elements are added. We can then lean upon the JVM to optimise the map lookup for both the typical small map case and the adversarial 
 large map case.
@@ -123,24 +135,15 @@ large map case.
 ### Serialization Strategy
 
 ###Top-Level Objects**:
-1. Write logical ordinal (1, 2, 3, ...)
+1. Write logical ordinal (1, 2, 3, ...) using `Constants.marker()` for built-in types or `classToOrdinal(clazz) + 1` for user types which will correctly write `-1 * ordinal` for built-in types and `index + 1` for user types.
 2. Based on tag, serialize type-specific content:
-   - **ENUM**: Write constant name (length + UTF-8 bytes)
-   - **RECORD**: Recursively serialize all components
+   - **ENUM**: Write `enum.ordinal()`
+   - **RECORD**: Recursively serialize all components via `serailizeRecordComponents()`
 
 ###Record Components**: 
 - Built-in types: Write negative marker + value
 - User types: Write logical ordinal + recursive content
 - NULL values: Write 0 marker
-
-###Wire Format Example** (TestEnum.VALUE_C):
-```
-[1] [7] [V,A,L,U,E,_,C]
- │   │   └─ UTF-8 constant name (7 bytes)
- │   └─ String length (1 byte)  
- └─ Logical ordinal 1 (1 byte)
-Total: 9 bytes
-```
 
 ### Deserialization Strategy
 

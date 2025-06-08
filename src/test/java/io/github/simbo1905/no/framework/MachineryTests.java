@@ -4,12 +4,17 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
 /// Package-private tests for core machinery components
 /// Tests the internal implementation details that are not part of the public API
+@SuppressWarnings("auxiliaryclass")
 class MachineryTests {
 
   @BeforeAll
@@ -152,5 +157,80 @@ class MachineryTests {
     assertThat(result.tagTypes().get(1).type()).isEqualTo(Arrays.class);
     assertThat(result.tagTypes().get(2).tag()).isEqualTo(Tag.STRING);
     assertThat(result.tagTypes().get(2).type()).isEqualTo(String.class);
+  }
+
+  // Map test records
+  record SimpleMapTest(Map<String, Integer> map) {}
+  record NestedMapTest(Map<Long, Optional<String>> map) {}
+  record ComplexMapTest(Map<UUID, List<String>> map) {}
+
+  @Test
+  void testMapTypeAnalysis() {
+    var recordClass = SimpleMapTest.class;
+    var components = recordClass.getRecordComponents();
+    
+    // Test Map<String, Integer>
+    var mapType = components[0].getGenericType();
+    var result = TypeStructure.analyze(mapType);
+    
+    LOGGER.fine(() -> "Map<String, Integer> analysis:");
+    LOGGER.fine(() -> "  TagTypes: " + result.tagTypes());
+    
+    // Should be: [MAP, STRING, INTEGER]
+    assertThat(result.tagTypes()).hasSize(3);
+    assertThat(result.tagTypes().get(0).tag()).isEqualTo(Tag.MAP);
+    assertThat(result.tagTypes().get(0).type()).isEqualTo(Map.class);
+    assertThat(result.tagTypes().get(1).tag()).isEqualTo(Tag.STRING);
+    assertThat(result.tagTypes().get(1).type()).isEqualTo(String.class);
+    assertThat(result.tagTypes().get(2).tag()).isEqualTo(Tag.INTEGER);
+    assertThat(result.tagTypes().get(2).type()).isEqualTo(Integer.class);
+  }
+
+  @Test
+  void testNestedMapTypeAnalysis() {
+    var recordClass = NestedMapTest.class;
+    var components = recordClass.getRecordComponents();
+    
+    // Test Map<Long, Optional<String>>
+    var mapType = components[0].getGenericType();
+    var result = TypeStructure.analyze(mapType);
+    
+    LOGGER.fine(() -> "Map<Long, Optional<String>> analysis:");
+    LOGGER.fine(() -> "  TagTypes: " + result.tagTypes());
+    
+    // Should be: [MAP, LONG, OPTIONAL, STRING]
+    assertThat(result.tagTypes()).hasSize(4);
+    assertThat(result.tagTypes().get(0).tag()).isEqualTo(Tag.MAP);
+    assertThat(result.tagTypes().get(0).type()).isEqualTo(Map.class);
+    assertThat(result.tagTypes().get(1).tag()).isEqualTo(Tag.LONG);
+    assertThat(result.tagTypes().get(1).type()).isEqualTo(Long.class);
+    assertThat(result.tagTypes().get(2).tag()).isEqualTo(Tag.OPTIONAL);
+    assertThat(result.tagTypes().get(2).type()).isEqualTo(Optional.class);
+    assertThat(result.tagTypes().get(3).tag()).isEqualTo(Tag.STRING);
+    assertThat(result.tagTypes().get(3).type()).isEqualTo(String.class);
+  }
+
+  @Test
+  void testComplexMapTypeAnalysis() {
+    var recordClass = ComplexMapTest.class;
+    var components = recordClass.getRecordComponents();
+    
+    // Test Map<UUID, List<String>>
+    var mapType = components[0].getGenericType();
+    var result = TypeStructure.analyze(mapType);
+    
+    LOGGER.fine(() -> "Map<UUID, List<String>> analysis:");
+    LOGGER.fine(() -> "  TagTypes: " + result.tagTypes());
+    
+    // Should be: [MAP, UUID, LIST, STRING]
+    assertThat(result.tagTypes()).hasSize(4);
+    assertThat(result.tagTypes().get(0).tag()).isEqualTo(Tag.MAP);
+    assertThat(result.tagTypes().get(0).type()).isEqualTo(Map.class);
+    assertThat(result.tagTypes().get(1).tag()).isEqualTo(Tag.UUID);
+    assertThat(result.tagTypes().get(1).type()).isEqualTo(UUID.class);
+    assertThat(result.tagTypes().get(2).tag()).isEqualTo(Tag.LIST);
+    assertThat(result.tagTypes().get(2).type()).isEqualTo(List.class);
+    assertThat(result.tagTypes().get(3).tag()).isEqualTo(Tag.STRING);
+    assertThat(result.tagTypes().get(3).type()).isEqualTo(String.class);
   }
 }

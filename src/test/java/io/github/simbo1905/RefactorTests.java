@@ -754,7 +754,8 @@ public class RefactorTests {
 
   // https://www.perplexity.ai/search/b11ebab9-122c-4841-b4bd-1d55de721ebd
   @SafeVarargs
-  public static <T> Optional<T>[] createOptionalArray(Optional<T>... elements) {
+  @SuppressWarnings("varargs")
+  public static final <T> Optional<T>[] createOptionalArray(Optional<T>... elements) {
     return elements;
   }
 
@@ -1215,6 +1216,159 @@ public class RefactorTests {
     LOGGER.info("Round-trip verification successful");
 
     LOGGER.info("=== AllPrimitives test complete ===");
+  }
+
+  // Map test records
+  public record SimpleMap(Map<Double, Double> value) {}
+  
+  public record VarIntMap(Map<Integer, String> value) {}
+  
+  public record VarLongMap(Map<Long, Optional<String>> value) {}
+  
+  public record ManySimpleTypes(
+    Map<Boolean, String> boolMap,
+    Map<Byte, Integer> byteMap,
+    Map<Short, Long> shortMap,
+    Map<Character, Float> charMap,
+    Map<Integer, Double> intMap,
+    Map<Long, String> longMap,
+    Map<Float, List<String>> floatMap,
+    Map<Double, Optional<Integer>> doubleMap,
+    Map<String, String[]> stringMap,
+    Map<UUID, List<Optional<String>>> uuidMap
+  ) {}
+
+  @Test
+  void testSimpleDoubleMap() {
+    var pickler = Pickler.forClass(SimpleMap.class);
+    
+    Map<Double, Double> map = new HashMap<>();
+    map.put(1.1, 2.2);
+    map.put(3.3, 4.4);
+    map.put(5.5, 6.6);
+    
+    SimpleMap original = new SimpleMap(map);
+    
+    var buffer = ByteBuffer.allocate(1024);
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    
+    SimpleMap deserialized = pickler.deserialize(buffer);
+    assertEquals(original, deserialized);
+  }
+
+  @Test 
+  void testVarIntMapSerialization() {
+    var pickler = Pickler.forClass(VarIntMap.class);
+    
+    Map<Integer, String> map = new HashMap<>();
+    map.put(1, "one");
+    map.put(100, "hundred");
+    map.put(1000, "thousand");
+    
+    VarIntMap original = new VarIntMap(map);
+    
+    var buffer = ByteBuffer.allocate(1024);
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    
+    VarIntMap deserialized = pickler.deserialize(buffer);
+    assertEquals(original, deserialized);
+  }
+
+  @Test
+  void testVarLongMapWithOptionals() {
+    var pickler = Pickler.forClass(VarLongMap.class);
+    
+    Map<Long, Optional<String>> map = new HashMap<>();
+    map.put(1L, Optional.of("first"));
+    map.put(2L, Optional.empty());
+    map.put(Long.MAX_VALUE, Optional.of("max"));
+    
+    VarLongMap original = new VarLongMap(map);
+    
+    var buffer = ByteBuffer.allocate(1024);
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    
+    VarLongMap deserialized = pickler.deserialize(buffer);
+    assertEquals(original, deserialized);
+  }
+
+  @Test
+  void testManySimpleTypesMap() {
+    var pickler = Pickler.forClass(ManySimpleTypes.class);
+    
+    Map<Boolean, String> boolMap = new HashMap<>();
+    boolMap.put(true, "yes");
+    boolMap.put(false, "no");
+    
+    Map<Byte, Integer> byteMap = new HashMap<>();
+    byteMap.put((byte)1, 100);
+    byteMap.put((byte)2, 200);
+    
+    Map<Short, Long> shortMap = new HashMap<>();
+    shortMap.put((short)10, 1000L);
+    
+    Map<Character, Float> charMap = new HashMap<>();
+    charMap.put('A', 1.1f);
+    charMap.put('B', 2.2f);
+    
+    Map<Integer, Double> intMap = new HashMap<>();
+    intMap.put(42, 3.14);
+    
+    Map<Long, String> longMap = new HashMap<>();
+    longMap.put(999L, "nine nine nine");
+    
+    Map<Float, List<String>> floatMap = new HashMap<>();
+    floatMap.put(1.5f, List.of("one", "two", "three"));
+    
+    Map<Double, Optional<Integer>> doubleMap = new HashMap<>();
+    doubleMap.put(2.5, Optional.of(25));
+    doubleMap.put(3.5, Optional.empty());
+    
+    Map<String, String[]> stringMap = new HashMap<>();
+    stringMap.put("array", new String[]{"a", "b", "c"});
+    
+    Map<UUID, List<Optional<String>>> uuidMap = new HashMap<>();
+    UUID uuid = UUID.randomUUID();
+    uuidMap.put(uuid, List.of(Optional.of("present"), Optional.empty()));
+    
+    ManySimpleTypes original = new ManySimpleTypes(
+      boolMap, byteMap, shortMap, charMap, intMap, 
+      longMap, floatMap, doubleMap, stringMap, uuidMap
+    );
+    
+    var buffer = ByteBuffer.allocate(4096);
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    
+    ManySimpleTypes deserialized = pickler.deserialize(buffer);
+    assertEquals(original.boolMap(), deserialized.boolMap());
+    assertEquals(original.byteMap(), deserialized.byteMap());
+    assertEquals(original.shortMap(), deserialized.shortMap());
+    assertEquals(original.charMap(), deserialized.charMap());
+    assertEquals(original.intMap(), deserialized.intMap());
+    assertEquals(original.longMap(), deserialized.longMap());
+    assertEquals(original.floatMap(), deserialized.floatMap());
+    assertEquals(original.doubleMap(), deserialized.doubleMap());
+    assertArrayEquals(original.stringMap().get("array"), deserialized.stringMap().get("array"));
+    assertEquals(original.uuidMap(), deserialized.uuidMap());
+  }
+
+  @Test
+  void testEmptyMap() {
+    var pickler = Pickler.forClass(SimpleMap.class);
+    
+    SimpleMap original = new SimpleMap(new HashMap<>());
+    
+    var buffer = ByteBuffer.allocate(256);
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    
+    SimpleMap deserialized = pickler.deserialize(buffer);
+    assertEquals(original, deserialized);
+    assertTrue(deserialized.value().isEmpty());
   }
 
 }
