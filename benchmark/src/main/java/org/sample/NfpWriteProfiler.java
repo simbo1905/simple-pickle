@@ -16,52 +16,52 @@ public class NfpWriteProfiler {
     public static void main(String[] args) throws Exception {
         final var testData = new TestRecord("BenchmarkTest", 42, System.currentTimeMillis(), true);
         
-        LOGGER.info("=== NFP Write Profiler ===");
-        LOGGER.info("Test data: " + testData);
+        LOGGER.info("=== NFP Write Profiler ==="); // TODO always use LOGGER.xxx( ()->yyyy )
+        LOGGER.info("Test data: " + testData); // TODO always use LOGGER.xxx( ()->yyyy )
         
         // Initialize NFP components
-        LOGGER.fine("Creating NFP pickler");
+        LOGGER.fine("Creating NFP pickler"); // TODO always use LOGGER.xxx( ()->yyyy )
         final var nfpPickler = Pickler.forClass(TestRecord.class);
         
-        LOGGER.fine("Calculating max size");
+        LOGGER.fine("Calculating max size"); // TODO always use LOGGER.xxx( ()->yyyy )
         final int maxSize = nfpPickler.maxSizeOf(testData);
-        LOGGER.info("NFP max size: " + maxSize + " bytes");
+        LOGGER.info("NFP max size: " + maxSize + " bytes"); // TODO always use LOGGER.xxx( ()->yyyy )
         
-        LOGGER.fine("Allocating buffer");
+        LOGGER.fine("Allocating buffer"); // TODO always use LOGGER.xxx( ()->yyyy )
         final var nfpBuffer = ByteBuffer.allocate(maxSize);
         
         // Test serialization once to verify
-        LOGGER.fine("Testing serialization");
+        LOGGER.fine("Testing serialization"); // TODO always use LOGGER.xxx( ()->yyyy )
         nfpBuffer.clear();
         int actualSize = nfpPickler.serialize(nfpBuffer, testData);
-        LOGGER.info("Actual serialized size: " + actualSize + " bytes");
+        LOGGER.info("Actual serialized size: " + actualSize + " bytes"); // TODO always use LOGGER.xxx( ()->yyyy )
         
         // Test deserialization
         nfpBuffer.flip();
         TestRecord deserialized = nfpPickler.deserialize(nfpBuffer);
-        LOGGER.info("Deserialized: " + deserialized);
-        LOGGER.info("Round-trip successful: " + testData.equals(deserialized));
+        LOGGER.info("Deserialized: " + deserialized); // TODO always use LOGGER.xxx( ()->yyyy )
+        LOGGER.info("Round-trip successful: " + testData.equals(deserialized)); // TODO always use LOGGER.xxx( ()->yyyy )
         
         // Warm up
-        LOGGER.info("Starting warmup");
+        LOGGER.info("Starting warmup"); // TODO always use LOGGER.xxx( ()->yyyy )
         warmUp(nfpPickler, nfpBuffer, testData);
         
         // Profile writes
-        LOGGER.info("Starting write profiling (10 seconds)");
+        LOGGER.info("Starting write profiling (10 seconds)"); // TODO always use LOGGER.xxx( ()->yyyy )
         profileWrites(nfpPickler, nfpBuffer, testData);
         
-        LOGGER.info("Profiling complete. Analyze with:");
-        LOGGER.info("jfr view hot-methods nfp-write.jfr");
-        LOGGER.info("jfr view allocation-by-site nfp-write.jfr");
+        LOGGER.info("Profiling complete. Analyze with:"); // TODO always use LOGGER.xxx( ()->yyyy )
+        LOGGER.info("jfr view hot-methods nfp-write.jfr"); // TODO always use LOGGER.xxx( ()->yyyy )
+        LOGGER.info("jfr view allocation-by-site nfp-write.jfr"); // TODO always use LOGGER.xxx( ()->yyyy )
     }
     
     private static void warmUp(Pickler<TestRecord> pickler, ByteBuffer buffer, TestRecord data) throws Exception {
-        LOGGER.fine("Warmup: 50k iterations");
+        LOGGER.fine("Warmup: 50k iterations"); // TODO always use LOGGER.xxx( ()->yyyy )
         for (int i = 0; i < 50_000; i++) {
             buffer.clear();
             pickler.serialize(buffer, data);
         }
-        LOGGER.info("Warmup complete");
+        LOGGER.info("Warmup complete"); // TODO always use LOGGER.xxx( ()->yyyy )
     }
     
     private static void profileWrites(Pickler<TestRecord> pickler, ByteBuffer buffer, TestRecord data) throws Exception {
@@ -79,7 +79,7 @@ public class NfpWriteProfiler {
         final long duration = System.currentTimeMillis() - startTime;
         final double opsPerSecond = (double) iterations / (duration / 1000.0);
         
-        LOGGER.info(String.format("NFP Performance: %.0f ops/s (%d iterations in %d ms)", 
+        LOGGER.info(String.format("NFP Performance: %.0f ops/s (%d iterations in %d ms)", // TODO always use LOGGER.xxx( ()->yyyy ) 
                          opsPerSecond, iterations, duration));
     }
 }

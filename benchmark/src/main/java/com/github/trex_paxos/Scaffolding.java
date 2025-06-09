@@ -35,7 +35,7 @@ public class Scaffolding {
     if( !originalRecord.equals(deserializedRecord)) {
       throw new AssertionError("Deserialized record does not match original");
     } else {
-      LOGGER.info("Round-trip serialization successful: " + deserializedRecord);
+      LOGGER.info("Round-trip serialization successful: " + deserializedRecord); // TODO always use LOGGER.xxx( ()->yyyy )
     }
   }
 }

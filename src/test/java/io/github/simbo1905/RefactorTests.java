@@ -6,6 +6,7 @@ import io.github.simbo1905.no.framework.model.NullableFieldsExample;
 import io.github.simbo1905.no.framework.model.Person;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
+import io.github.simbo1905.no.framework.tree.TreeNode;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -123,26 +124,6 @@ public class RefactorTests {
         "Deserialized alicorn should equal the original alicorn");
   }
 
-  sealed interface TreeNode permits TreeNode.InternalNode, TreeNode.LeafNode {
-    record LeafNode(int value) implements TreeNode {
-    }
-
-    record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {
-    }
-
-    /// Sealed interfaces are exhaustively matched within matched pattern matching switch expressions
-    static boolean areTreesEqual(TreeNode l, TreeNode r) {
-      return switch (l) {
-        case null -> r == null;
-        case TreeNode.LeafNode(var v1) -> r instanceof TreeNode.LeafNode(var v2) && v1 == v2;
-        case TreeNode.InternalNode(String n1, TreeNode i1, TreeNode i2) ->
-            r instanceof TreeNode.InternalNode(String n2, TreeNode j1, TreeNode j2) &&
-                n1.equals(n2) &&
-                areTreesEqual(i1, j1) &&
-                areTreesEqual(i2, j2);
-      };
-    }
-  }
 
   public record LinkedListNode(int value, LinkedListNode next) {
     public LinkedListNode(int value) {
@@ -167,9 +148,9 @@ public class RefactorTests {
   void testTreeNodeSerialization() {
     // Test tree node serialization
     // Arrange
-    final var originalRoot = new TreeNode.InternalNode("Root",
-        new TreeNode.InternalNode("Branch1", new TreeNode.LeafNode(42), new TreeNode.LeafNode(99)),
-        new TreeNode.InternalNode("Branch2", new TreeNode.LeafNode(123), null));
+    final var originalRoot = new InternalNode("Root",
+        new InternalNode("Branch1", new LeafNode(42), new LeafNode(99)),
+        new InternalNode("Branch2", new LeafNode(123), TreeNode.empty()));
 
     Pickler<TreeNode> treeNodePickler = Pickler.forClass(TreeNode.class);
 
@@ -980,17 +961,23 @@ public class RefactorTests {
     final var leaf3 = new LeafNode(123);
 // A lob sided tree
     final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
-    final var internal2 = new InternalNode("Branch2", leaf3, null);
+    final var internal2 = new InternalNode("Branch2", leaf3, TreeNode.empty());
     final var originalRoot = new InternalNode("root", internal1, internal2);
 
 // Get a pickler for the TreeNode sealed interface
-    final var pickler = Pickler.forClass(io.github.simbo1905.no.framework.tree.TreeNode.class);
+    final var pickler = Pickler.forClass(TreeNode.class);
 
-// Allocate a buffer to hold just the root node
-    final var buffer = ByteBuffer.allocate(1024);
+// Calculate max size
+    final var maxSize = pickler.maxSizeOf(originalRoot);
+    LOGGER.fine(() -> "TreeNode maxSizeOf: " + maxSize);
+
+// Allocate a buffer using calculated max size
+    final var buffer = ByteBuffer.allocate(maxSize);
 
 // Serialize only the root node (which should include the entire graph)
-    pickler.serialize(buffer, originalRoot);
+    final var actualSize = pickler.serialize(buffer, originalRoot);
+    LOGGER.fine(() -> String.format("TreeNode actual wire size: %d, max size: %d, ratio: %.1f%%", 
+        actualSize, maxSize, (actualSize * 100.0) / maxSize));
 
 // Prepare buffer for reading
     final var buf = buffer.flip();
@@ -999,7 +986,7 @@ public class RefactorTests {
     final var deserializedRoot = pickler.deserialize(buf);
 
 // See junit tests that Validates the entire tree structure was properly deserialized
-    io.github.simbo1905.no.framework.tree.TreeNode.areTreesEqual(originalRoot, deserializedRoot);
+    assertTrue(TreeNode.areTreesEqual(originalRoot, deserializedRoot));
   }
 
   /**

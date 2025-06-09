@@ -4,13 +4,15 @@ No Framework Pickler is a tiny serialization library that generates elegant, fas
 
 ```java
 /// Given a sealed interface and its permitted record types using Java's new Data Oriented Programming paradigm:
-public sealed interface TreeNode permits TreeNode.InternalNode, TreeNode.LeafNode {
+public sealed interface TreeNode permits TreeNode.InternalNode, TreeNode.LeafNode, TreeNode.TreeEnum {
   record LeafNode(int value) implements TreeNode { }
   record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode { }
+  enum TreeEnum implements TreeNode { EMPTY }
+  static TreeNode empty() { return TreeEnum.EMPTY; }
   /// Sealed interfaces allow for exhaustively pattern matched within switch expressions
   static boolean areTreesEqual(TreeNode l, TreeNode r) {
     return switch (l) {
-      case null -> r == null;
+      case TreeEnum.EMPTY -> r == TreeEnum.EMPTY;
       case LeafNode(var v1) -> r instanceof LeafNode(var v2) && v1 == v2;
       case InternalNode(String n1, TreeNode i1, TreeNode i2) ->
           r instanceof InternalNode(String n2, TreeNode j1, TreeNode j2) &&
@@ -27,18 +29,18 @@ ByteBuffer buffer = ByteBuffer.allocate(1024);
 // Given a tree of nodes:
 final var rootNode = new TreeNode.InternalNode("Root",
     new TreeNode.InternalNode("Branch1", new TreeNode.LeafNode(42), new TreeNode.LeafNode(99)),
-    new TreeNode.InternalNode("Branch2", new TreeNode.LeafNode(123), null));
+    new TreeNode.InternalNode("Branch2", new TreeNode.LeafNode(123), TreeNode.empty()));
 
 // And a type safe pickler for the sealed interface:
-Pickler<TreeNode> treeNodePickler = Pickler.forSealedInterface(TreeNode.class);
+Pickler<TreeNode> treeNodePickler = Pickler.forClass(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer and load it back out again:
-treeNodePickler.serialize(rootNode, buffer);
+treeNodePickler.serialize(buffer, rootNode);
 buffer.flip();
 TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
 
 // Then it has elegantly and safely reconstructed the entire tree structure
-if( TreeNode.areTreesEqual(originalRoot, deserializedRoot) ){
+if( TreeNode.areTreesEqual(rootNode, deserializedRoot) ){
   System.out.println("The trees are equal!");
 }
 ```
@@ -77,7 +79,7 @@ When handling sealed interfaces it is requires all permitted subclasses within t
 
 ### Basic Record Serialization
 
-Here the optional `sizeOf` will recursively walk any large nested structures or arrays to calculate the exact size of the buffer needed to hold the serialized data:
+Here the optional `maxSizeOf` will recursively walk any large nested structures or arrays to calculate the exact size of the buffer needed to hold the serialized data:
 
 ```java
 /// Define a record using the enum. It **must** be public
@@ -90,14 +92,14 @@ public enum Season { SPRING, SUMMER, FALL, WINTER }
 var december = new Month(Season.WINTER, "December");
 
 // Get a pickler for the record type containing the enum
-Pickler<Month> pickler = Pickler.picklerForRecord(Month.class);
+Pickler<Month> pickler = Pickler.forClass(Month.class);
 
 // Calculate size and allocate buffer
-int size = pickler.sizeOf(december);
+int size = pickler.maxSizeOf(december);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize to a ByteBuffer
-pickler.serialize(december, buffer);
+pickler.serialize(buffer, december);
 buffer.flip();
 
 // Deserialize from the ByteBuffer
@@ -112,12 +114,13 @@ if (!deserializedMonth.equals(december)) {
 ### Nested Record Tree
 
 ```java
-import io.github.simbo1905.no.framework.Pickler0;
+import io.github.simbo1905.no.framework.Pickler;
 
 /// The sealed interface and all permitted record subclasses must be public.
 /// The records can be static inner classes or top level classes.
 /// Nested sealed interfaces are supported see the Animal example below.
-public sealed interface TreeNode permits InternalNode, LeafNode {
+public sealed interface TreeNode permits InternalNode, LeafNode, TreeEnum {
+    static TreeNode empty() { return TreeEnum.EMPTY; }
 }
 
 public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {
@@ -126,36 +129,36 @@ public record InternalNode(String name, TreeNode left, TreeNode right) implement
 public record LeafNode(int value) implements TreeNode {
 }
 
+public enum TreeEnum implements TreeNode {
+    EMPTY
+}
+
 final var leaf1 = new LeafNode(42);
 final var leaf2 = new LeafNode(99);
 final var leaf3 = new LeafNode(123);
 final var internal1 = new InternalNode("Branch1", leaf1, leaf2);
-final var internal2 = new InternalNode("Branch2", leaf3, null);
+final var internal2 = new InternalNode("Branch2", leaf3, TreeNode.empty());
 final var originalRoot = new InternalNode("Root", internal1, internal2);
 
 // Get a pickler for the TreeNode sealed interface
-final var pickler = Pickler0.forSealedInterface(TreeNode.class);
+final var pickler = Pickler.forClass(TreeNode.class);
 
 // Calculate buffer size needed for the whole graph reachable from the root node
-final var bufferSize = pickler.sizeOf(originalRoot);
+final var bufferSize = pickler.maxSizeOf(originalRoot);
 
-// Allocate a buffer to hold just the root node
+// Allocate a buffer to hold the entire tree
 final var buffer = ByteBuffer.allocate(bufferSize);
 
-// Serialize only the root node (which should include the entire graph)
-pickler.
-
-serialize(originalRoot, buffer);
+// Serialize the root node (which includes the entire graph)
+pickler.serialize(buffer, originalRoot);
 
 // Prepare buffer for reading
-buffer.
-
-flip();
+buffer.flip();
 
 // Deserialize the root node (which will reconstruct the entire graph depth first)
 final var deserializedRoot = pickler.deserialize(buffer);
 
-// See junit tests that Validates the entire tree structure was properly deserialized
+// Validates the entire tree structure was properly deserialized
 assertTrue(TreeNode.areTreesEqual(originalRoot, deserializedRoot), "Tree structure validation failed");
 ```
 
@@ -177,14 +180,14 @@ nestedList.add(Arrays.asList("D", "E"));
 NestedListRecord original = new NestedListRecord(nestedList);
 
 // Get a pickler for the record
-Pickler<NestedListRecord> pickler = Pickler.forRecord(NestedListRecord.class);
+Pickler<NestedListRecord> pickler = Pickler.forClass(NestedListRecord.class);
 
 // Calculate size and allocate buffer
-int size = pickler.sizeOf(original);
+int size = pickler.maxSizeOf(original);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize
-pickler.serialize(original, buffer);
+pickler.serialize(buffer, original);
 buffer.flip();
 
 // Deserialize
@@ -211,12 +214,12 @@ familyMap.put("mother", sarah);
 final var original = new NestedFamilyMapContainer(john, familyMap);
 
 // Get a pickler for the record
-final var pickler = picklerForRecord(NestedFamilyMapContainer.class);
+final var pickler = Pickler.forClass(NestedFamilyMapContainer.class);
 // Calculate size and allocate buffer
-int size = pickler.sizeOf(original);
+int size = pickler.maxSizeOf(original);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 // Serialize
-pickler.serialize(original, buffer);
+pickler.serialize(buffer, original);
 // Prepare buffer for reading
 buffer.flip();
 // Deserialize
@@ -248,116 +251,68 @@ static Penguin penguin = new Penguin(true);
 static Alicorn alicorn = new Alicorn("Twilight Sparkle", new String[]{"elements of harmony", "wings of a pegasus"});
 
 static List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
-Pickler<Animal> pickler = Pickler.forSealedInterface(Animal.class);
+Pickler<Animal> pickler = Pickler.forClass(Animal.class);
 final var buffer = ByteBuffer.allocate(1024);
 
 // anyone reading back needs to know how many records to read back
-animalBuffer.putInt(animals.size());
+buffer.putInt(animals.size());
 
 for (Animal animal : animals) {
-    pickler.serialize(animal, buffer);
+    pickler.serialize(buffer, animal);
 }
 
 buffer.flip(); // Prepare for reading
 
 // any service reading back needs to know how many records to read back
-int size = animalBuffer.getInt();
+int size = buffer.getInt();
 
 // Deserialize the correct number of records
 List<Animal> deserializedAnimals = new ArrayList<>(size);
 IntStream.range(0, size).forEach(i -> {
-Animal animal = animalPickler.deserialize(animalBuffer);
-  deserializedAnimals.add(animal);
+    Animal animal = pickler.deserialize(buffer);
+    deserializedAnimals.add(animal);
 });
 ```
 
-### Serialization And Deserialization Of Many Records
+### Serialization And Deserialization Of Multiple Records
 
-There are some optional static methods for dealing with many records of a specific type:
-
-- `static <R extends Record> void serializeMany(R[] array, ByteBuffer buffer)`
-- `static <R extends Record> List<R> deserializeMany(Class<R> componentType, ByteBuffer buffer)`
-- `static <R extends Record> int sizeOfMany(R[] array)`
-
-You use them like this:
+When serializing multiple records, you need to manually track the count:
 
 ```java
-// Record type must be public
-public record Person(String name, int age) {}
-// Create an array of Person records
-Person[] people = {
+// Create a pickler for your type
+Pickler<Person> pickler = Pickler.forClass(Person.class);
+List<Person> people = List.of(
     new Person("Alice", 30),
     new Person("Bob", 25),
     new Person("Charlie", 40)
-};
-// Calculate size and allocate buffer
-int size = Pickler.sizeOfMany(people);
-ByteBuffer buffer = ByteBuffer.allocate(size);
-// Serialize the array
-Pickler.serializeMany(people, buffer);
-// Prepare buffer for reading
-buffer.flip();
-// Deserialize the array
-List<Person> deserializedPeople = Pickler.deserializeMany(Person.class, buffer);
-// Verify the array was properly deserialized
-assertEquals(people.length, deserializedPeople.size());
-// The elements in the deserialized list should match the original array
-IntStream.range(0, people.length)
-    .forEach(i -> assertEquals(people[i], deserializedPeople.get(i)));
-}
-// The returned outer list is immutable
-assertThrows(UnsupportedOperationException.class, () -> deserialized.removeFirst());
-```
+);
 
-If you want to use this you need to be careful any attempts to convert Java Collections into array types: 
+ByteBuffer buffer = ByteBuffer.allocate(1024);
 
-```java
-Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
-// The following code will compile but fail at runtime: 
-Pickler.serializeMany(List.of(dog, dog2).toArray(Record[]::new), dogBuffer);
-// The following code will not compile: 
-Pickler.serializeMany(List.of(dog, dog2).toArray(Dog[]::new), dogBuffer);
-```
+// Write the count first
+buffer.putInt(people.size());
 
-Things get very challenging when trying to convert an array of instances of a sealed interfaces to an array of records. The safe thing to do is to explicitly create the array of records yourself and copy into them:
-
-```java
-Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
-// Do not attempt to convert Java Collections into array types:
-final var dogs = List.of(dog, dog2);
-// You must explicitly create the array of records yourself and copy into it:
-Dog[] dogArray = new Dog[dogs.size()];
-// Shallow copy the list into the array:
-java.util.Arrays.setAll(dogArray, i -> dogs.get(i));
-// This is safe:
-serializeMany(dogArray),dogBuffer);
-// You can do this as a one liner if-and-only-if you perform an explict cast:
-serializeManyanimals.stream()
-        .filter(Dog.class::isInstance)
-        .map(Dog.class::cast)
-        .toArray(Dog[]::new);
-```
-
-If you want to avoid the shallow copy you can simply manually `writeInt` the size of the list and loop over the list to serialize each element:
-
-```java
-Pickler<Animal> animalPickler = Pickler.forSealedInterface(Animal.class);
-
-// writing out on a loop: 
-List<Dog> dogs = List.of(dog, dog2);
-dogBuffer.writeInt(dogs.size());
-for( Dog dog : dogs) {
-    animalPickler.serialize(dog, dogBuffer);
+// Serialize each person
+for (Person person : people) {
+    pickler.serialize(buffer, person);
 }
 
-dogBuffer.flip(); // Prepare for reading
+buffer.flip(); // Prepare for reading
 
-// reading back on a loop:
-int size = dogBuffer.readInt();
-List<Dog> deserializedDogs = new ArrayList<>(size);
-IntStream.range(0, size).forEach(i -> {
-    deserializedDogs.addanimalPickler.deserialize(dogBuffer));
-});
+// Read the count
+int count = buffer.getInt();
+
+// Deserialize each person
+List<Person> deserializedPeople = new ArrayList<>(count);
+for (int i = 0; i < count; i++) {
+    deserializedPeople.add(pickler.deserialize(buffer));
+}
+
+// Verify the deserialization
+assertEquals(people.size(), deserializedPeople.size());
+for (int i = 0; i < people.size(); i++) {
+    assertEquals(people.get(i), deserializedPeople.get(i));
+}
 ```
 
 ## Security
@@ -457,26 +412,41 @@ There are unit tests that dynamically compile and class load different versions 
 
 ## Wire Protocol
 
-Support Types And Their Type Markers
+The wire protocol uses ZigZag-encoded markers for types:
 
-| Type      | Type Marker |
-|-----------|-------------|
-| null | 	1          |
-| Boolean | 	2          |
-| Byte | 	 3         |
-| Short | 	 4         |
-| Character | 	5          |
-| Integer | 6           |
-| Long | 	 7         |
-| Float | 	 8         |
-| Double | 	 9         |
-| String | 	10         |
-| Optional | 	11         |
-| Record | 	12         |
-| Array | 	13         |
-| Map | 	14         |
-| Enum | 	15         |
-| List | 	16         |
+### Built-in Type Markers
+
+Built-in types use negative markers based on their position in the Constants enum:
+
+| Type | Wire Marker | Description |
+|------|-------------|-------------|
+| NULL | 0 | Null value (safe for uninitialized memory) |
+| BOOLEAN | -1 | Boolean value |
+| BYTE | -2 | Single byte |
+| SHORT | -3 | Short integer |
+| CHARACTER | -4 | Character |
+| INTEGER | -5 | Integer (fixed encoding) |
+| INTEGER_VAR | -6 | Integer (varint encoding) |
+| LONG | -7 | Long (fixed encoding) |
+| LONG_VAR | -8 | Long (varint encoding) |
+| FLOAT | -9 | Float |
+| DOUBLE | -10 | Double |
+| STRING | -11 | UTF-8 encoded string |
+| OPTIONAL_EMPTY | -12 | Empty Optional |
+| OPTIONAL_OF | -13 | Optional with value |
+| ENUM | -14 | Enum value |
+| ARRAY | -15 | Array |
+| MAP | -16 | Map |
+| LIST | -17 | List |
+| RECORD | -18 | Record |
+| UUID | -19 | UUID |
+
+### User Type Markers
+
+User-defined types (Records and Enums) use positive markers:
+- Discovered types are sorted lexicographically by class name
+- Wire marker = array index + 1 (1-indexed to avoid 0)
+- This enables compact single-byte encoding for the first 127 user types
 
 The wire protocol is explained in this diagram:
 
@@ -486,71 +456,74 @@ sequenceDiagram
     participant Pickler
     participant ByteBuffer
 
+    %% --- Initialization Phase ---
+    Note over Client, ByteBuffer: Pickler Creation
+    
+    Client->>Pickler: Pickler.forClass(rootClass)
+    Pickler->>Pickler: Discover all reachable types
+    Pickler->>Pickler: Sort types lexicographically
+    Pickler->>Pickler: Build lookup tables & method handles
+    Pickler->>Client: Return unified pickler
+
     %% --- Serialization Phase ---
     Note over Client, ByteBuffer: Serialization Process
 
-    %% 1. Record serialization
-    Client->>Pickler: picklerForRecord(recordClass)
-    Pickler->>Pickler: (caches method handles for record)
-    Client->>Pickler: serialize(record, buffer)
-    Pickler->>ByteBuffer: put(RECORD_MARKER)
-    Pickler->>ByteBuffer: put(className with deduplication)
-    Pickler->>ByteBuffer: put(serialized record components)
+    %% 1. Value type serialization
+    Client->>Pickler: serialize(buffer, value)
+    Pickler->>Pickler: Determine runtime type
+    alt Built-in type
+        Pickler->>ByteBuffer: Write negative marker
+        Pickler->>ByteBuffer: Write value data
+    else User type (Record/Enum)
+        Pickler->>ByteBuffer: Write positive marker (index + 1)
+        alt Record
+            Pickler->>ByteBuffer: Write each component recursively
+        else Enum
+            Pickler->>ByteBuffer: Write enum ordinal
+        end
+    end
 
-    %% 2. Sealed interface serialization
-    Client->>Pickler: picklerForSealedInterface(sealedClass)
-    Pickler->>Pickler: (caches picklers for all permitted subclasses)
-    Client->>Pickler: serialize(sealedObject, buffer)
-    Pickler->>ByteBuffer: put(className with deduplication)
-    Pickler->>Pickler: get pickler for permitted record
-    Pickler->>ByteBuffer: put(serialized record components)
-
-    %% 3. Many serialization
-    Client->>Pickler: serializeMany(array, buffer)
-    Pickler->>ByteBuffer: put(ARRAY_MARKER)
-    Pickler->>ByteBuffer: put(componentType with deduplication)
-    Pickler->>ByteBuffer: put(array.length)
-    loop For each element in array
-        Pickler->>ByteBuffer: put(serialized element)
+    %% 2. Container serialization
+    Note over Pickler, ByteBuffer: Container Types
+    alt Array
+        Pickler->>ByteBuffer: Write ARRAY marker
+        Pickler->>ByteBuffer: Write length
+        loop Each element
+            Pickler->>ByteBuffer: Write element (recursive)
+        end
+    else List/Optional/Map
+        Pickler->>ByteBuffer: Write container marker
+        Pickler->>ByteBuffer: Write size (if applicable)
+        Pickler->>ByteBuffer: Write elements recursively
     end
 
     %% --- Deserialization Phase ---
     Note over Client, ByteBuffer: Deserialization Process
 
-    %% 4. Record deserialization
-    Client->>Pickler: picklerForRecord(recordClass)
     Client->>Pickler: deserialize(buffer)
-    Pickler->>ByteBuffer: get(RECORD_MARKER)
-    Pickler->>ByteBuffer: get(className with deduplication)
-    Pickler->>Pickler: (finds cached method handles)
-    Pickler->>ByteBuffer: get(serialized record components)
-    Pickler->>Pickler: invoke constructor (schema evolution aware)
-    Pickler->>Client: return record instance
-
-    %% 5. Sealed interface deserialization
-    Client->>Pickler: picklerForSealedInterface(sealedClass)
-    Client->>Pickler: deserialize(buffer)
-    Pickler->>ByteBuffer: get(className with deduplication)
-    Pickler->>Pickler: get pickler for permitted record
-    Pickler->>ByteBuffer: get(serialized record components)
-    Pickler->>Pickler: invoke constructor (schema evolution aware)
-    Pickler->>Client: return permitted record instance
-
-    %% 6. Many deserialization
-    Client->>Pickler: deserializeMany(componentType, buffer)
-    Pickler->>ByteBuffer: get(ARRAY_MARKER)
-    Pickler->>ByteBuffer: get(componentType with deduplication)
-    Pickler->>ByteBuffer: get(array.length)
-    loop For each element in array
-        Pickler->>ByteBuffer: get(serialized element)
-        Pickler->>Pickler: deserialize element
+    Pickler->>ByteBuffer: Read marker
+    alt Negative marker
+        Pickler->>Pickler: Map to built-in type
+        Pickler->>ByteBuffer: Read value data
+        Pickler->>Client: Return value
+    else Positive marker
+        Pickler->>Pickler: Map to user type (index - 1)
+        alt Record
+            loop Each component
+                Pickler->>ByteBuffer: Read component recursively
+            end
+            Pickler->>Pickler: Invoke constructor via MethodHandle
+        else Enum
+            Pickler->>ByteBuffer: Read enum ordinal
+            Pickler->>Pickler: Get enum constant by ordinal
+        end
+        Pickler->>Client: Return instance
     end
-    Pickler->>Client: return array
 ```
 
 ## Why Did Your Write This Framework Killer Code As A Single Java File?
 
-No Framework Pickler came about because I was doing Java Data Oriented programming over sealed traits using Java 221. I wanted to quickly transmit them as a simple message protocol. Including large framework for something so basic seemed like a world of future security issues and forced upgrades. Doing something quick and simple in a single Java file felt right. I wanted to avoid reflection and found out: 
+No Framework Pickler came about because I was doing Java Data Oriented programming over sealed traits using Java 21. I wanted to quickly transmit them as a simple message protocol. Including large framework for something so basic seemed like a world of future security issues and forced upgrades. Doing something quick and simple in a single Java file felt right. I wanted to avoid reflection and found out: 
 
 - The Java `record` types is specifically designed to be a safe data transfer object.
 - The JDK's `ByteBuffer` class correctly validates UTF8 bytes for Strings and safely handles all primitive types.

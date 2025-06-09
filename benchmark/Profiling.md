@@ -1,22 +1,25 @@
 # NFP Performance Profiling Guide
 
 ## Problem Identified
-PrimitiveBenchmark shows NFP write performance is 10x slower than JDK (126k vs 1.3M ops/s), while reads are 11x faster. This indicates a bug in the write path, not an architectural limitation.
+NFP write performance is 8x slower than JDK (235k vs 1.9M ops/s). Tree serialization is 5x slower (4.8k vs 24k ops/s).
 
 ## Java Flight Recorder (JFR) Profiling
 
-### Quick Start Commands
+### Token-Efficient Profiling Commands
 ```bash
-# Start JFR recording for 60 seconds
-jfr start --name myrecording --duration 60s --filename recording.jfr
+# Start JFR recording (redirect output)
+jfr start --name myrecording --duration 60s --filename recording.jfr > /tmp/jfr-start.log 2>&1
 
 # Or attach to running process
-jcmd <pid> JFR.start name=myrecording duration=60s filename=recording.jfr
+jcmd <pid> JFR.start name=myrecording duration=60s filename=recording.jfr > /tmp/jfr-attach.log 2>&1
 
-# Analyze results
-jfr view hot-methods recording.jfr
-jfr view allocation-by-site recording.jfr
-jfr view allocation-by-class recording.jfr
+# Analyze results (grep for specific methods)
+jfr view hot-methods recording.jfr > /tmp/hot-methods.log
+grep -A 5 "org.sample" /tmp/hot-methods.log | head -50
+
+# Check allocations
+jfr view allocation-by-site recording.jfr > /tmp/allocations.log
+grep -A 5 "ByteBuffer\|HashMap" /tmp/allocations.log | head -50
 ```
 
 ### Key Views for Performance Analysis
@@ -49,18 +52,37 @@ jfr view --verbose allocation-by-site recording.jfr
 
 ## Investigation Strategy
 
-### Likely Culprits for 10x Write Slowdown
-1. **Eager String Building in Logging**: Non-lambda logging that builds expensive strings
-2. **Excessive Allocations**: HashMap resizing, unnecessary object creation
-3. **Reflection on Hot Path**: Method resolution happening during serialization
-4. **Debug Code**: Accidentally enabled debug logging or validation
+### Likely Culprits for 8x Write Slowdown
+1. **Logging Overhead**: Non-lambda logging building expensive strings (check with: `grep "LOGGER.info(\"" *.java`)
+2. **Excessive Allocations**: Check for allocations with: `jfr view allocation-by-class recording.jfr | grep -E "HashMap|String\[\]" | head -20`
+3. **Method Handle Overhead**: Profile method handle invocations
+4. **Missing JIT Optimization**: Ensure warmup is sufficient
 
-### Focused Profiling Approach
-1. Create minimal reproducer class that isolates write path
-2. Run with JFR profiling enabled
-3. Analyze hot-methods and allocation-by-site
-4. Compare against equivalent JDK serialization code
-5. Identify specific bottleneck methods
+### Token-Efficient Profiling Approach
+1. **Create minimal reproducer and redirect output:**
+```bash
+java -cp target/benchmarks.jar org.sample.NfpWriteProfiler > /tmp/nfp-profile.log 2>&1 && echo "Profiling complete" || echo "Profiling failed"
+```
+
+2. **Check for completion and errors:**
+```bash
+tail -20 /tmp/nfp-profile.log
+grep -E "Exception|Error" /tmp/nfp-profile.log
+```
+
+3. **Analyze JFR output efficiently:**
+```bash
+# Don't dump entire JFR analysis
+jfr view hot-methods nfp-write.jfr > /tmp/jfr-hot.log
+# Get top 10 hot methods only
+head -30 /tmp/jfr-hot.log | grep -A 1 "%"
+```
+
+4. **Compare with JDK baseline:**
+```bash
+java -cp target/benchmarks.jar org.sample.JdkWriteProfiler > /tmp/jdk-profile.log 2>&1
+diff <(grep "ops/s" /tmp/nfp-profile.log) <(grep "ops/s" /tmp/jdk-profile.log)
+```
 
 ### Expected Findings
 - Should see specific NFP methods consuming disproportionate CPU

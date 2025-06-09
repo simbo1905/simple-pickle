@@ -6,6 +6,12 @@ import java.util.Objects;
 
 /// Internal node that may have left and right children
 public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {
+    public InternalNode {
+        Objects.requireNonNull(name, "name cannot be null");
+        Objects.requireNonNull(left, "left cannot be null - use TreeNode.empty() instead");
+        Objects.requireNonNull(right, "right cannot be null - use TreeNode.empty() instead");
+    }
+    
     /**
      * Custom equals method that properly handles null children
      */

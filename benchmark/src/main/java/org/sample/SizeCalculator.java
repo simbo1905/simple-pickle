@@ -10,6 +10,7 @@ import org.sample.proto.*;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.*;
 
 /**
  * Calculates serialization sizes for benchmark data
@@ -31,7 +32,10 @@ public class SizeCalculator {
             // Calculate Protobuf size
             int ptbSize = calculateProtobufSize(testAccept, testAcceptWithCommand);
             
-            // Output in parseable format
+            // Calculate sizes for all benchmark types
+            calculateAllSizes();
+            
+            // Output in parseable format (for legacy compatibility)
             System.out.println("NFP:" + nfpSize + ",JDK:" + jdkSize + ",PTB:" + ptbSize);
             
         } catch (Exception e) {
@@ -79,5 +83,90 @@ public class SizeCalculator {
         AcceptArray protoArray = arrayBuilder.build();
         
         return protoArray.getSerializedSize();
+    }
+    
+    private static void calculateAllSizes() throws Exception {
+        Map<String, Map<String, Integer>> allSizes = new LinkedHashMap<>();
+        
+        // SimpleBenchmark
+        SimpleBenchmark.TestRecord simpleRecord = new SimpleBenchmark.TestRecord("Test Name", 42, 123456789L, true);
+        allSizes.put("SimpleBenchmark", Map.of(
+            "NFP", calculateSize(simpleRecord, Pickler.forClass(SimpleBenchmark.TestRecord.class)),
+            "JDK", calculateJdkSize(simpleRecord)
+        ));
+        
+        // PrimitiveBenchmark
+        PrimitiveBenchmark.PrimitiveRecord primitiveRecord = new PrimitiveBenchmark.PrimitiveRecord(
+            true, (byte)42, (short)1337, 'X', 987654321, 1234567890123456789L, 3.14159f, 2.718281828459045
+        );
+        allSizes.put("PrimitiveBenchmark", Map.of(
+            "NFP", calculateSize(primitiveRecord, Pickler.forClass(PrimitiveBenchmark.PrimitiveRecord.class)),
+            "JDK", calculateJdkSize(primitiveRecord)
+        ));
+        
+        // StringBenchmark
+        StringBenchmark.StringRecord stringRecord = new StringBenchmark.StringRecord(
+            "Hello",
+            "The quick brown fox jumps over the lazy dog",
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+        );
+        allSizes.put("StringBenchmark", Map.of(
+            "NFP", calculateSize(stringRecord, Pickler.forClass(StringBenchmark.StringRecord.class)),
+            "JDK", calculateJdkSize(stringRecord)
+        ));
+        
+        // ArrayBenchmark
+        ArrayBenchmark.ArrayRecord arrayRecord = new ArrayBenchmark.ArrayRecord(
+            new int[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+            new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+            new String[]{"one", "two", "three", "four", "five"}
+        );
+        allSizes.put("ArrayBenchmark", Map.of(
+            "NFP", calculateSize(arrayRecord, Pickler.forClass(ArrayBenchmark.ArrayRecord.class)),
+            "JDK", calculateJdkSize(arrayRecord)
+        ));
+        
+        // ListBenchmark
+        ListBenchmark.ListRecord listRecord = new ListBenchmark.ListRecord(
+            List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+            List.of("one", "two", "three", "four", "five"),
+            List.of(List.of("a", "b", "c"), List.of("d", "e", "f"), List.of("g", "h", "i"))
+        );
+        allSizes.put("ListBenchmark", Map.of(
+            "NFP", calculateSize(listRecord, Pickler.forClass(ListBenchmark.ListRecord.class)),
+            "JDK", calculateJdkSize(listRecord)
+        ));
+        
+        // OptionalBenchmark - NFP only (Optional not Serializable)
+        OptionalBenchmark.OptionalRecord optionalRecord = new OptionalBenchmark.OptionalRecord(
+            Optional.of("Hello Optional"), Optional.of(42), Optional.empty(), Optional.empty()
+        );
+        allSizes.put("OptionalBenchmark", Map.of(
+            "NFP", calculateSize(optionalRecord, Pickler.forClass(OptionalBenchmark.OptionalRecord.class)),
+            "JDK", -1  // Not applicable
+        ));
+        
+        // Output sizes in parseable format for each benchmark
+        for (Map.Entry<String, Map<String, Integer>> entry : allSizes.entrySet()) {
+            String benchmark = entry.getKey();
+            Map<String, Integer> sizes = entry.getValue();
+            if (sizes.get("JDK") > 0) {
+                System.out.println(benchmark + "_NFP:" + sizes.get("NFP") + "," + benchmark + "_JDK:" + sizes.get("JDK"));
+            }
+        }
+    }
+    
+    private static <T> int calculateSize(T object, Pickler<T> pickler) throws Exception {
+        ByteBuffer buffer = ByteBuffer.allocate(pickler.maxSizeOf(object));
+        int size = pickler.serialize(buffer, object);
+        return size;
+    }
+    
+    private static int calculateJdkSize(Object object) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        oos.writeObject(object);
+        oos.close();
+        return baos.toByteArray().length;
     }
 }

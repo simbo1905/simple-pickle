@@ -4,9 +4,11 @@ Micro-benchmarking system for the No Framework Pickler (NFP) serialization libra
 
 ## Quick Start
 
+You must increase the version number in the main lib `pom.xml` and do `mvn install -DskipTests > /tmp/nfp-install.log 2>&1 && echo "NFP installed to local repo" || echo "Install failed"` then update the `benchmark/pom.xml` to match the new version before starting a fresh round of benchmarks. Then build and run the benchmarks as follows:
+
 ```bash
-# Build benchmark JAR
-mvn clean verify
+# Build benchmark JAR (redirect output to avoid burning tokens)
+mvn clean verify > /tmp/benchmark-build.log 2>&1 && echo "Build successful" || echo "Build failed - check /tmp/benchmark-build.log"
 
 # Quick test (1 fork, 1 warmup, 1 iteration)
 python3 run-benchmark.py -q PaxosBenchmark.paxosProtobuf
@@ -30,6 +32,55 @@ java -jar target/benchmarks.jar PaxosBenchmark
 java -jar target/benchmarks.jar SimpleBenchmark
 java -jar target/benchmarks.jar TreeBenchmark
 ```
+
+## Token-Efficient Benchmark Workflow
+
+### CRITICAL: Follow This Process to Avoid Burning Tokens
+
+1. **Check if JAR exists before building:**
+```bash
+ls -la target/benchmarks.jar && echo \"JAR exists\" || echo \"Need to build\"
+```
+
+2. **Build only if needed (with output redirection):**
+```bash
+mvn clean verify > /tmp/benchmark-build.log 2>&1 && echo \"Build successful\" || echo \"Build failed\"
+# If failed, check specific errors:
+tail -100 /tmp/benchmark-build.log | grep -E \"ERROR|FAILURE|error:\"
+```
+
+3. **Run benchmarks with controlled output:**
+```bash
+# Quick mode for rapid iteration
+python3 run-benchmark.py -q > /tmp/benchmark-run.log 2>&1 && echo \"Benchmark complete\" || echo \"Benchmark failed\"
+
+# Check results
+tail -20 /tmp/benchmark-run.log
+```
+
+4. **When profiling performance issues:**
+```bash
+# Run profiler with output capture
+java -cp target/benchmarks.jar org.sample.NfpWriteProfiler > /tmp/profiler.log 2>&1
+# Use grep to find specific patterns instead of reading entire log
+grep -A 5 -B 5 \"hot spot\" /tmp/profiler.log
+```
+
+5. **Debugging benchmark failures:**
+```bash
+# First check high-level status
+echo \"Exit code: $?\"
+# Then grep for specific issues
+grep -E \"NullPointer|ClassNotFound|NoSuchMethod\" /tmp/benchmark-run.log
+# Use doubling strategy for context
+grep -A 10 -B 10 \"Exception\" /tmp/benchmark-run.log
+```
+
+### Why This Matters
+- Full Maven output can be 1000s of lines = massive token burn
+- Benchmark runs generate verbose JMH output
+- Profiling output is extremely detailed
+- Using grep/tail gives you exactly what you need
 
 ## Architecture
 
@@ -172,12 +223,14 @@ benchmark/
 
 **Compilation Errors:**
 ```bash
-mvn clean compile  # Regenerate protobuf sources
+# Regenerate protobuf sources
+mvn clean compile > /tmp/benchmark-compile.log 2>&1 && echo "Compile successful" || (echo "Compile failed" && tail -50 /tmp/benchmark-compile.log | grep -E "ERROR|error:|cannot find symbol")
 ```
 
 **Missing Benchmark JAR:**
 ```bash
-mvn clean verify   # Rebuild shaded JAR
+# Rebuild shaded JAR
+mvn clean verify > /tmp/benchmark-verify.log 2>&1 && echo "JAR built successfully" || (echo "Build failed" && tail -50 /tmp/benchmark-verify.log | grep -E "ERROR|BUILD FAILURE")
 ```
 
 **Size Calculator Failures:**

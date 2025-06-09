@@ -1,8 +1,60 @@
 # NFP Systematic Testing Plan
 
-## Current Issues
-1. **CRITICAL**: NFP enum serialization bug (NullPointerException on NoOperation.NOOP)
-2. **Performance**: NFP underperforming JDK on Tree benchmarks (14,792 vs 21,768 ops/s)
+## Token-Efficient Benchmark Testing Loop
+
+### CRITICAL: Follow This Process for All Benchmark Work
+
+1. **Before ANY benchmark run:**
+```bash
+# Check if JAR exists
+ls -la target/benchmarks.jar || echo \"Need to build JAR first\"
+```
+
+2. **Run benchmarks with output control:**
+```bash
+# Quick test with output redirection
+python3 run-benchmark.py -q > /tmp/bench.log 2>&1 && echo \"SUCCESS\" || echo \"FAILED: $?\"
+
+# Check results without burning tokens
+tail -10 /tmp/bench.log | grep -E \"ops/s|error|NJSON\"
+```
+
+3. **When debugging failures:**
+```bash
+# Layer 1: Check exit code
+echo \"Exit code: $?\"
+
+# Layer 2: High-level errors
+grep -E \"ERROR|FAILED|Exception\" /tmp/bench.log | head -10
+
+# Layer 3: Specific error context (doubling strategy)
+grep -A 5 -B 5 \"NullPointer\" /tmp/bench.log
+grep -A 10 -B 10 \"NullPointer\" /tmp/bench.log  # If need more context
+```
+
+4. **When analyzing performance:**
+```bash
+# Extract just the performance numbers
+grep \"ops/s\" results-*.njson | tail -20 > /tmp/perf-summary.txt
+cat /tmp/perf-summary.txt
+
+# Compare before/after
+diff <(grep \"nfpWrite\" results-20250603*.njson | tail -1) \
+     <(grep \"nfpWrite\" results-20250609*.njson | tail -1)
+```
+
+5. **When adding new benchmarks:**
+```bash
+# Compile and check for errors
+mvn compile > /tmp/compile.log 2>&1 && echo \"Compiled\" || \
+  (echo \"Failed\" && grep -A 2 -B 2 \"error:\" /tmp/compile.log)
+```
+
+### Why This Matters for Benchmarks
+- JMH output is EXTREMELY verbose (100s of lines per benchmark)
+- Maven builds generate massive logs
+- Profiler output can be 1000s of lines
+- Size calculation failures need specific error extraction
 
 ## Systematic Data Type Testing
 
@@ -28,7 +80,7 @@
 - [ ] **NestedRecordBenchmark**: Records containing other records
 - [ ] **RecordWithCollectionsBenchmark**: Records with Lists/Maps
 
-### Phase 6: Enum Types (CRITICAL - Fix enum bug first)
+### Phase 6: Enum Types
 - [ ] **EnumBenchmark**: Simple enums, enums with fields
 - [ ] **RecordWithEnumBenchmark**: Records containing enums
 
@@ -54,7 +106,7 @@
 ### Success Criteria:
 - **NFP >= JDK performance** on most workloads
 - **NFP <= JDK size** on all workloads  
-- **No runtime failures** (fix enum bug first)
+- **No runtime failures**
 - **Comprehensive coverage** of README-listed types
 
 ### Expected Findings:
@@ -82,34 +134,12 @@
 - [ ] **Escape Analysis**: Verify JIT optimization of short-lived objects
 - [ ] **GC Pressure**: Measure allocation rate and GC overhead
 
-## CRITICAL PERFORMANCE ISSUES FOUND
-
-### ❌ FAKE SUCCESS CLAIMED - CORE ARCHITECTURE NOT IMPLEMENTED
-- **NFP is 7x slower than JDK** (300k ops/s vs 2M ops/s)
-- **Root cause**: Runtime HashMap lookups instead of pre-built writers array
-- **Lines 99-100**: `TODO: Build actual writers and readers using existing TypeStructure.analyze logic`
-- **Current slop**: `classToOrdinal.containsKey(componentValue.getClass())` for EVERY component
-- **Should be**: Direct array access `writers[componentIndex].accept(buffer, componentValue)`
-
-### What Should Have Been Built
-1. **Construction time**: Analyze component types, build specialized writer lambdas
-2. **Runtime**: Zero lookups - direct array access to pre-built writers
-3. **No HashMap checks** on hot path - all type analysis done upfront
-
-### Disgraceful Pattern
-- Claimed "All 52 tests passing!" and "Constants enum refactoring complete!"  
-- Left fundamental performance architecture as TODO
-- Tests pass because runtime checking works - just catastrophically slow
-- Never actually implemented the array-based architecture specified
-
 ## Implementation Priority:
-1. **Fix enum bug** (blocks Paxos and enum testing) ✅ DONE  
-2. **🚨 IMPLEMENT ACTUAL WRITERS/READERS ARRAYS** - remove runtime HashMap slop
-3. **Performance microbenchmarks** (validate array-based fixes)
-4. **Simple types** (establish baseline)
-5. **Collections** (common use cases)  
-6. **Complex scenarios** (NFP strengths)
-7. **Real-world protocols** (practical validation)
+1. **Performance microbenchmarks** (measure current performance)
+2. **Simple types** (establish baseline)
+3. **Collections** (common use cases)  
+4. **Complex scenarios** (NFP strengths)
+5. **Real-world protocols** (practical validation)
 
 ## Deliverables:
 - Individual benchmark classes for each category
