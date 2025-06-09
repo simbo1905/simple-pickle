@@ -30,6 +30,23 @@ The library supports the following container types as record components:
 3. Optionals
   - That may contain value types (e.g. `record A( Optional<String> a)`) that may be nested (e.g. `Optional<Optional<String>>`) and may contain other container types (e.g. `Optional<List<String>>`).
 4. Maps (e.g. `Map<String, Integer>`) where the keys must be `value` semantics so containers are not supported as keys. The values are delegated so may be any time. 
+5. Records (e.g. `record Person(String name, int age)`) as these are logically a typed tuple so a family of container. 
+
+The library supports the following user defined value-like types
+ - Enum<?> (e.g. `enum Color { RED, GREEN, BLUE }`):
+
+The following supports sealed interfaces that can be either records or enums.
+
+This means that we have three logical meta programming types: 
+
+```java
+/// Meta categorization of tags for cleaner switch expressions
+enum MetaTag {
+  VALUE,      // Value types that can be written directly
+  CONTAINER,  // Container types that always delegate
+  MIXED       // Could be either value or container at runtime
+}
+```
 
 ## Unified Pickler Architecture
 

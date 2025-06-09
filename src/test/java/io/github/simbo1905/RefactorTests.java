@@ -1375,4 +1375,33 @@ public class RefactorTests {
     assertTrue(deserialized.value().isEmpty());
   }
 
+  // Sealed interface that permits both record and enum - LinkedList example
+  public sealed interface Link permits LinkedRecord, LinkEnd {}
+  public record LinkedRecord(int value, Link next) implements Link {}
+  public enum LinkEnd implements Link { END }
+
+  @Test
+  void testSealedInterfaceWithRecordAndEnum() {
+    // Test sealed interface that has both record and enum permits
+    var pickler = Pickler.forClass(Link.class);
+    
+    // Create a linked list: 1 -> 2 -> END
+    Link list = new LinkedRecord(1, new LinkedRecord(2, LinkEnd.END));
+    
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    pickler.serialize(buffer, list);
+    buffer.flip();
+    
+    Link deserialized = pickler.deserialize(buffer);
+    assertEquals(list, deserialized);
+    
+    // Also test serializing just the enum
+    buffer.clear();
+    pickler.serialize(buffer, LinkEnd.END);
+    buffer.flip();
+    
+    Link deserializedEnd = pickler.deserialize(buffer);
+    assertEquals(LinkEnd.END, deserializedEnd);
+  }
+
 }

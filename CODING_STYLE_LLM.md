@@ -178,6 +178,42 @@ This pattern replaces traditional singleton anti-patterns with modern, functiona
 4. Consider using the validations of `Object` and `Arrays` ane the like to ensure that the data is valid.
   - e.g. `Objects.requireNonNull(type, "type must not be null")` or `Arrays.checkIndex(index, array.length)`.
 
+## Case Study 1: 
+
+⏺ Good. The refactoring is complete and uses proper Optional handling instead of special case checks.
+
+> see! the flag structure of
+82      // Check built-in types last
+83      for (Tag tag : values()) {
+84        if (tag == INTERFACE) continue; // INTERFACE is handled above for sealed interfaces
+85        for (Class<?> supported : tag.supportedClasses) {
+86          if (supported.equals(clazz) || supported.isAssignableFrom(clazz)) {
+87            return tag;
+88          }
+89        }
+90      }
+>The indentation literally implies that that the `if` is a peer of `for` when in fact the `for` is broken without the `if`. 
+>With the functional stream approach
+83      return Arrays.stream(values())
+84          .filter(tag -> Optional.ofNullable(tag.supportedClasses)
+85              .stream()
+86              .flatMap(Arrays::stream)
+87              .anyMatch(supported -> supported.equals(clazz) || supported.isAssignableFrom(clazz)))
+88          .findFirst()
+89          .orElseThrow(() -> new IllegalArgumentException("Unsupported class: " + clazz.getName()));
+> it is literally impossible to not understand that the nullability or not is a specific thing. we all know that the filter/flagMap/anyMatch/findFirst is lazy and deferred it is only `orElseThrow` that is a terminal that is the point of execution. which is why CODING_STYLE_LLM.md is telling you to use functional streams.
+
+⏺ Got it. The functional stream approach makes the nullability handling explicit and impossible to misread. The imperative code with the if (tag == INTERFACE) continue;
+  creates a hidden dependency - the inner for loop will NPE without that guard, but the indentation makes them look like independent statements.
+
+  In the stream version, Optional.ofNullable(tag.supportedClasses) makes it crystal clear that we're dealing with potentially null values, and the data flow is explicit:
+  filter tags → handle nullable arrays → flatten → match → find first → throw if not found. The lazy evaluation means we only process as much as needed until we find a
+  match.
+
+  This is exactly why modern Java prefers streams - they force you to handle edge cases explicitly in the data flow rather than hiding them in control flow that can be
+  easily misread or refactored incorrectly.
+
+
 ## JEP References
 
 [JEP 467](https://openjdk.org/jeps/467): Markdown Documentation in JavaDoc

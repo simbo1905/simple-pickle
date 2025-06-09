@@ -233,4 +233,71 @@ class MachineryTests {
     assertThat(result.tagTypes().get(3).tag()).isEqualTo(Tag.STRING);
     assertThat(result.tagTypes().get(3).type()).isEqualTo(String.class);
   }
+
+  // Test sealed interface hierarchy analysis for INTERFACE tag detection
+  
+  // Case 1: Sealed interface with only records
+  public sealed interface RecordOnlyInterface permits RecordImpl1, RecordImpl2 {}
+  public record RecordImpl1(String name) implements RecordOnlyInterface {}
+  public record RecordImpl2(int value) implements RecordOnlyInterface {}
+  
+  // Case 2: Sealed interface with only enums
+  public sealed interface EnumOnlyInterface permits EnumImpl1, EnumImpl2 {}
+  public enum EnumImpl1 implements EnumOnlyInterface { A, B }
+  public enum EnumImpl2 implements EnumOnlyInterface { X, Y }
+  
+  // Case 3: Sealed interface with both records and enums (should get INTERFACE tag)
+  public sealed interface MixedInterface permits MixedRecord, MixedEnum {}
+  public record MixedRecord(String data) implements MixedInterface {}
+  public enum MixedEnum implements MixedInterface { ONE, TWO }
+  
+  // Case 4: Deeply nested sealed interfaces
+  public sealed interface OuterInterface permits InnerInterface, OuterRecord {}
+  public sealed interface InnerInterface extends OuterInterface permits InnerRecord, InnerEnum {}
+  public record OuterRecord(String outer) implements OuterInterface {}
+  public record InnerRecord(String inner) implements InnerInterface {}
+  public enum InnerEnum implements InnerInterface { NESTED }
+  
+  @Test
+  void testSealedInterfaceTagAnalysis() {
+    // Case 1: Interface with only records should get RECORD tag
+    Tag tag1 = Tag.fromClass(RecordOnlyInterface.class);
+    assertThat(tag1).isEqualTo(Tag.RECORD);
+    
+    // Case 2: Interface with only enums should get ENUM tag
+    Tag tag2 = Tag.fromClass(EnumOnlyInterface.class);
+    assertThat(tag2).isEqualTo(Tag.ENUM);
+    
+    // Case 3: Interface with both should get INTERFACE tag
+    Tag tag3 = Tag.fromClass(MixedInterface.class);
+    assertThat(tag3).isEqualTo(Tag.INTERFACE);
+    
+    // Case 4: Deeply nested with mixed types should get INTERFACE tag
+    Tag tag4 = Tag.fromClass(OuterInterface.class);
+    assertThat(tag4).isEqualTo(Tag.INTERFACE);
+    
+    // Also test the inner interface
+    Tag tag5 = Tag.fromClass(InnerInterface.class);
+    assertThat(tag5).isEqualTo(Tag.INTERFACE);
+  }
+  
+  // Test TypeStructure analysis with INTERFACE tag
+  public record InterfaceArrayRecord(MixedInterface[] mixedArray) {}
+  public record InterfaceListRecord(List<MixedInterface> mixedList) {}
+  public record InterfaceOptionalRecord(Optional<MixedInterface> mixedOptional) {}
+  
+  @Test
+  void testTypeStructureWithInterfaceTag() {
+    // Test MixedInterface[] 
+    var recordClass = InterfaceArrayRecord.class;
+    var components = recordClass.getRecordComponents();
+    var arrayType = components[0].getGenericType();
+    var result = TypeStructure.analyze(arrayType);
+    
+    // Should be: [ARRAY, INTERFACE]
+    assertThat(result.tagTypes()).hasSize(2);
+    assertThat(result.tagTypes().get(0).tag()).isEqualTo(Tag.ARRAY);
+    assertThat(result.tagTypes().get(1).tag()).isEqualTo(Tag.INTERFACE);
+    assertThat(result.tagTypes().get(1).type()).isEqualTo(MixedInterface.class);
+  }
 }
