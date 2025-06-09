@@ -146,6 +146,43 @@ public class SizeCalculator {
             "JDK", -1  // Not applicable
         ));
         
+        // MapBenchmark
+        MapBenchmark.Person alice = new MapBenchmark.Person("Alice", 30);
+        MapBenchmark.Person bob = new MapBenchmark.Person("Bob", 25);
+        MapBenchmark.Person charlie = new MapBenchmark.Person("Charlie", 35);
+        MapBenchmark.MapRecord mapRecord = new MapBenchmark.MapRecord(
+            Map.of("one", 1, "two", 2, "three", 3, "four", 4, "five", 5),
+            Map.of("alice", alice, "bob", bob, "charlie", charlie),
+            Map.of(1, Map.of("a", "apple", "b", "banana"), 2, Map.of("c", "cherry", "d", "date"))
+        );
+        allSizes.put("MapBenchmark", Map.of(
+            "NFP", calculateSize(mapRecord, Pickler.forClass(MapBenchmark.MapRecord.class)),
+            "JDK", calculateJdkSize(mapRecord)
+        ));
+        
+        // EnumBenchmark
+        EnumBenchmark.EnumRecord enumRecord = new EnumBenchmark.EnumRecord(
+            EnumBenchmark.Status.ACTIVE,
+            EnumBenchmark.Priority.HIGH,
+            new EnumBenchmark.Status[]{EnumBenchmark.Status.PENDING, EnumBenchmark.Status.ACTIVE, EnumBenchmark.Status.COMPLETED},
+            EnumBenchmark.Priority.MEDIUM
+        );
+        allSizes.put("EnumBenchmark", Map.of(
+            "NFP", calculateSize(enumRecord, Pickler.forClass(EnumBenchmark.EnumRecord.class)),
+            "JDK", calculateJdkSize(enumRecord)
+        ));
+        
+        // UUIDBenchmark
+        UUIDBenchmark.UUIDRecord uuidRecord = new UUIDBenchmark.UUIDRecord(
+            UUID.randomUUID(),
+            new UUID[]{UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()},
+            null
+        );
+        allSizes.put("UUIDBenchmark", Map.of(
+            "NFP", calculateSize(uuidRecord, Pickler.forClass(UUIDBenchmark.UUIDRecord.class)),
+            "JDK", calculateJdkSize(uuidRecord)
+        ));
+        
         // Output sizes in parseable format for each benchmark
         for (Map.Entry<String, Map<String, Integer>> entry : allSizes.entrySet()) {
             String benchmark = entry.getKey();
