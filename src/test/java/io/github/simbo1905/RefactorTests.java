@@ -52,6 +52,9 @@ public class RefactorTests {
   void testDogSerialization() {
     // Arrange
     Dog dog = new Dog("Fido", 2);
+
+    final var dog2 = dog.with( name-> "Scooby");
+
     Pickler<Dog> dogPickler = forClass(Dog.class);
     // dogPickler.sizeOf(dog)
     final var dogBuffer = ByteBuffer.allocate(1024);

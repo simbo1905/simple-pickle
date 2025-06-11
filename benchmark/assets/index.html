@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFP Benchmark Results</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .status { margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 4px; }
+        .error { background: #ffeeee; color: #cc0000; }
+        .success { background: #eeffee; color: #006600; }
+        .source-nfp { background-color: #e8f5e8; color: #2d7d2d; font-weight: bold; }
+        .source-jdk { background-color: #f0f0f0; color: #666666; font-weight: bold; }
+        .source-ptb { background-color: #e8f0ff; color: #1e5fa8; font-weight: bold; }
+        .file-icon { cursor: pointer; font-size: 16px; color: #666; text-align: center; }
+        .file-icon:hover { color: #333; }
+        .json-popup { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; border: 2px solid #ccc; border-radius: 8px;
+            padding: 20px; max-width: 80%; max-height: 80%; overflow: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 1000;
+        }
+        .json-content { 
+            font-family: monospace; white-space: pre-wrap; 
+            background: #f8f8f8; padding: 15px; border-radius: 4px;
+            border: 1px solid #ddd; max-height: 400px; overflow: auto;
+        }
+        .close-btn { 
+            float: right; cursor: pointer; font-size: 20px; 
+            background: #f44336; color: white; border: none;
+            border-radius: 4px; padding: 5px 10px; margin-bottom: 10px;
+        }
+        .popup-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 999;
+        }
+        .search-container { 
+            display: flex; align-items: center; margin: 20px 0;
+            max-width: 600px; position: relative;
+        }
+        .search-input { 
+            flex: 1; padding: 10px 40px 10px 10px; border: 2px solid #ddd;
+            border-radius: 4px; font-size: 14px;
+        }
+        .search-icon { 
+            position: absolute; right: 12px; color: #666; 
+            pointer-events: none; font-size: 16px;
+        }
+        .dropdown { 
+            position: absolute; top: 100%; left: 0; right: 0; 
+            background: white; border: 1px solid #ddd; border-top: none;
+            max-height: 200px; overflow-y: auto; z-index: 100;
+            display: none;
+        }
+        .dropdown-item { 
+            padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #eee;
+        }
+        .dropdown-item:hover { 
+            background: #f5f5f5;
+        }
+        .status-bottom { 
+            margin-top: 20px; padding: 10px; background: #f0f0f0; 
+            border-radius: 4px; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>NFP Benchmark Results</h1>
+    
+    <div class="search-container">
+        <input type="text" id="file-search" class="search-input" placeholder="Search result files...">
+        <span class="search-icon">🔍</span>
+        <div id="search-dropdown" class="dropdown"></div>
+    </div>
+    
+    <table id="results-table" style="display: none;">
+        <thead>
+            <tr>
+                <th style="width: 40px;"></th>
+                <th>Test Type</th>
+                <th>Source</th>
+                <th>Score (ops/s)</th>
+                <th>Size (bytes)</th>
+                <th>Timestamp</th>
+                <th>Benchmark</th>
+            </tr>
+        </thead>
+        <tbody id="results-body">
+        </tbody>
+    </table>
+
+    <div id="status-bottom" class="status-bottom" style="display: none;"></div>
+
+    <script src="dataProcessor.js"></script>
+    <script src="apiClient.js"></script>
+    <script>
+        let currentFilename = '';
+        let searchTimeout = null;
+
+        async function loadInitialResults() {
+            try {
+                const response = await fetch('/api/results');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                currentFilename = data.filename;
+                
+                document.getElementById('file-search').value = currentFilename;
+                
+                renderTable(data.data);
+                updateBottomStatus(data.data.length, currentFilename);
+                
+            } catch (error) {
+                console.error('Error loading results:', error);
+                // Show error in bottom status instead
+                const statusBottom = document.getElementById('status-bottom');
+                statusBottom.innerHTML = `<span style="color: #cc0000;">Error loading results: ${error.message}</span>`;
+                statusBottom.style.display = 'block';
+            }
+        }
+
+        async function loadFileByName(filename) {
+            try {
+                const response = await fetch(`/api/file?name=${encodeURIComponent(filename)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                currentFilename = data.filename;
+                
+                document.getElementById('file-search').value = currentFilename;
+                hideDropdown();
+                
+                renderTable(data.data);
+                updateBottomStatus(data.data.length, currentFilename);
+                
+            } catch (error) {
+                console.error('Error loading file:', error);
+                // Show error in bottom status instead
+                const statusBottom = document.getElementById('status-bottom');
+                statusBottom.innerHTML = `<span style="color: #cc0000;">Error loading file: ${error.message}</span>`;
+                statusBottom.style.display = 'block';
+            }
+        }
+
+        async function searchFiles(query) {
+            try {
+                const url = query ? `/api/search?q=${encodeURIComponent(query)}` : '/api/search';
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            } catch (error) {
+                console.error('Search error:', error);
+                return [];
+            }
+        }
+
+        function showDropdown(files) {
+            const dropdown = document.getElementById('search-dropdown');
+            dropdown.innerHTML = '';
+            
+            if (files.length === 0) {
+                dropdown.style.display = 'none';
+                return;
+            }
+            
+            files.forEach(filename => {
+                const item = document.createElement('div');
+                item.className = 'dropdown-item';
+                item.textContent = filename;
+                item.onclick = () => loadFileByName(filename);
+                dropdown.appendChild(item);
+            });
+            
+            dropdown.style.display = 'block';
+        }
+
+        function hideDropdown() {
+            document.getElementById('search-dropdown').style.display = 'none';
+        }
+
+        function updateBottomStatus(count, filename) {
+            const statusBottom = document.getElementById('status-bottom');
+            statusBottom.innerHTML = `Showing ${count} benchmark results from file: <strong>${filename}</strong>`;
+            statusBottom.style.display = 'block';
+        }
+        
+        function renderTable(data) {
+            const tbody = document.getElementById('results-body');
+            tbody.innerHTML = '';
+            
+            data.forEach((item, index) => {
+                const testType = extractTestType(item.benchmark);
+                const row = tbody.insertRow();
+                
+                // File icon column
+                const iconCell = row.insertCell(0);
+                iconCell.className = 'file-icon';
+                iconCell.innerHTML = '📄';
+                iconCell.title = 'View raw JSON data';
+                iconCell.onclick = () => showJsonPopup(item, index);
+                
+                row.insertCell(1).textContent = testType;
+                
+                const sourceCell = row.insertCell(2);
+                sourceCell.textContent = item.src;
+                // Add color coding based on source
+                switch(item.src.toLowerCase()) {
+                    case 'nfp':
+                        sourceCell.className = 'source-nfp';
+                        break;
+                    case 'jdk':
+                        sourceCell.className = 'source-jdk';
+                        break;
+                    case 'ptb':
+                        sourceCell.className = 'source-ptb';
+                        break;
+                }
+                
+                row.insertCell(3).textContent = Math.round(item.primaryMetric.score).toLocaleString();
+                row.insertCell(4).textContent = item.size;
+                row.insertCell(5).textContent = new Date(item.ts).toLocaleString();
+                row.insertCell(6).textContent = item.benchmark;
+            });
+            
+            document.getElementById('results-table').style.display = 'table';
+        }
+        
+        function showJsonPopup(item, index) {
+            // Remove existing popup if any
+            const existingPopup = document.querySelector('.popup-overlay');
+            if (existingPopup) {
+                existingPopup.remove();
+            }
+            
+            // Create overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay';
+            overlay.onclick = closeJsonPopup;
+            
+            // Create popup
+            const popup = document.createElement('div');
+            popup.className = 'json-popup';
+            
+            // Close button
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'close-btn';
+            closeBtn.textContent = '✕';
+            closeBtn.onclick = closeJsonPopup;
+            
+            // JSON content
+            const jsonContent = document.createElement('div');
+            jsonContent.className = 'json-content';
+            jsonContent.textContent = JSON.stringify(item, null, 2);
+            
+            // Title
+            const title = document.createElement('h3');
+            title.textContent = `Raw JSON Data - Row ${index + 1}`;
+            title.style.marginTop = '0';
+            
+            popup.appendChild(closeBtn);
+            popup.appendChild(title);
+            popup.appendChild(jsonContent);
+            overlay.appendChild(popup);
+            document.body.appendChild(overlay);
+        }
+        
+        function closeJsonPopup() {
+            const popup = document.querySelector('.popup-overlay');
+            if (popup) {
+                popup.remove();
+            }
+        }
+        
+        // Set up search functionality
+        document.getElementById('file-search').addEventListener('input', (e) => {
+            const query = e.target.value;
+            
+            // Clear previous timeout
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+            }
+            
+            // Search after 300ms delay
+            searchTimeout = setTimeout(async () => {
+                if (query !== currentFilename) {
+                    const files = await searchFiles(query);
+                    showDropdown(files);
+                }
+            }, 300);
+        });
+
+        document.getElementById('file-search').addEventListener('focus', async (e) => {
+            // Clear the input when focused so user can type new search
+            e.target.select();
+            
+            const query = e.target.value;
+            if (query !== currentFilename) {
+                const files = await searchFiles(query);
+                showDropdown(files);
+            }
+        });
+
+        document.getElementById('file-search').addEventListener('blur', () => {
+            // Hide dropdown after a short delay to allow clicks
+            setTimeout(hideDropdown, 200);
+        });
+
+        // Click outside to hide dropdown
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container')) {
+                hideDropdown();
+            }
+        });
+
+        // Load initial results when page loads
+        loadInitialResults();
+    </script>
+</body>
+</html>

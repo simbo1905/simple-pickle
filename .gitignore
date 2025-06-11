@@ -8,5 +8,10 @@ CLAUDE.md
 CLAUDE.local.md
 benchmark/**.class
 benchmark/**.jfr
-benchmark/results*.njson
 benchmark/jmh-result*.json
+benchmark/jmh-*.json
+benchmark/assets/node_modules/
+benchmark/assets/test-*.js
+benchmark/assets/test-*.png
+benchmark/**.disabled
+benchmark/**.bak
