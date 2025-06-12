@@ -86,22 +86,28 @@ public class SizeCalculator {
     }
     
     private static void calculateAllSizes() throws Exception {
-        Map<String, Map<String, Integer>> allSizes = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> allSizes = new LinkedHashMap<>();
         
         // SimpleWriteBenchmark  
         SimpleWriteBenchmark.TestRecord simpleRecord = new SimpleWriteBenchmark.TestRecord("Test Name", 42, 123456789L, true);
+        String simpleTestData = "SimpleWriteBenchmark.TestRecord simpleRecord = new SimpleWriteBenchmark.TestRecord(\"Test Name\", 42, 123456789L, true);";
         allSizes.put("SimpleWrite", Map.of(
-            Source.NFP.name(), calculateSize(simpleRecord, Pickler.forClass(SimpleWriteBenchmark.TestRecord.class)),
-            Source.JDK.name(), calculateJdkSize(simpleRecord)
+            "NFP", calculateSize(simpleRecord, Pickler.forClass(SimpleWriteBenchmark.TestRecord.class)),
+            "JDK", calculateJdkSize(simpleRecord),
+            "dataType", "SimpleWriteBenchmark.TestRecord",
+            "testData", simpleTestData
         ));
         
         // PrimitiveBenchmark
         PrimitiveBenchmark.PrimitiveRecord primitiveRecord = new PrimitiveBenchmark.PrimitiveRecord(
             true, (byte)42, (short)1337, 'X', 987654321, 1234567890123456789L, 3.14159f, 2.718281828459045
         );
+        String primitiveTestData = "PrimitiveBenchmark.PrimitiveRecord primitiveRecord = new PrimitiveBenchmark.PrimitiveRecord(\n    true, (byte)42, (short)1337, 'X', 987654321, 1234567890123456789L, 3.14159f, 2.718281828459045\n);";
         allSizes.put("PrimitiveBenchmark", Map.of(
-            Source.NFP.name(), calculateSize(primitiveRecord, Pickler.forClass(PrimitiveBenchmark.PrimitiveRecord.class)),
-            Source.JDK.name(), calculateJdkSize(primitiveRecord)
+            "NFP", calculateSize(primitiveRecord, Pickler.forClass(PrimitiveBenchmark.PrimitiveRecord.class)),
+            "JDK", calculateJdkSize(primitiveRecord),
+            "dataType", "PrimitiveBenchmark.PrimitiveRecord",
+            "testData", primitiveTestData
         ));
         
         // StringBenchmark
@@ -110,9 +116,12 @@ public class SizeCalculator {
             "The quick brown fox jumps over the lazy dog",
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
         );
+        String stringTestData = "StringBenchmark.StringRecord stringRecord = new StringBenchmark.StringRecord(\n    \"Hello\",\n    \"The quick brown fox jumps over the lazy dog\",\n    \"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\"\n);";
         allSizes.put("StringBenchmark", Map.of(
-            Source.NFP.name(), calculateSize(stringRecord, Pickler.forClass(StringBenchmark.StringRecord.class)),
-            Source.JDK.name(), calculateJdkSize(stringRecord)
+            "NFP", calculateSize(stringRecord, Pickler.forClass(StringBenchmark.StringRecord.class)),
+            "JDK", calculateJdkSize(stringRecord),
+            "dataType", "StringBenchmark.StringRecord",
+            "testData", stringTestData
         ));
         
         // ArrayBenchmark
@@ -121,9 +130,12 @@ public class SizeCalculator {
             new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
             new String[]{"one", "two", "three", "four", "five"}
         );
+        String arrayTestData = "ArrayBenchmark.ArrayRecord arrayRecord = new ArrayBenchmark.ArrayRecord(\n    new int[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},\n    new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},\n    new String[]{\"one\", \"two\", \"three\", \"four\", \"five\"}\n);";
         allSizes.put("ArrayBenchmark", Map.of(
-            Source.NFP.name(), calculateSize(arrayRecord, Pickler.forClass(ArrayBenchmark.ArrayRecord.class)),
-            Source.JDK.name(), calculateJdkSize(arrayRecord)
+            "NFP", calculateSize(arrayRecord, Pickler.forClass(ArrayBenchmark.ArrayRecord.class)),
+            "JDK", calculateJdkSize(arrayRecord),
+            "dataType", "ArrayBenchmark.ArrayRecord",
+            "testData", arrayTestData
         ));
         
         // ListBenchmark
@@ -132,18 +144,24 @@ public class SizeCalculator {
             List.of("one", "two", "three", "four", "five"),
             List.of(List.of("a", "b", "c"), List.of("d", "e", "f"), List.of("g", "h", "i"))
         );
+        String listTestData = "ListBenchmark.ListRecord listRecord = new ListBenchmark.ListRecord(\n    List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),\n    List.of(\"one\", \"two\", \"three\", \"four\", \"five\"),\n    List.of(List.of(\"a\", \"b\", \"c\"), List.of(\"d\", \"e\", \"f\"), List.of(\"g\", \"h\", \"i\"))\n);";
         allSizes.put("ListBenchmark", Map.of(
-            Source.NFP.name(), calculateSize(listRecord, Pickler.forClass(ListBenchmark.ListRecord.class)),
-            Source.JDK.name(), calculateJdkSize(listRecord)
+            "NFP", calculateSize(listRecord, Pickler.forClass(ListBenchmark.ListRecord.class)),
+            "JDK", calculateJdkSize(listRecord),
+            "dataType", "ListBenchmark.ListRecord",
+            "testData", listTestData
         ));
         
         // OptionalBenchmark - NFP only (Optional not Serializable)
         OptionalBenchmark.OptionalRecord optionalRecord = new OptionalBenchmark.OptionalRecord(
             Optional.of("Hello Optional"), Optional.of(42), Optional.empty(), Optional.empty()
         );
+        String optionalTestData = "OptionalBenchmark.OptionalRecord optionalRecord = new OptionalBenchmark.OptionalRecord(\n    Optional.of(\"Hello Optional\"), Optional.of(42), Optional.empty(), Optional.empty()\n);";
         allSizes.put("OptionalBenchmark", Map.of(
-            Source.NFP.name(), calculateSize(optionalRecord, Pickler.forClass(OptionalBenchmark.OptionalRecord.class)),
-            Source.JDK.name(), -1  // Not applicable
+            "NFP", calculateSize(optionalRecord, Pickler.forClass(OptionalBenchmark.OptionalRecord.class)),
+            "JDK", -1,  // Not applicable
+            "dataType", "OptionalBenchmark.OptionalRecord",
+            "testData", optionalTestData
         ));
         
         // MapBenchmark
@@ -155,9 +173,12 @@ public class SizeCalculator {
             Map.of("alice", alice, "bob", bob, "charlie", charlie),
             Map.of(1, Map.of("a", "apple", "b", "banana"), 2, Map.of("c", "cherry", "d", "date"))
         );
+        String mapTestData = "MapBenchmark.Person alice = new MapBenchmark.Person(\"Alice\", 30);\nMapBenchmark.Person bob = new MapBenchmark.Person(\"Bob\", 25);\nMapBenchmark.Person charlie = new MapBenchmark.Person(\"Charlie\", 35);\nMapBenchmark.MapRecord mapRecord = new MapBenchmark.MapRecord(\n    Map.of(\"one\", 1, \"two\", 2, \"three\", 3, \"four\", 4, \"five\", 5),\n    Map.of(\"alice\", alice, \"bob\", bob, \"charlie\", charlie),\n    Map.of(1, Map.of(\"a\", \"apple\", \"b\", \"banana\"), 2, Map.of(\"c\", \"cherry\", \"d\", \"date\"))\n);";
         allSizes.put("MapBenchmark", Map.of(
-            Source.NFP.name(), calculateSize(mapRecord, Pickler.forClass(MapBenchmark.MapRecord.class)),
-            Source.JDK.name(), calculateJdkSize(mapRecord)
+            "NFP", calculateSize(mapRecord, Pickler.forClass(MapBenchmark.MapRecord.class)),
+            "JDK", calculateJdkSize(mapRecord),
+            "dataType", "MapBenchmark.MapRecord",
+            "testData", mapTestData
         ));
         
         // EnumBenchmark
@@ -167,9 +188,12 @@ public class SizeCalculator {
             new EnumBenchmark.Status[]{EnumBenchmark.Status.PENDING, EnumBenchmark.Status.ACTIVE, EnumBenchmark.Status.COMPLETED},
             EnumBenchmark.Priority.MEDIUM
         );
+        String enumTestData = "EnumBenchmark.EnumRecord enumRecord = new EnumBenchmark.EnumRecord(\n    EnumBenchmark.Status.ACTIVE,\n    EnumBenchmark.Priority.HIGH,\n    new EnumBenchmark.Status[]{EnumBenchmark.Status.PENDING, EnumBenchmark.Status.ACTIVE, EnumBenchmark.Status.COMPLETED},\n    EnumBenchmark.Priority.MEDIUM\n);";
         allSizes.put("EnumBenchmark", Map.of(
-            Source.NFP.name(), calculateSize(enumRecord, Pickler.forClass(EnumBenchmark.EnumRecord.class)),
-            Source.JDK.name(), calculateJdkSize(enumRecord)
+            "NFP", calculateSize(enumRecord, Pickler.forClass(EnumBenchmark.EnumRecord.class)),
+            "JDK", calculateJdkSize(enumRecord),
+            "dataType", "EnumBenchmark.EnumRecord",
+            "testData", enumTestData
         ));
         
         // UUIDBenchmark
@@ -178,19 +202,36 @@ public class SizeCalculator {
             new UUID[]{UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()},
             null
         );
+        String uuidTestData = "UUIDBenchmark.UUIDRecord uuidRecord = new UUIDBenchmark.UUIDRecord(\n    UUID.randomUUID(),\n    new UUID[]{UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()},\n    null\n);";
         allSizes.put("UUIDBenchmark", Map.of(
-            Source.NFP.name(), calculateSize(uuidRecord, Pickler.forClass(UUIDBenchmark.UUIDRecord.class)),
-            Source.JDK.name(), calculateJdkSize(uuidRecord)
+            "NFP", calculateSize(uuidRecord, Pickler.forClass(UUIDBenchmark.UUIDRecord.class)),
+            "JDK", calculateJdkSize(uuidRecord),
+            "dataType", "UUIDBenchmark.UUIDRecord",
+            "testData", uuidTestData
         ));
         
-        // Output sizes in parseable format for each benchmark
-        for (Map.Entry<String, Map<String, Integer>> entry : allSizes.entrySet()) {
-            String benchmark = entry.getKey();
-            Map<String, Integer> sizes = entry.getValue();
-            if (sizes.get(Source.JDK.name()) > 0) {
-                System.out.println(benchmark + "_NFP:" + sizes.get(Source.NFP.name()) + "," + benchmark + "_JDK:" + sizes.get(Source.JDK.name()));
+        // Write sizes.json file
+        try (java.io.FileWriter writer = new java.io.FileWriter("sizes.json")) {
+            writer.write("{\n");
+            boolean first = true;
+            for (Map.Entry<String, Map<String, Object>> entry : allSizes.entrySet()) {
+                String benchmark = entry.getKey();
+                Map<String, Object> data = entry.getValue();
+                Object jdkSize = data.get("JDK");
+                if (jdkSize instanceof Integer && (Integer)jdkSize > 0) {
+                    if (!first) writer.write(",\n");
+                    writer.write("  \"" + benchmark + "\": {\n");
+                    writer.write("    \"NFP\": " + data.get("NFP") + ",\n");
+                    writer.write("    \"JDK\": " + data.get("JDK") + ",\n");
+                    writer.write("    \"dataType\": \"" + data.get("dataType") + "\",\n");
+                    writer.write("    \"testData\": \"" + data.get("testData").toString().replace("\"", "\\\"").replace("\n", "\\n") + "\"\n");
+                    writer.write("  }");
+                    first = false;
+                }
             }
+            writer.write("\n}\n");
         }
+        System.out.println("Generated sizes.json with " + allSizes.size() + " benchmarks");
     }
     
     private static <T> int calculateSize(T object, Pickler<T> pickler) throws Exception {

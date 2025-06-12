@@ -19,6 +19,38 @@ mvn clean verify > /tmp/benchmark-build.log 2>&1 && echo "Build successful" || e
 
 If you do not do that you will not be testing the latest NFP version and will get misleading results.
 
+## Interactive Results Viewer - Seamless File Navigation
+
+The benchmark visualization UI provides **seamless type/select/search** functionality for rapid exploration of benchmark results:
+
+### Core User Experience
+
+**Why This UI vs Static Files**: Instead of switching between browser and file explorer with multiple tabs, get instant access to any historical benchmark data through fast, minimal-typing workflow.
+
+**The Seamless Workflow**:
+1. **Click any file** → immediately loads and displays data
+2. **Click into filename** (around date/time area) → cursor appears for editing  
+3. **Remove characters to the right** → real-time search updates, shows files after that date/time
+4. **Pick from filtered results** → instant loading with minimal clicks
+5. **Continue refining** → edit further to narrow down exact timeframe needed
+
+**Key Behaviors**:
+- **Never type whole filenames** - always click to start, then edit/truncate
+- **Real-time search updates** - as you type/edit/delete, dropdown refreshes immediately  
+- **Filename stays in text box** - click file → name appears → can edit further
+- **Fast data loading** - each file selection loads instantly
+- **Progressive refinement** - start broad, narrow down with minimal keystrokes
+
+**Example Usage**:
+```
+1. Click "jmh-result-20250612_162150.json" → loads data
+2. Click in text box after "202506" → cursor positioned  
+3. Delete "12_162150" → shows all June 2025 files
+4. Click desired file from filtered list → loads instantly
+```
+
+This enables finding specific benchmark data **very fast with few clicks and minimal typing**.
+
 ## Architecture
 
 ### New Self-Contained Benchmark Design

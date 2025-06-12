@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 public class SimpleWriteBenchmark {
 
   /// Test record with multiple field types
-  record TestRecord(
+  public record TestRecord(
       String name,
       int value,
       long timestamp,

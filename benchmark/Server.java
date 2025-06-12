@@ -15,15 +15,24 @@ public class Server {
     }
   }
   
-  record EndpointSpec(String path, String method, String description, BiConsumer<HttpExchange, ServerInfo> handler) {}
+  @FunctionalInterface
+  interface EndpointHandler {
+    void handle(HttpExchange exchange, ServerInfo serverInfo) throws IOException;
+  }
+  
+  record EndpointSpec(String path, String method, String description, EndpointHandler handler) {}
   
   static final List<EndpointSpec> ENDPOINTS = List.of(
     new EndpointSpec("/", "GET", "Serves static files (index.html, CSS, JS). Main UI interface.", Server::handleStatic),
+    new EndpointSpec("/api/jmh-results", "GET", "Returns latest JMH results with filename", Server::handleJMHResults),
+    new EndpointSpec("/api/sizes", "GET", "Returns latest sizes data", Server::handleSizes),
+    new EndpointSpec("/api/search", "GET", "Searches JMH files. Query param: ?type=jmh&q=searchterm. Returns array of matching filenames.", Server::handleSearch),
+    new EndpointSpec("/api/jmh-file", "GET", "Loads specific JMH file. Query param: ?name=filename. Returns file data.", Server::handleJMHFile),
+    new EndpointSpec("/info", "GET", "Returns server configuration, status, and API documentation", Server::handleInfo),
+    // Legacy endpoints for backward compatibility
     new EndpointSpec("/api/convert", "POST", "Converts NJSON format to visualization format. POST body: raw NJSON content.", Server::handleConvert),
     new EndpointSpec("/api/results", "GET", "Returns latest benchmark results with filename in visualization format", Server::handleResults),
-    new EndpointSpec("/api/search", "GET", "Searches result files. Query param: ?q=searchterm. Returns array of matching filenames.", Server::handleSearch),
-    new EndpointSpec("/api/file", "GET", "Loads specific result file. Query param: ?name=filename. Returns file data in visualization format.", Server::handleFile),
-    new EndpointSpec("/info", "GET", "Returns server configuration, status, and API documentation", Server::handleInfo)
+    new EndpointSpec("/api/file", "GET", "Loads specific result file. Query param: ?name=filename. Returns file data in visualization format.", Server::handleFile)
   );
 
   public static void main(String[] args) throws Exception {
@@ -33,7 +42,15 @@ public class Server {
 
     // Register all endpoints using the same list that /info uses
     for (var endpoint : ENDPOINTS) {
-      server.createContext(endpoint.path(), exchange -> endpoint.handler().accept(exchange, serverInfo));
+      server.createContext(endpoint.path(), exchange -> {
+        try {
+          endpoint.handler().handle(exchange, serverInfo);
+        } catch (IOException e) {
+          e.printStackTrace();
+          exchange.sendResponseHeaders(500, 0);
+          exchange.getResponseBody().close();
+        }
+      });
     }
 
     server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
@@ -102,15 +119,31 @@ public class Server {
 
   static void handleSearch(HttpExchange exchange, ServerInfo serverInfo) throws IOException {
     var query = "";
+    var type = "";
     if ("GET".equals(exchange.getRequestMethod())) {
       var uri = exchange.getRequestURI().toString();
-      if (uri.contains("?q=")) {
-        query = uri.substring(uri.indexOf("?q=") + 3);
-        query = java.net.URLDecoder.decode(query, "UTF-8");
+      if (uri.contains("?")) {
+        var queryString = uri.substring(uri.indexOf("?") + 1);
+        var params = queryString.split("&");
+        for (var param : params) {
+          var kv = param.split("=", 2);
+          if (kv.length == 2) {
+            var key = java.net.URLDecoder.decode(kv[0], "UTF-8");
+            var value = java.net.URLDecoder.decode(kv[1], "UTF-8");
+            if ("q".equals(key)) query = value;
+            if ("type".equals(key)) type = value;
+          }
+        }
       }
     }
     
-    var searchResults = searchResultFiles(serverInfo.dataDir(), query);
+    String searchResults;
+    if ("jmh".equals(type)) {
+      searchResults = searchJMHFiles(serverInfo.dataDir(), query);
+    } else {
+      searchResults = searchResultFiles(serverInfo.dataDir(), query);
+    }
+    
     exchange.getResponseHeaders().set("Content-Type", "application/json");
     exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
     var response = searchResults.getBytes();
@@ -131,6 +164,71 @@ public class Server {
     }
     
     var results = loadSpecificFile(serverInfo.dataDir(), filename);
+    var responseJson = String.format("""
+      {
+        "filename": "%s",
+        "data": %s
+      }
+      """, filename, results);
+    
+    exchange.getResponseHeaders().set("Content-Type", "application/json");
+    exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+    var response = responseJson.getBytes();
+    exchange.sendResponseHeaders(200, response.length);
+    try (var os = exchange.getResponseBody()) {
+      os.write(response);
+    }
+  }
+
+  static void handleJMHResults(HttpExchange exchange, ServerInfo serverInfo) throws IOException {
+    var results = loadLatestJMHResults(serverInfo.dataDir());
+    var filename = getLatestJMHFilename(serverInfo.dataDir());
+    var responseJson = String.format("""
+      {
+        "filename": "%s",
+        "data": %s
+      }
+      """, filename, results);
+    
+    exchange.getResponseHeaders().set("Content-Type", "application/json");
+    exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+    var response = responseJson.getBytes();
+    exchange.sendResponseHeaders(200, response.length);
+    try (var os = exchange.getResponseBody()) {
+      os.write(response);
+    }
+  }
+
+  static void handleSizes(HttpExchange exchange, ServerInfo serverInfo) throws IOException {
+    var sizes = loadLatestSizes(serverInfo.dataDir());
+    var filename = getLatestSizesFilename(serverInfo.dataDir());
+    var responseJson = String.format("""
+      {
+        "filename": "%s",
+        "data": %s
+      }
+      """, filename, sizes);
+    
+    exchange.getResponseHeaders().set("Content-Type", "application/json");
+    exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+    var response = responseJson.getBytes();
+    exchange.sendResponseHeaders(200, response.length);
+    try (var os = exchange.getResponseBody()) {
+      os.write(response);
+    }
+  }
+
+  static void handleJMHFile(HttpExchange exchange, ServerInfo serverInfo) throws IOException {
+    var filename = "";
+    if ("GET".equals(exchange.getRequestMethod())) {
+      var uri = exchange.getRequestURI().toString();
+      if (uri.contains("?name=")) {
+        filename = uri.substring(uri.indexOf("?name=") + 6);
+        filename = java.net.URLDecoder.decode(filename, "UTF-8");
+      }
+    }
+    
+    var results = loadSpecificJMHFile(serverInfo.dataDir(), filename);
     var responseJson = String.format("""
       {
         "filename": "%s",
@@ -307,12 +405,22 @@ public class Server {
   static String loadSpecificFile(Path dataDir, String filename) {
     try {
       var filePath = dataDir.resolve(filename);
-      if (!Files.exists(filePath) || !filename.startsWith("results-") || !filename.endsWith(".njson")) {
+      if (!Files.exists(filePath)) {
         return "[]";
       }
 
-      var njsonContent = Files.readString(filePath);
-      return convertNJsonToExpectedFormat(njsonContent);
+      // Handle JMH JSON files
+      if (filename.startsWith("jmh-result-") && filename.endsWith(".json")) {
+        return Files.readString(filePath);
+      }
+      
+      // Handle NJSON result files
+      if (filename.startsWith("results-") && filename.endsWith(".njson")) {
+        var njsonContent = Files.readString(filePath);
+        return convertNJsonToExpectedFormat(njsonContent);
+      }
+      
+      return "[]";
 
     } catch (IOException e) {
       e.printStackTrace();
@@ -331,6 +439,113 @@ public class Server {
 
     } catch (IOException e) {
       return "error-loading-files";
+    }
+  }
+
+  // New JMH + Sizes helper functions
+  static String loadLatestJMHResults(Path dataDir) {
+    try {
+      var jmhFiles = Files.list(dataDir)
+          .filter(p -> p.getFileName().toString().startsWith("jmh-result-") && p.getFileName().toString().endsWith(".json"))
+          .sorted((a, b) -> b.getFileName().toString().compareTo(a.getFileName().toString()))
+          .toList();
+
+      if (jmhFiles.isEmpty()) {
+        return "[]";
+      }
+
+      var latestFile = jmhFiles.get(0);
+      return Files.readString(latestFile);
+
+    } catch (IOException e) {
+      e.printStackTrace();
+      return "[]";
+    }
+  }
+
+  static String loadLatestSizes(Path dataDir) {
+    try {
+      var sizesFiles = Files.list(dataDir)
+          .filter(p -> p.getFileName().toString().startsWith("sizes-") && p.getFileName().toString().endsWith(".json"))
+          .sorted((a, b) -> b.getFileName().toString().compareTo(a.getFileName().toString()))
+          .toList();
+
+      if (sizesFiles.isEmpty()) {
+        return "{}";
+      }
+
+      var latestFile = sizesFiles.get(0);
+      return Files.readString(latestFile);
+
+    } catch (IOException e) {
+      e.printStackTrace();
+      return "{}";
+    }
+  }
+
+  static String searchJMHFiles(Path dataDir, String query) {
+    try {
+      var jmhFiles = Files.list(dataDir)
+          .filter(p -> p.getFileName().toString().startsWith("jmh-result-") && p.getFileName().toString().endsWith(".json"))
+          .filter(p -> query.isEmpty() || p.getFileName().toString().toLowerCase().contains(query.toLowerCase()))
+          .sorted((a, b) -> b.getFileName().toString().compareTo(a.getFileName().toString()))
+          .map(p -> p.getFileName().toString())
+          .toList();
+
+      var sb = new StringBuilder("[");
+      for (int i = 0; i < jmhFiles.size(); i++) {
+        if (i > 0) sb.append(",");
+        sb.append("\"").append(jmhFiles.get(i)).append("\"");
+      }
+      sb.append("]");
+      return sb.toString();
+
+    } catch (IOException e) {
+      e.printStackTrace();
+      return "[]";
+    }
+  }
+
+  static String loadSpecificJMHFile(Path dataDir, String filename) {
+    try {
+      var filePath = dataDir.resolve(filename);
+      if (!Files.exists(filePath) || !filename.startsWith("jmh-result-") || !filename.endsWith(".json")) {
+        return "[]";
+      }
+
+      return Files.readString(filePath);
+
+    } catch (IOException e) {
+      e.printStackTrace();
+      return "[]";
+    }
+  }
+
+  static String getLatestJMHFilename(Path dataDir) {
+    try {
+      var jmhFiles = Files.list(dataDir)
+          .filter(p -> p.getFileName().toString().startsWith("jmh-result-") && p.getFileName().toString().endsWith(".json"))
+          .sorted((a, b) -> b.getFileName().toString().compareTo(a.getFileName().toString()))
+          .toList();
+
+      return jmhFiles.isEmpty() ? "no-jmh-files-found" : jmhFiles.get(0).getFileName().toString();
+
+    } catch (IOException e) {
+      return "error-loading-jmh-files";
+    }
+  }
+
+  static String getLatestSizesFilename(Path dataDir) {
+    try {
+      var sizesFiles = Files.list(dataDir)
+          .filter(p -> p.getFileName().toString().startsWith("sizes-") && p.getFileName().toString().endsWith(".json"))
+          .sorted((a, b) -> b.getFileName().toString().compareTo(a.getFileName().toString()))
+          .toList();
+
+      return sizesFiles.isEmpty() ? "no-sizes-files-found" : sizesFiles.get(0).getFileName().toString();
+
+    } catch (IOException e) {
+      return "error-loading-sizes-files";
     }
   }
 }
