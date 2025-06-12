@@ -88,11 +88,11 @@ public class SizeCalculator {
     private static void calculateAllSizes() throws Exception {
         Map<String, Map<String, Integer>> allSizes = new LinkedHashMap<>();
         
-        // SimpleBenchmark
-        SimpleBenchmark.TestRecord simpleRecord = new SimpleBenchmark.TestRecord("Test Name", 42, 123456789L, true);
-        allSizes.put("SimpleBenchmark", Map.of(
-            "NFP", calculateSize(simpleRecord, Pickler.forClass(SimpleBenchmark.TestRecord.class)),
-            "JDK", calculateJdkSize(simpleRecord)
+        // SimpleWriteBenchmark  
+        SimpleWriteBenchmark.TestRecord simpleRecord = new SimpleWriteBenchmark.TestRecord("Test Name", 42, 123456789L, true);
+        allSizes.put("SimpleWrite", Map.of(
+            Source.NFP.name(), calculateSize(simpleRecord, Pickler.forClass(SimpleWriteBenchmark.TestRecord.class)),
+            Source.JDK.name(), calculateJdkSize(simpleRecord)
         ));
         
         // PrimitiveBenchmark
@@ -100,8 +100,8 @@ public class SizeCalculator {
             true, (byte)42, (short)1337, 'X', 987654321, 1234567890123456789L, 3.14159f, 2.718281828459045
         );
         allSizes.put("PrimitiveBenchmark", Map.of(
-            "NFP", calculateSize(primitiveRecord, Pickler.forClass(PrimitiveBenchmark.PrimitiveRecord.class)),
-            "JDK", calculateJdkSize(primitiveRecord)
+            Source.NFP.name(), calculateSize(primitiveRecord, Pickler.forClass(PrimitiveBenchmark.PrimitiveRecord.class)),
+            Source.JDK.name(), calculateJdkSize(primitiveRecord)
         ));
         
         // StringBenchmark
@@ -111,8 +111,8 @@ public class SizeCalculator {
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
         );
         allSizes.put("StringBenchmark", Map.of(
-            "NFP", calculateSize(stringRecord, Pickler.forClass(StringBenchmark.StringRecord.class)),
-            "JDK", calculateJdkSize(stringRecord)
+            Source.NFP.name(), calculateSize(stringRecord, Pickler.forClass(StringBenchmark.StringRecord.class)),
+            Source.JDK.name(), calculateJdkSize(stringRecord)
         ));
         
         // ArrayBenchmark
@@ -122,8 +122,8 @@ public class SizeCalculator {
             new String[]{"one", "two", "three", "four", "five"}
         );
         allSizes.put("ArrayBenchmark", Map.of(
-            "NFP", calculateSize(arrayRecord, Pickler.forClass(ArrayBenchmark.ArrayRecord.class)),
-            "JDK", calculateJdkSize(arrayRecord)
+            Source.NFP.name(), calculateSize(arrayRecord, Pickler.forClass(ArrayBenchmark.ArrayRecord.class)),
+            Source.JDK.name(), calculateJdkSize(arrayRecord)
         ));
         
         // ListBenchmark
@@ -133,8 +133,8 @@ public class SizeCalculator {
             List.of(List.of("a", "b", "c"), List.of("d", "e", "f"), List.of("g", "h", "i"))
         );
         allSizes.put("ListBenchmark", Map.of(
-            "NFP", calculateSize(listRecord, Pickler.forClass(ListBenchmark.ListRecord.class)),
-            "JDK", calculateJdkSize(listRecord)
+            Source.NFP.name(), calculateSize(listRecord, Pickler.forClass(ListBenchmark.ListRecord.class)),
+            Source.JDK.name(), calculateJdkSize(listRecord)
         ));
         
         // OptionalBenchmark - NFP only (Optional not Serializable)
@@ -142,8 +142,8 @@ public class SizeCalculator {
             Optional.of("Hello Optional"), Optional.of(42), Optional.empty(), Optional.empty()
         );
         allSizes.put("OptionalBenchmark", Map.of(
-            "NFP", calculateSize(optionalRecord, Pickler.forClass(OptionalBenchmark.OptionalRecord.class)),
-            "JDK", -1  // Not applicable
+            Source.NFP.name(), calculateSize(optionalRecord, Pickler.forClass(OptionalBenchmark.OptionalRecord.class)),
+            Source.JDK.name(), -1  // Not applicable
         ));
         
         // MapBenchmark
@@ -156,8 +156,8 @@ public class SizeCalculator {
             Map.of(1, Map.of("a", "apple", "b", "banana"), 2, Map.of("c", "cherry", "d", "date"))
         );
         allSizes.put("MapBenchmark", Map.of(
-            "NFP", calculateSize(mapRecord, Pickler.forClass(MapBenchmark.MapRecord.class)),
-            "JDK", calculateJdkSize(mapRecord)
+            Source.NFP.name(), calculateSize(mapRecord, Pickler.forClass(MapBenchmark.MapRecord.class)),
+            Source.JDK.name(), calculateJdkSize(mapRecord)
         ));
         
         // EnumBenchmark
@@ -168,8 +168,8 @@ public class SizeCalculator {
             EnumBenchmark.Priority.MEDIUM
         );
         allSizes.put("EnumBenchmark", Map.of(
-            "NFP", calculateSize(enumRecord, Pickler.forClass(EnumBenchmark.EnumRecord.class)),
-            "JDK", calculateJdkSize(enumRecord)
+            Source.NFP.name(), calculateSize(enumRecord, Pickler.forClass(EnumBenchmark.EnumRecord.class)),
+            Source.JDK.name(), calculateJdkSize(enumRecord)
         ));
         
         // UUIDBenchmark
@@ -179,16 +179,16 @@ public class SizeCalculator {
             null
         );
         allSizes.put("UUIDBenchmark", Map.of(
-            "NFP", calculateSize(uuidRecord, Pickler.forClass(UUIDBenchmark.UUIDRecord.class)),
-            "JDK", calculateJdkSize(uuidRecord)
+            Source.NFP.name(), calculateSize(uuidRecord, Pickler.forClass(UUIDBenchmark.UUIDRecord.class)),
+            Source.JDK.name(), calculateJdkSize(uuidRecord)
         ));
         
         // Output sizes in parseable format for each benchmark
         for (Map.Entry<String, Map<String, Integer>> entry : allSizes.entrySet()) {
             String benchmark = entry.getKey();
             Map<String, Integer> sizes = entry.getValue();
-            if (sizes.get("JDK") > 0) {
-                System.out.println(benchmark + "_NFP:" + sizes.get("NFP") + "," + benchmark + "_JDK:" + sizes.get("JDK"));
+            if (sizes.get(Source.JDK.name()) > 0) {
+                System.out.println(benchmark + "_NFP:" + sizes.get(Source.NFP.name()) + "," + benchmark + "_JDK:" + sizes.get(Source.JDK.name()));
             }
         }
     }

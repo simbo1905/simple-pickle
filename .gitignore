@@ -15,3 +15,7 @@ benchmark/assets/test-*.js
 benchmark/assets/test-*.png
 benchmark/**.disabled
 benchmark/**.bak
+benchmark/results-*.njson
+benchmark/*-test-*.png
+benchmark/benchmark-verification-*.png
+benchmark/regression-test-*.png

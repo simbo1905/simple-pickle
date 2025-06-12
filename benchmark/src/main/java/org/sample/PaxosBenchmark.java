@@ -68,7 +68,7 @@ public class PaxosBenchmark {
   }
 
   @Benchmark
-  public void paxosNfp(Blackhole bh) throws Exception {
+  public void nfp(Blackhole bh) throws Exception {
     // Write phase - serialize all Accept records
     nfpBuffer.clear();
     for (var accept : original) {
@@ -86,7 +86,7 @@ public class PaxosBenchmark {
   }
 
   @Benchmark
-  public void paxosJdk(Blackhole bh) throws IOException, ClassNotFoundException {
+  public void jdk(Blackhole bh) throws IOException, ClassNotFoundException {
     // Clear the buffer before use
     buffer.clear();
 
@@ -113,7 +113,7 @@ public class PaxosBenchmark {
   }
 
   @Benchmark
-  public void paxosProtobuf(Blackhole bh) throws IOException {
+  public void protobuf(Blackhole bh) throws IOException {
     // Clear the buffer
     buffer.clear();
 

@@ -203,3 +203,10 @@ curl "http://localhost:8080/api/results"
 - NFP <= JDK size on all workloads  
 - No runtime failures across test suite
 - Comprehensive coverage of documented types
+
+## Critical: Task Instructions
+
+**EVERY Task must be explicitly told to read and follow the no-advertising policy from the global CLAUDE.md files. Tasks do not automatically inherit these rules and will violate them unless explicitly instructed.**
+
+**Template for all Task prompts:**
+"CRITICAL: Read /Users/consensussolutions/.claude/CLAUDE.md and follow the no-advertising policy. Never add any branding or advertising to commits, code, or deliverables. [actual task instructions...]"

@@ -7,8 +7,8 @@ import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
 /**
- * Converts JMH benchmark output to NJSON format with size data.
- * Usage: mvn exec:java -Dexec.mainClass="org.sample.ResultsGenerator" -Dexec.args="/tmp/tree-benchmark-results.txt"
+ * Converts JMH JSON benchmark output to NJSON format with size data.
+ * Usage: mvn exec:java -Dexec.mainClass="org.sample.ResultsGenerator" -Dexec.args="jmh-result.json"
  */
 public class ResultsGenerator {
     public static void main(String[] args) throws Exception {
@@ -51,23 +51,17 @@ public class ResultsGenerator {
                     String units = parts[6];
                     
                     // Determine source and size
-                    String src;
+                    Source src;
                     int size;
-                    if (benchmark.contains("treeJdk")) {
-                        src = "JDK";
-                        size = jdkTreeSize;
-                    } else if (benchmark.contains("treeNfp")) {
-                        src = "NFP";
-                        size = nfpTreeSize;
-                    } else if (benchmark.contains("treeProtobuf")) {
-                        src = "PTB";
+                    if (benchmark.contains("jdk")) {
+                        src = Source.JDK;
+                        size = benchmark.contains("tree") ? jdkTreeSize : jdkPrimitivesSize;
+                    } else if (benchmark.contains("nfp")) {
+                        src = Source.NFP;
+                        size = benchmark.contains("tree") ? nfpTreeSize : nfpPrimitivesSize;
+                    } else if (benchmark.contains("protobuf")) {
+                        src = Source.PTB;
                         size = ptbTreeSize;
-                    } else if (benchmark.contains("primitivesJdk")) {
-                        src = "JDK";
-                        size = jdkPrimitivesSize;
-                    } else if (benchmark.contains("primitivesNfp")) {
-                        src = "NFP";
-                        size = nfpPrimitivesSize;
                     } else {
                         continue; // Skip unknown benchmarks
                     }
@@ -75,7 +69,7 @@ public class ResultsGenerator {
                     // Generate NJSON line
                     String njsonLine = String.format(
                         "{\"benchmark\":\"%s\",\"src\":\"%s\",\"mode\":\"%s\",\"cnt\":%d,\"score\":%.3f,\"error\":%.3f,\"units\":\"%s\",\"size\":%d,\"ts\":\"%s\",\"comment\":\"%s\"}",
-                        benchmark, src, mode, cnt, score, error, units, size, timestamp, comment
+                        benchmark, src.name(), mode, cnt, score, error, units, size, timestamp, comment
                     );
                     
                     writer.println(njsonLine);
