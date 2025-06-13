@@ -1,0 +1,470 @@
+// TODO delete me when finished with adding similar support and having documented everything
+package io.github.simbo1905.no.framework;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.*;
+import java.lang.reflect.RecordComponent;
+import java.util.logging.Logger;
+
+import static io.github.simbo1905.no.framework.BackwardsCompatibilityTest.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+/// Learning test to understand JDK's built-in serialization backwards compatibility rules
+/// for records. This will help us implement similar behavior in No Framework Pickler.
+public class JDKRecordBackwardCompatiblityTests {
+
+    static final Logger LOGGER = Logger.getLogger(JDKRecordBackwardCompatiblityTests.class.getName());
+
+    // Original record with one field
+    static final String JDK_V1_RECORD = """
+        package io.github.simbo1905.no.framework.jdktest;
+        
+        import java.io.Serializable;
+        
+        public record Person(String name) implements Serializable {
+        }
+        """;
+
+    // Evolved record with additional field
+    static final String JDK_V2_RECORD = """
+        package io.github.simbo1905.no.framework.jdktest;
+        
+        import java.io.Serializable;
+        
+        public record Person(String name, int age) implements Serializable {
+            // Compatibility constructor
+            public Person(String name) {
+                this(name, 0);
+            }
+        }
+        """;
+
+    // Version 3 with even more fields
+    static final String JDK_V3_RECORD = """
+        package io.github.simbo1905.no.framework.jdktest;
+        
+        import java.io.Serializable;
+        
+        public record Person(String name, int age, String email) implements Serializable {
+            // Compatibility constructors
+            public Person(String name) {
+                this(name, 0, "unknown@example.com");
+            }
+            
+            public Person(String name, int age) {
+                this(name, age, "unknown@example.com");
+            }
+        }
+        """;
+
+    final String FULL_CLASS_NAME = "io.github.simbo1905.no.framework.jdktest.Person";
+
+    @Test
+    void testJDKSerializationV1ToV2() throws Exception {
+        // Compile V1
+        Class<?> v1Class = compileAndClassLoad(FULL_CLASS_NAME, JDK_V1_RECORD);
+        
+        // Create and serialize V1 instance
+        Object v1Instance = createRecordInstance(v1Class, new Object[]{"Alice"});
+        byte[] serializedData = serializeWithJDK(v1Instance);
+        
+        // Compile V2
+        Class<?> v2Class = compileAndClassLoad(FULL_CLASS_NAME, JDK_V2_RECORD);
+        
+        // Try to deserialize V1 data with V2 class
+        try {
+            Object v2Instance = deserializeWithJDK(serializedData, v2Class);
+            LOGGER.info("Successfully deserialized V1 data into V2 class: " + v2Instance);
+            
+            // Check what values we got
+            RecordComponent[] components = v2Class.getRecordComponents();
+            for (RecordComponent comp : components) {
+                Object value = comp.getAccessor().invoke(v2Instance);
+                LOGGER.info("Component " + comp.getName() + " = " + value);
+            }
+        } catch (Exception e) {
+            LOGGER.info("Failed to deserialize: " + e.getClass().getName() + " - " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    void testJDKSerializationV2ToV1() throws Exception {
+        // Compile V2
+        Class<?> v2Class = compileAndClassLoad(FULL_CLASS_NAME, JDK_V2_RECORD);
+        
+        // Create and serialize V2 instance
+        Object v2Instance = createRecordInstance(v2Class, new Object[]{"Bob", 30});
+        byte[] serializedData = serializeWithJDK(v2Instance);
+        
+        // Compile V1
+        Class<?> v1Class = compileAndClassLoad(FULL_CLASS_NAME, JDK_V1_RECORD);
+        
+        // Try to deserialize V2 data with V1 class
+        try {
+            Object v1Instance = deserializeWithJDK(serializedData, v1Class);
+            LOGGER.info("Successfully deserialized V2 data into V1 class: " + v1Instance);
+        } catch (Exception e) {
+            LOGGER.info("Failed to deserialize: " + e.getClass().getName() + " - " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    void testJDKSerializationWithoutCompatibilityConstructor() throws Exception {
+        // V2 without compatibility constructor
+        String v2WithoutCompat = """
+            package io.github.simbo1905.no.framework.jdktest;
+            
+            import java.io.Serializable;
+            
+            public record Person(String name, int age) implements Serializable {
+                // No compatibility constructor!
+            }
+            """;
+        
+        // Compile V1
+        Class<?> v1Class = compileAndClassLoad(FULL_CLASS_NAME, JDK_V1_RECORD);
+        
+        // Create and serialize V1 instance
+        Object v1Instance = createRecordInstance(v1Class, new Object[]{"Diana"});
+        byte[] serializedData = serializeWithJDK(v1Instance);
+        
+        // Compile V2 without compatibility constructor
+        Class<?> v2Class = compileAndClassLoad(FULL_CLASS_NAME, v2WithoutCompat);
+        
+        // Try to deserialize V1 data with V2 class (no compat constructor)
+        try {
+            Object v2Instance = deserializeWithJDK(serializedData, v2Class);
+            LOGGER.info("Unexpectedly succeeded without compat constructor: " + v2Instance);
+        } catch (Exception e) {
+            LOGGER.info("Failed without compat constructor: " + e.getClass().getName() + " - " + e.getMessage());
+        }
+    }
+
+    @Test
+    void testJDKSerializationInternals() throws Exception {
+        // Let's examine how JDK serializes records
+        Class<?> v1Class = compileAndClassLoad(FULL_CLASS_NAME, JDK_V1_RECORD);
+        Object v1Instance = createRecordInstance(v1Class, new Object[]{"Eve"});
+        
+        // Serialize and examine the stream
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+            oos.writeObject(v1Instance);
+        }
+        byte[] data = baos.toByteArray();
+        
+        LOGGER.info("Serialized size for V1 record: " + data.length + " bytes");
+        
+        // Now serialize V2
+        Class<?> v2Class = compileAndClassLoad(FULL_CLASS_NAME, JDK_V2_RECORD);
+        Object v2Instance = createRecordInstance(v2Class, new Object[]{"Frank", 35});
+        
+        baos = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+            oos.writeObject(v2Instance);
+        }
+        byte[] v2Data = baos.toByteArray();
+        
+        LOGGER.info("Serialized size for V2 record: " + v2Data.length + " bytes");
+        
+        // Test that records use their canonical constructor
+        LOGGER.info("V1 has " + v1Class.getRecordComponents().length + " components");
+        LOGGER.info("V2 has " + v2Class.getRecordComponents().length + " components");
+    }
+
+    @Test
+    void testDefaultValuesForMissingPrimitives() throws Exception {
+        // V1 with just one primitive
+        String v1 = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public record DataRecord(int count) implements Serializable {}
+            """;
+        
+        // V2 with additional primitives - let's log what JDK sets them to
+        String v2 = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            import java.util.logging.Logger;
+            
+            public record DataRecord(
+                int count,
+                boolean flag,
+                byte b,
+                short s,
+                long l,
+                float f,
+                double d,
+                char c
+            ) implements Serializable {
+                private static final Logger LOGGER = Logger.getLogger(DataRecord.class.getName());
+                
+                // Canonical constructor that logs what JDK set before construction
+                public DataRecord {
+                    LOGGER.info("JDK set values before canonical constructor: " +
+                        "count=" + count + 
+                        ", flag=" + flag +
+                        ", b=" + b +
+                        ", s=" + s +
+                        ", l=" + l +
+                        ", f=" + f +
+                        ", d=" + d +
+                        ", c=" + ((int)c) + " (char code)");
+                }
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.DataRecord", v1);
+        Object v1Instance = createRecordInstance(v1Class, new Object[]{42});
+        byte[] data = serializeWithJDK(v1Instance);
+        
+        Class<?> v2Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.DataRecord", v2);
+        Object v2Instance = deserializeWithJDK(data, v2Class);
+        
+        LOGGER.info("Deserialized v2 instance: " + v2Instance);
+    }
+
+    @Test
+    void testDefaultValuesForMissingReferences() throws Exception {
+        // V1 with primitive
+        String v1 = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public record RefRecord(String name) implements Serializable {}
+            """;
+        
+        // V2 with additional reference types
+        String v2 = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            import java.util.List;
+            import java.util.Map;
+            import java.util.logging.Logger;
+            
+            public record RefRecord(
+                String name,
+                String description,
+                List<String> tags,
+                Map<String, Integer> scores,
+                Object data
+            ) implements Serializable {
+                private static final Logger LOGGER = Logger.getLogger(RefRecord.class.getName());
+                
+                public RefRecord {
+                    LOGGER.info("JDK set reference values: " +
+                        "name=" + name +
+                        ", description=" + description +
+                        ", tags=" + tags +
+                        ", scores=" + scores +
+                        ", data=" + data);
+                }
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.RefRecord", v1);
+        Object v1Instance = createRecordInstance(v1Class, new Object[]{"test"});
+        byte[] data = serializeWithJDK(v1Instance);
+        
+        Class<?> v2Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.RefRecord", v2);
+        Object v2Instance = deserializeWithJDK(data, v2Class);
+        
+        LOGGER.info("Deserialized reference record: " + v2Instance);
+    }
+
+    @Test
+    void testDefaultValuesForMissingArrays() throws Exception {
+        // V1 with one field
+        String v1 = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public record ArrayRecord(String id) implements Serializable {}
+            """;
+        
+        // V2 with arrays
+        String v2 = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            import java.util.Arrays;
+            import java.util.logging.Logger;
+            
+            public record ArrayRecord(
+                String id,
+                int[] numbers,
+                String[] names,
+                boolean[] flags,
+                Object[] objects
+            ) implements Serializable {
+                private static final Logger LOGGER = Logger.getLogger(ArrayRecord.class.getName());
+                
+                public ArrayRecord {
+                    LOGGER.info("JDK set array values: " +
+                        "id=" + id +
+                        ", numbers=" + numbers +
+                        ", names=" + names +
+                        ", flags=" + flags +
+                        ", objects=" + objects);
+                }
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.ArrayRecord", v1);
+        Object v1Instance = createRecordInstance(v1Class, new Object[]{"test-id"});
+        byte[] data = serializeWithJDK(v1Instance);
+        
+        Class<?> v2Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.ArrayRecord", v2);
+        Object v2Instance = deserializeWithJDK(data, v2Class);
+        
+        LOGGER.info("Deserialized array record: " + v2Instance);
+    }
+
+    @Test
+    void testDangerousFieldInsertion() throws Exception {
+        // Original: int a, int b
+        String v1 = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public record Dangerous(int a, int b) implements Serializable {}
+            """;
+        
+        // Insert double in middle: int a, double c, int b
+        String v2 = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            import java.util.logging.Logger;
+            
+            public record Dangerous(int a, double c, int b) implements Serializable {
+                private static final Logger LOGGER = Logger.getLogger(Dangerous.class.getName());
+                
+                public Dangerous {
+                    LOGGER.info("DANGEROUS insertion test - JDK set: a=" + a + ", c=" + c + ", b=" + b);
+                }
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Dangerous", v1);
+        Object v1Instance = createRecordInstance(v1Class, new Object[]{100, 200});
+        byte[] data = serializeWithJDK(v1Instance);
+        
+        LOGGER.info("V1 instance before serialization: " + v1Instance);
+        
+        Class<?> v2Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Dangerous", v2);
+        try {
+            Object v2Instance = deserializeWithJDK(data, v2Class);
+            LOGGER.info("DANGEROUS: Succeeded! Result: " + v2Instance);
+        } catch (Exception e) {
+            LOGGER.info("DANGEROUS: Failed as expected: " + e.getClass().getName() + " - " + e.getMessage());
+        }
+    }
+
+    @Test
+    void testCanonicalConstructorDefaultHandling() throws Exception {
+        // V1 without department
+        String v1 = """
+            package com.example.protocol;
+            import java.io.Serializable;
+            
+            public record UserInfo(String name, int accessLevel) implements Serializable {}
+            """;
+        
+        // V2 with canonical constructor that converts null to logical default
+        String v2 = """
+            package com.example.protocol;
+            import java.io.Serializable;
+            import java.util.logging.Logger;
+            
+            public record UserInfo(String name, int accessLevel, String department) implements Serializable {
+                private static final Logger LOGGER = Logger.getLogger(UserInfo.class.getName());
+                
+                // Canonical constructor that converts JDK's null default to logical default
+                public UserInfo(String name, int accessLevel, String department) {
+                    LOGGER.info("Canonical constructor called with: name=" + name + 
+                               ", accessLevel=" + accessLevel + ", department=" + department);
+                    this.name = name;
+                    this.accessLevel = accessLevel;
+                    this.department = department == null ? "Unknown" : department;
+                    LOGGER.info("After constructor: department=" + this.department);
+                }
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("com.example.protocol.UserInfo", v1);
+        Object v1Instance = createRecordInstance(v1Class, new Object[]{"Alice", 5});
+        byte[] data = serializeWithJDK(v1Instance);
+        
+        Class<?> v2Class = compileAndClassLoad("com.example.protocol.UserInfo", v2);
+        Object v2Instance = deserializeWithJDK(data, v2Class);
+        
+        // Verify the department field was set to "Unknown" not null
+        RecordComponent[] components = v2Class.getRecordComponents();
+        for (RecordComponent comp : components) {
+            if (comp.getName().equals("department")) {
+                Object value = comp.getAccessor().invoke(v2Instance);
+                assertEquals("Unknown", value, "Department should be 'Unknown', not null");
+                LOGGER.info("Verified: department field is '" + value + "'");
+            }
+        }
+        
+        LOGGER.info("Final deserialized record: " + v2Instance);
+    }
+
+    @Test
+    void testJDKSerializationFieldOrder() throws Exception {
+        // Test with reordered fields
+        String reorderedRecord = """
+            package io.github.simbo1905.no.framework.jdktest;
+            
+            import java.io.Serializable;
+            
+            public record Person(int age, String name) implements Serializable {
+            }
+            """;
+        
+        // Compile original V2
+        Class<?> v2Class = compileAndClassLoad(FULL_CLASS_NAME, JDK_V2_RECORD);
+        
+        // Create and serialize V2 instance
+        Object v2Instance = createRecordInstance(v2Class, new Object[]{"Charlie", 25});
+        byte[] serializedData = serializeWithJDK(v2Instance);
+        
+        // Compile reordered version
+        Class<?> reorderedClass = compileAndClassLoad(FULL_CLASS_NAME, reorderedRecord);
+        
+        // Try to deserialize
+        try {
+            Object reorderedInstance = deserializeWithJDK(serializedData, reorderedClass);
+            LOGGER.info("Successfully deserialized into reordered class: " + reorderedInstance);
+        } catch (Exception e) {
+            LOGGER.info("Failed with reordered fields: " + e.getClass().getName() + " - " + e.getMessage());
+        }
+    }
+
+    /// Serialize using standard JDK serialization
+    private byte[] serializeWithJDK(Object obj) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+            oos.writeObject(obj);
+        }
+        return baos.toByteArray();
+    }
+
+    /// Deserialize using standard JDK serialization with custom class resolution
+    private Object deserializeWithJDK(byte[] data, Class<?> expectedClass) throws IOException, ClassNotFoundException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(data);
+        try (ObjectInputStream ois = new ObjectInputStream(bais) {
+            @Override
+            protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+                // Try to use the expected class if the name matches
+                if (desc.getName().equals(expectedClass.getName())) {
+                    return expectedClass;
+                }
+                return super.resolveClass(desc);
+            }
+        }) {
+            return ois.readObject();
+        }
+    }
+
+}

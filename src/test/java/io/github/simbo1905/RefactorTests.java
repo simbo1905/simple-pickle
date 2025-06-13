@@ -53,8 +53,6 @@ public class RefactorTests {
     // Arrange
     Dog dog = new Dog("Fido", 2);
 
-    final var dog2 = dog.with( name-> "Scooby");
-
     Pickler<Dog> dogPickler = forClass(Dog.class);
     // dogPickler.sizeOf(dog)
     final var dogBuffer = ByteBuffer.allocate(1024);
@@ -422,7 +420,7 @@ public class RefactorTests {
   }
 
   @Test
-  void testList() throws Exception {
+  void testList() {
     // Here we are deliberately passing in a mutable list to the constructor
     final var original = new ListRecord(new ArrayList<>() {{
       add("A");
@@ -517,7 +515,7 @@ public class RefactorTests {
   }
 
   @Test
-  void testDogRoundTripArray() throws Exception {
+  void testDogRoundTripArray() {
 
     // Given a dog instance
     final var dog = new Dog("Fido", 2);
@@ -585,7 +583,7 @@ public class RefactorTests {
   }
 
   @Test
-  void testAnimalListRoundTrip() throws Exception {
+  void testAnimalListRoundTrip() {
     // Given a list of different animal types
     final var dog = new Dog("Buddy", 3);
     final var dog2 = new Dog("Fido", 2);
@@ -743,7 +741,7 @@ public class RefactorTests {
   // https://www.perplexity.ai/search/b11ebab9-122c-4841-b4bd-1d55de721ebd
   @SafeVarargs
   @SuppressWarnings("varargs")
-  public static final <T> Optional<T>[] createOptionalArray(Optional<T>... elements) {
+  public static <T> Optional<T>[] createOptionalArray(Optional<T>... elements) {
     return elements;
   }
 

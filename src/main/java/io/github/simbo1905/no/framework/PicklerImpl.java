@@ -8,6 +8,9 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -25,10 +28,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 final class PicklerImpl<T> implements Pickler<T> {
 
   static final int SAMPLE_SIZE = 32;
+  public static final String SHA_256 = "SHA-256";
 
   // Global lookup tables indexed by ordinal - the core of the unified architecture
   final Class<?>[] userTypes;     // Lexicographically sorted user types which are subclasses of Record or Enum
   final Map<Class<?>, Integer> classToOrdinal;  // Fast user type to ordinal lookup for the write path
+  final long[] typeSignatures;    // 8-byte SHA256 signatures for backwards compatibility checking
 
   // Pre-built component metadata arrays for all discovered record types - the core performance optimization:
   final MethodHandle[] recordConstructors;      // Constructor method handles indexed by ordinal
@@ -82,6 +87,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     this.componentWriters = (BiConsumer<ByteBuffer, Object>[][]) new BiConsumer[numRecordTypes][];
     this.componentReaders = (Function<ByteBuffer, Object>[][]) new Function[numRecordTypes][];
     this.componentSizers = (ToIntFunction<Object>[][]) new ToIntFunction[numRecordTypes][];
+    this.typeSignatures = new long[numRecordTypes];
 
     IntStream.range(0, numRecordTypes).forEach(ordinal -> {
       Class<?> recordClass = userTypes[ordinal];
@@ -95,6 +101,37 @@ final class PicklerImpl<T> implements Pickler<T> {
     });
 
     LOGGER.info(() -> "PicklerImpl construction complete - ready for high-performance serialization");
+  }
+
+  /// Compute an 8-byte signature from class name and component metadata
+  static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeStructure[] componentTypes) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance(SHA_256);
+
+      String input = Stream.concat(
+          Stream.of(clazz.getSimpleName()),
+          IntStream.range(0, components.length)
+              .boxed()
+              .flatMap(i -> Stream.concat(
+                  componentTypes[i].tagTypes().stream()
+                      .map(TagWithType::tag)
+                      .map(Tag::name),
+                  Stream.of(components[i].getName())
+              ))
+      ).collect(Collectors.joining("!"));
+
+      byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+
+      // Convert first 8 bytes to long
+      //      Byte Index:   0       1       2        3        4        5        6        7
+      //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
+      //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
+      return IntStream.range(0, 8)
+          .mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8))
+          .reduce(0L, (a, b) -> a | b);
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(SHA_256 + " not available", e);
+    }
   }
 
   /// Build component metadata for a record type using meta-programming
@@ -134,7 +171,7 @@ final class PicklerImpl<T> implements Pickler<T> {
       // like array, list, map, optional,  etc
       componentTypes[ordinal][i] = typeStructure;
 
-      if (typeStructure.tagTypes().size() == 1 && typeStructure.tagTypes().getFirst().type().isPrimitive()){
+      if (typeStructure.tagTypes().size() == 1 && typeStructure.tagTypes().getFirst().type().isPrimitive()) {
         final var leafType = typeStructure.tagTypes().getFirst();
         final var primateWriter = createLeafWriter(leafType);
         final var accessor = componentAccessors[ordinal][i];
@@ -143,7 +180,7 @@ final class PicklerImpl<T> implements Pickler<T> {
           try {
             componentValue = accessor.invokeWithArguments(record);
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to extract component from record:"+record.getClass(), e);
+            throw new RuntimeException("Failed to extract component from record:" + record.getClass(), e);
           }
           primateWriter.accept(buffer, componentValue);
         };
@@ -162,7 +199,7 @@ final class PicklerImpl<T> implements Pickler<T> {
           try {
             componentValue = accessor.invokeWithArguments(record);
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to extract component from record:"+record.getClass(), e);
+            throw new RuntimeException("Failed to extract component from record:" + record.getClass(), e);
           }
           return primitiveSizer.applyAsInt(componentValue);
         };
@@ -176,6 +213,9 @@ final class PicklerImpl<T> implements Pickler<T> {
     });
 
     LOGGER.fine(() -> "Completed metadata for " + recordClass.getSimpleName() + " with " + numComponents + " components");
+
+    // Compute and store the type signature for this record
+    typeSignatures[ordinal] = hashClassSignature(recordClass, components, componentTypes[ordinal]);
   }
 
   /// Serialize record components using pre-built writers array (NO HashMap lookups)
@@ -231,7 +271,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   /// Calculate max size using pre-built component sizers
   int maxSizeOfRecordComponents(Record record, int ordinal) {
     ToIntFunction<Object>[] sizers = componentSizers[ordinal];
-    assert sizers != null: "No sizers for ordinal: " + ordinal;
+    assert sizers != null : "No sizers for ordinal: " + ordinal;
 
     int totalSize = 0;
     for (ToIntFunction<Object> sizer : sizers) {
@@ -312,8 +352,7 @@ final class PicklerImpl<T> implements Pickler<T> {
         case ARRAY -> {
           // Use MetaTag for cleaner switching
           BiConsumer<ByteBuffer, Object> arrayWriter = switch (priorTag.tag().metaTag()) {
-            case VALUE ->
-                createValueTypeWriter(priorTag);
+            case VALUE -> createValueTypeWriter(priorTag);
             case CONTAINER, MIXED -> (buffer, value) -> {
               LOGGER.finer(() -> "Delegating ARRAY for tag " + finalPriorTag.tag() + " with length=" + Array.getLength(value) + " at position " + buffer.position());
               ZigZagEncoding.putInt(buffer, Constants.ARRAY.marker());
@@ -389,7 +428,7 @@ final class PicklerImpl<T> implements Pickler<T> {
       }
     };
   }
-  
+
   /// Create interface writer for sealed interfaces that permit both records and enums
   BiConsumer<ByteBuffer, Object> createInterfaceWriter(Class<?> interfaceClass) {
     return (buffer, value) -> {
@@ -780,8 +819,7 @@ final class PicklerImpl<T> implements Pickler<T> {
           // Match the writer pattern - check if priorTag is a primitive or complex type
           // Use MetaTag for cleaner switching
           yield switch (finalPriorTag.tag().metaTag()) {
-            case VALUE ->
-                createLeafArrayReader(finalPriorTag);
+            case VALUE -> createLeafArrayReader(finalPriorTag);
             case CONTAINER, MIXED -> {
               LOGGER.finer(() -> "Creating delegating array reader for tag: " + finalPriorTag.tag());
               yield createContainerArrayReader(innerReader, finalPriorTag);
@@ -1099,18 +1137,18 @@ final class PicklerImpl<T> implements Pickler<T> {
       case INTERFACE -> buffer -> {
         // Interface reader that handles both ENUM and RECORD markers
         int marker = ZigZagEncoding.getInt(buffer);
-        
+
         if (marker == Constants.ENUM.marker()) {
           // This is an enum implementing the sealed interface
           int wireOrdinal = ZigZagEncoding.getInt(buffer);
           int ordinal = wireOrdinal - 1;
           Class<?> enumClass = userTypes[ordinal];
-          
+
           int constantLength = ZigZagEncoding.getInt(buffer);
           byte[] constantBytes = new byte[constantLength];
           buffer.get(constantBytes);
           String constantName = new String(constantBytes, UTF_8);
-          
+
           @SuppressWarnings({"unchecked", "rawtypes"})
           Enum<?> value = Enum.valueOf((Class<? extends Enum>) enumClass, constantName);
           return value;
@@ -1118,11 +1156,11 @@ final class PicklerImpl<T> implements Pickler<T> {
           // This is a record implementing the sealed interface
           int wireOrdinal = ZigZagEncoding.getInt(buffer);
           int ordinal = wireOrdinal - 1;
-          
+
           if (ordinal < 0 || ordinal >= userTypes.length) {
             throw new IllegalStateException("Invalid record ordinal: " + ordinal);
           }
-          
+
           return deserializeRecord(buffer, ordinal);
         } else {
           throw new IllegalStateException("Expected RECORD or ENUM marker for interface but got: " + marker);
@@ -1264,7 +1302,7 @@ final class PicklerImpl<T> implements Pickler<T> {
         return 1 + ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
       };
       case UUID -> obj -> 1 + 2 * Long.BYTES;
-      case ENUM ->obj-> 1 + 2 * Integer.BYTES; // marker + class ordinal + enum constant length
+      case ENUM -> obj -> 1 + 2 * Integer.BYTES; // marker + class ordinal + enum constant length
       case RECORD -> obj -> {
         Record record = (Record) obj;
         final Integer ordinal = classToOrdinal.get(record.getClass());
@@ -1276,8 +1314,8 @@ final class PicklerImpl<T> implements Pickler<T> {
           // Size for enum: marker + ordinal + name length + name bytes
           String name = enumValue.name();
           byte[] nameBytes = name.getBytes(UTF_8);
-          return 1 + ZigZagEncoding.sizeOf(classToOrdinal.get(enumValue.getClass()) + 1) + 
-                 ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
+          return 1 + ZigZagEncoding.sizeOf(classToOrdinal.get(enumValue.getClass()) + 1) +
+              ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
         } else if (obj instanceof Record record) {
           // Size for record: marker + ordinal + components
           final Integer ordinal = classToOrdinal.get(record.getClass());
@@ -1396,7 +1434,7 @@ final class PicklerImpl<T> implements Pickler<T> {
       byte[] constantBytes = new byte[constantLength];
       buffer.get(constantBytes);
       String constantName = new String(constantBytes, UTF_8);
-      
+
       @SuppressWarnings({"unchecked", "rawtypes"})
       Enum<?> value = Enum.valueOf((Class<? extends Enum>) targetClass, constantName);
       return (T) value;
@@ -1411,7 +1449,7 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     // Find ordinal for the object's class using the ONE HashMap lookup
     final Integer ordinalObj = classToOrdinal.get(object.getClass());
-    assert ordinalObj != null: "Unknown class: " + object.getClass().getName();
+    assert ordinalObj != null : "Unknown class: " + object.getClass().getName();
 
     final int ordinal = ordinalObj;
 
@@ -1502,11 +1540,11 @@ record TypeStructure(List<TagWithType> tagTypes) {
             tags.add(MAP);
             types.add(Map.class); // Container class for symmetry
             Type[] typeArgs = paramType.getActualTypeArguments();
-            if (typeArgs.length == 2) {
+            if (typeArgs.length == 2) { // TODO i do not like this magic number
               // For Map<K,V>, we need to analyze both key and value types
               // Store Map marker, then key structure, then value structure
-              TypeStructure keyStructure = analyze(typeArgs[0]);
-              TypeStructure valueStructure = analyze(typeArgs[1]);
+              TypeStructure keyStructure = analyze(typeArgs[0]); // TODO i do not like this magic number
+              TypeStructure valueStructure = analyze(typeArgs[1]);// TODO i do not like this magic number 
 
               // Combine: [MAP, ...key tags, ...value tags]
               for (TagWithType tt : keyStructure.tagTypes()) {

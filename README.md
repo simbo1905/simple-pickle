@@ -332,81 +332,92 @@ If you instantiate a pickler for a `sealed interface` it ensures that the permit
 
 ## Schema Evolution
 
-No Framework Pickler supports **opt-in** schema evolution through: 
+No Framework Pickler provides **opt-in** backwards compatibility that is more restrictive than JDK serialization because we don't write component names to the wire. This keeps the wire format compact but requires careful schema evolution.
 
-- **Additive-only schema evolution**: You can add new fields to the end of a record definition.
-- **Backward compatibility constructors**: You must add a constructor that matches the older version which means that the order of the fields matches the old code so that when the old code sends an array of components it matches your new constructor.
-- **Default values for new fields**: Java will force you to call the default constructor of your new code so it will force you to set the new fields added to the end as `null` or the default value that you want to use.
+### Security by Default
 
-To enable backward compatibility when adding fields to a record, you must define a public constructor that accepts the exact parameter list the old code writes out. This means the number of parameters, order of parameters and types of parameters must match what you old code send. They are sent in source code order not by name. So you must only add new components to the end of the record definition. As components are written out and read back in based on source code order not by name you may rename any of your components in the new code.
+Each record type has an 8-byte signature computed from:
+- The record's simple class name
+- Each component's name and generic return type signature
 
-This feature is disabled by default. A system property `no.framework.Pickler.Compatibility` must be set to one of three values to enable schema evolution.
+For example, `record MyThing(List<Optional<Double>>[] compA)` generates a SHA-256 hash of:
+```
+MyThing!ARRAY!LIST!OPTIONAL!Double!compA
+```
+
+In the default `DISABLED` mode, any schema change (reordering, renaming, type changes) causes deserialization to fail fast with `InvalidClassException`, preventing silent data corruption. This mimics JDK serialization behavior and may indicate either a developer error or a deliberate targeted attack.
+
+**Security Note**: It is always wise to add encryption-level message confidentiality and message integrity security to prevent against any form of tampering attack, which is beyond the scope of this documentation.
+
+### Compatibility Modes
+
+Set the system property `no.framework.Pickler.Compatibility`:
 
 ```shell
--Dno.framework.Pickler.Compatibility=NONE|BACKWARDS|FORWARDS|ALL
+-Dno.framework.Pickler.Compatibility=DISABLED|DEFAULTED
 ```
+
+- **`DISABLED`** (default): Strict mode. Any schema mismatch fails fast with `InvalidClassException`.
+- **`DEFAULTED`**: Emulates JDK behavior for missing fields at the end of the record definition:
+  - Primitives get default values (`0`, `false`, `0.0`, etc.)
+  - References get `null` (including arrays of primitives)
+  - Only supports adding fields to the end of records  `record Demo(int i, byte b) =/= record Demo(int i, short s, int i)`
+  - Can lead to silent data corruption if you recorder components `record Point(int x, int y) =/= record Point(int y, int x)`
+
+### Safe Evolution Rules
+
+When `DEFAULTED` mode is enabled:
+- **Only Append** new component fields to the end of record definitions (this avoids all the issues detailed below)
+- **Never change field types** as this will cause deserialization errors (just like JDK serialization)
+- **Field renaming works** as component field positions, not component field names, are written onto the wire (unlike JDK serialization which writes out names)
+- **Never reorder existing fields** as this may cause silent data corruption (unlike JDK serialization which writes out names)
+
+The difference between JDK serialization and No Framework Pickler is deliberate. Writing out component names bloats the wire format and slows things down. 
+More sophisticated picklers like Protocol Buffers, Apache Avro, and others use external schema-like files. Those require you to read the manual to understand how to get started. That upfront effort and ongoing complexity gives them more options to explicitly handle schema evolution. No Framework Pickler deliberately makes it so that your record Java source code is the "schema file". If you reorder your record components in your Java source code then you are trashing the compatibility of the serialized data between versions of your Java code. This may lead to a silent data corruption if the types of the reordered components are binary compatible (i.e. `record Point(int x, int y)` -> `record Point(int y, int x)`). Which is why it is an opt-in feature; you can safely rename components and add new components to the end of the record definition as long as you not break the invariants of your record definitions through reordering. 
 
 ### Example: Adding a Field to a Record
 
-Consider a scenario with two microservices communicating with each other:
-
-**Original Record (used by older microservice):**
+**Original Record (V1):**
 ```java
 package com.example.protocol;
 
-public record UserInfo(String name, int personalAccessLevel) {
+public record UserInfo(String name, int accessLevel) {
 }
 ```
 
-**Evolved Record (used by newer microservice):**
+**Evolved Record (V2) - Safe Evolution:**
 ```java
 package com.example.protocol;
 
-/// It is fine to rename components as `MethodHandles` are resolved by position in the code not by source code name
-public record UserInfo(String username, int accessLevel, String department) {
-    // Default value for backward compatibility
-    private static final String DEFAULT_DEPARTMENT_FOR_LEGACY_RECORDS = "UNASSIGNED";
-    
-    // Backward compatibility constructor
-    public UserInfo(String username, int accessLevel) {
-        this(username, accessLevel, DEFAULT_DEPARTMENT_FOR_LEGACY_RECORDS);
+// Only works with: -Dno.framework.Pickler.Compatibility=DEFAULTED
+public record UserInfo(String name, int accessLevel, String department) {
+    // With DEFAULTED mode, new fields get Java defaults (null for references)
+    public UserInfo(String name, int accessLevel, String department) {
+         // As per JDK serialization you use the canonical constructor to convert the implicit default to your logcal default
+        this.name = name;
+        this.accessLevel = accessLevel;
+        this.department = department == null ? "Unknown" : department;
     }
 }
 ```
 
-### Sealed Interface Evolution
+When deserializing V1 data with V2 code in `DEFAULTED` mode:
+- `name` and `accessLevel` retain their serialized values
+- `department` is set to `null` automatically
 
-We might expect that a team may add new permitted records to a sealed interface. This leads to the following scenario:
-
-1. The original code has a sealed interface with `N` permitted records. It might upgrade them all in a safe way as described above to be a new set `N'` records. 
-2. The new codebase adds `M` new permitted records to the sealed interface to have `N' ∪ M` records.
-3. The original code sends records that the new codebase has constructors for `N` as long as the new code has Compatibility set `BACKWARDS|ALL`.
-4. The new codebase can send upgraded records `N'` to the original codebase as long as the original codebase has Compatibility set `FORWARDS|ALL`.
-5. The old codebase will never send any `M` records to the new codebase as it does not know about them. No setting of compatibility is needed for this.
-6. The new codebase **cannot** send `M` records to the old codebase as it has no logic to handle them. 
-
-The upshot means that you have to write your own routing logic to avoid new microservices sending new record types to old microservices.
-
-There is one more constraint. In *most* code the sealed trait and its permitted classes will be in the same package. 
-Yet if you are using the Java Module Exports System they can be in different packages: 
-
+**Dangerous Evolution - Never Do This:**
 ```java
-
+// WRONG: Reordering fields causes silent data corruption!
+public record UserInfo(int accessLevel, String name, String department) {
+    // This will swap name and accessLevel values!
+}
 ```
 
-### Schema Evolution Summary
+### Limitations
 
-- The default setting is `NONE` for schema evolution. You must explicitly set the system property to enable it.
-- This library supports backwards compatibility when you add new components onto the end of the record definition. 
-- You **may** change the name of components as the `MethodHandle` is resolved by position in source file not by name
-- You **may** use `null` or set your own default value for added components within your backward compatibility constructor(s)
-- In the code you must add alternative constructors to match the old code and set compatibility to `BACKWARDS|ALL`.
-- In the old code you must set compatibility to `FORWARDS|ALL` for it to ignore the extra components that it does not understand.
-- If you are using sealed interfaces picklers the new codebase will be able to read all records from the old codebase where the above hold true. 
-- If you are using sealed interfaces picklers the old codebase will be able to read only records sent by the new codebase where the above hold true.
-- The old codebase **will not** be able to read any new records sent by the new codebase as it does not know about them. 
- 
-You need to configure your microservices to avoid the unsupported scenario of sending new records to old codebases that have no code for them. 
+- Adding new permitted types to sealed interfaces is not supported in compatibility mode
+- The old codebase cannot deserialize new record types it doesn't know about
+- You must implement your own routing logic to prevent sending new types to old services 
 
 There are unit tests that dynamically compile and class load different versions of records to explicitly test both backwards and forwards compatibility across three generations. See `SchemaEvolutionTest.java` and `BackwardsCompatibilityTest.java` for examples of how to write your own tests.
 
