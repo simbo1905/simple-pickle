@@ -8,9 +8,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.nio.ByteBuffer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+import static org.junit.jupiter.api.Assertions.*;
 
 /// Package-private tests for core machinery components
 /// Tests the internal implementation details that are not part of the public API
@@ -299,5 +301,94 @@ class MachineryTests {
     assertThat(result.tagTypes().get(0).tag()).isEqualTo(Tag.ARRAY);
     assertThat(result.tagTypes().get(1).tag()).isEqualTo(Tag.INTERFACE);
     assertThat(result.tagTypes().get(1).type()).isEqualTo(MixedInterface.class);
+  }
+
+  // Test records for signature verification
+  record SimplePoint(int x, int y) {}
+  record ComplexData(List<Optional<String>> data, Map<Integer, Double> metrics) {}
+
+  @Test
+  void testSignatureWrittenToWire() throws Exception {
+    // Test that signatures are written to the wire when compatibility mode is enabled
+    System.setProperty("no.framework.Pickler.Compatibility", "DEFAULTED");
+    try {
+      Pickler<SimplePoint> pickler = Pickler.forClass(SimplePoint.class);
+      SimplePoint point = new SimplePoint(10, 20);
+      
+      ByteBuffer buffer = ByteBuffer.allocate(1024);
+      pickler.serialize(buffer, point);
+      buffer.flip();
+      
+      // Read the wire format manually
+      int ordinal = ZigZagEncoding.getInt(buffer); // Should be 1 (0-indexed + 1)
+      assertEquals(1, ordinal, "Ordinal should be 1");
+      
+      // Next should be the 8-byte signature
+      long signature = buffer.getLong();
+      
+      // Compute expected signature
+      var components = SimplePoint.class.getRecordComponents();
+      TypeStructure[] types = new TypeStructure[] {
+        TypeStructure.analyze(int.class),
+        TypeStructure.analyze(int.class)
+      };
+      long expectedSignature = PicklerImpl.hashClassSignature(SimplePoint.class, components, types);
+      
+      assertEquals(expectedSignature, signature, "Signature should match computed value");
+      
+      // Then component data should follow
+      // Components are written with their type markers
+      int xMarker = ZigZagEncoding.getInt(buffer);
+      assertEquals(Constants.INTEGER_VAR.marker(), xMarker, "Should have INTEGER_VAR marker for x");
+      int x = ZigZagEncoding.getInt(buffer);
+      assertEquals(10, x);
+      
+      int yMarker = ZigZagEncoding.getInt(buffer);
+      assertEquals(Constants.INTEGER_VAR.marker(), yMarker, "Should have INTEGER_VAR marker for y");
+      int y = ZigZagEncoding.getInt(buffer);
+      assertEquals(20, y);
+    } finally {
+      System.clearProperty("no.framework.Pickler.Compatibility");
+    }
+  }
+
+  @Test
+  void testSignatureAlwaysWritten() throws Exception {
+    // Test that signatures are ALWAYS written regardless of compatibility mode
+    Pickler<SimplePoint> pickler = Pickler.forClass(SimplePoint.class);
+    SimplePoint point = new SimplePoint(10, 20);
+    
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    pickler.serialize(buffer, point);
+    buffer.flip();
+    
+    // Read the wire format manually
+    int ordinal = ZigZagEncoding.getInt(buffer); // Should be 1
+    assertEquals(1, ordinal, "Ordinal should be 1");
+    
+    // Next should be the 8-byte signature (always written)
+    long signature = buffer.getLong();
+    
+    // Compute expected signature
+    var components = SimplePoint.class.getRecordComponents();
+    TypeStructure[] types = new TypeStructure[] {
+      TypeStructure.analyze(int.class),
+      TypeStructure.analyze(int.class)
+    };
+    long expectedSignature = PicklerImpl.hashClassSignature(SimplePoint.class, components, types);
+    
+    assertEquals(expectedSignature, signature, "Signature should match computed value");
+    
+    // Then component data should follow
+    // Components are written with their type markers
+    int xMarker = ZigZagEncoding.getInt(buffer);
+    assertEquals(Constants.INTEGER_VAR.marker(), xMarker, "Should have INTEGER_VAR marker for x");
+    int x = ZigZagEncoding.getInt(buffer);
+    assertEquals(10, x);
+    
+    int yMarker = ZigZagEncoding.getInt(buffer);
+    assertEquals(Constants.INTEGER_VAR.marker(), yMarker, "Should have INTEGER_VAR marker for y");
+    int y = ZigZagEncoding.getInt(buffer);
+    assertEquals(20, y);
   }
 }

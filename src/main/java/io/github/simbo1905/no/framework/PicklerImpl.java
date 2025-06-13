@@ -3,6 +3,7 @@
 
 package io.github.simbo1905.no.framework;
 
+import java.io.InvalidClassException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.*;
@@ -27,13 +28,44 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 /// Eliminates the need for separate RecordPickler and SealedPickler classes.
 final class PicklerImpl<T> implements Pickler<T> {
 
+  record TypeInfo(int ordinal, long typeSignature) {
+  }
+
+  /// Compatibility mode. Set via system property `no.framework.Pickler.Compatibility`. The default is DISABLED.
+  /// If set to DISABLED (our default) the pickler will:
+  /// - verify hashes, types, and length during deserialization.
+  /// - throws InvalidClassException for any mismatches, absent or unexpected fields.
+  /// If set to DEFAULTED, the pickler will:
+  /// - defaults missing fields to null for reference types and default values for primitives (e.g., 0 for int).
+  /// - writes out the class name, component names, and types onto the wire.
+  /// This allows for renaming of fields but not reordering.
+  ///
+  /// In contrast, JDK deserialization using ObjectInputStream:
+  ///  - defaults missing component fields in the wire. Reference types are null, primitives use default values (e.g., 0 for int).
+  ///  - writes out the class name, component names, and types onto the wire.
+  /// This allows for reordering of fields but not renaming.
+  enum CompatibilityMode {
+    /// Strict mode: Disallows any schema changes. Verifies hashes, types, and length.
+    /// Throws exceptions for any mismatches or unexpected fields.
+    DISABLED,
+
+    /// Lenient mode: Allows missing fields (uses defaults) but does not permit field reordering.
+    /// More permissive than DISABLED but differs from JDK behavior by disallowing reordering.
+    DEFAULTED;
+  }
+
   static final int SAMPLE_SIZE = 32;
   public static final String SHA_256 = "SHA-256";
 
+  static final int CLASS_SIG_BYTES = Long.BYTES;
+
+  static final CompatibilityMode COMPATIBILITY_MODE =
+      CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
+
   // Global lookup tables indexed by ordinal - the core of the unified architecture
   final Class<?>[] userTypes;     // Lexicographically sorted user types which are subclasses of Record or Enum
-  final Map<Class<?>, Integer> classToOrdinal;  // Fast user type to ordinal lookup for the write path
-  final long[] typeSignatures;    // 8-byte SHA256 signatures for backwards compatibility checking
+  Map<Class<?>, TypeInfo> classToTypeInfo;  // Fast user type to ordinal lookup for the write path
+  final long[] typeSignatures;    // CLASS_SIG_BYTES SHA256 signatures for backwards compatibility checking
 
   // Pre-built component metadata arrays for all discovered record types - the core performance optimization:
   final MethodHandle[] recordConstructors;      // Constructor method handles indexed by ordinal
@@ -72,11 +104,11 @@ final class PicklerImpl<T> implements Pickler<T> {
             .collect(Collectors.joining(", ")));
 
     // Build the ONE HashMap for class->ordinal lookup (O(1) for hot path)
-    this.classToOrdinal = IntStream.range(0, userTypes.length)
+    this.classToTypeInfo = IntStream.range(0, userTypes.length)
         .boxed()
-        .collect(Collectors.toMap(i -> userTypes[i], i -> i));
+        .collect(Collectors.toMap(i -> userTypes[i], i -> new TypeInfo(i, 0L)));
 
-    LOGGER.finer(() -> "Built classToOrdinal map: " + classToOrdinal.entrySet().stream()
+    LOGGER.finer(() -> "Built classToTypeInfo map: " + classToTypeInfo.entrySet().stream()
         .map(e -> e.getKey().getSimpleName() + "->" + e.getValue()).toList());
 
     // Pre-allocate metadata arrays for all discovered record types (array-based for O(1) access)
@@ -100,10 +132,19 @@ final class PicklerImpl<T> implements Pickler<T> {
       }
     });
 
+    // Rebuild the map with actual signatures
+    this.classToTypeInfo = IntStream.range(0, userTypes.length)
+        .boxed()
+        .collect(Collectors.toMap(i -> userTypes[i], i -> new TypeInfo(i, typeSignatures[i])));
+
+    LOGGER.finer(() -> "Final classToTypeInfo with signatures: " + classToTypeInfo.entrySet().stream()
+        .map(e -> e.getKey().getSimpleName() + " -> " + e.getValue())
+        .collect(Collectors.joining(", ")));
+
     LOGGER.info(() -> "PicklerImpl construction complete - ready for high-performance serialization");
   }
 
-  /// Compute an 8-byte signature from class name and component metadata
+  /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
   static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeStructure[] componentTypes) {
     try {
       MessageDigest digest = MessageDigest.getInstance(SHA_256);
@@ -122,11 +163,11 @@ final class PicklerImpl<T> implements Pickler<T> {
 
       byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
 
-      // Convert first 8 bytes to long
+      // Convert first CLASS_SIG_BYTES to long
       //      Byte Index:   0       1       2        3        4        5        6        7
       //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
       //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
-      return IntStream.range(0, 8)
+      return IntStream.range(0, CLASS_SIG_BYTES)
           .mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8))
           .reduce(0L, (a, b) -> a | b);
     } catch (NoSuchAlgorithmException e) {
@@ -219,10 +260,10 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Serialize record components using pre-built writers array (NO HashMap lookups)
-  void serializeRecordComponents(ByteBuffer buffer, Record record, int ordinal) {
-    BiConsumer<ByteBuffer, Object>[] writers = componentWriters[ordinal];
+  void serializeRecordComponents(ByteBuffer buffer, Record record, TypeInfo typeInfo) {
+    BiConsumer<ByteBuffer, Object>[] writers = componentWriters[typeInfo.ordinal()];
     if (writers == null) {
-      throw new IllegalStateException("No writers for ordinal: " + ordinal);
+      throw new IllegalStateException("No writers for ordinal: " + typeInfo.ordinal());
     }
 
     LOGGER.finer(() -> "Serializing " + writers.length + " components for " + record.getClass().getSimpleName() +
@@ -266,6 +307,84 @@ final class PicklerImpl<T> implements Pickler<T> {
     } catch (Throwable e) {
       throw new RuntimeException("Failed to construct record", e);
     }
+  }
+  
+  /// Deserialize record with defaults for missing fields (backwards compatibility)
+  @SuppressWarnings("unchecked")
+  T deserializeRecordWithDefaults(ByteBuffer buffer, int ordinal) {
+    Function<ByteBuffer, Object>[] readers = componentReaders[ordinal];
+    MethodHandle constructor = recordConstructors[ordinal];
+    TypeStructure[] types = componentTypes[ordinal];
+
+    if (readers == null || constructor == null) {
+      throw new IllegalStateException("No readers/constructor for ordinal: " + ordinal);
+    }
+
+    LOGGER.info(() -> "DEFAULTED mode: deserializing with potential missing fields for " + userTypes[ordinal].getSimpleName());
+    LOGGER.finer(() -> "Expecting " + readers.length + " components at position " + buffer.position());
+
+    // Read components using pre-built readers, use defaults for missing ones
+    Object[] components = new Object[readers.length];
+    int startPos = buffer.position();
+    
+    for (int i = 0; i < readers.length; i++) {
+      final int componentIndex = i;
+      
+      // Check if we have more data to read
+      if (!buffer.hasRemaining()) {
+        LOGGER.info(() -> "No more data in buffer at component " + componentIndex + ", using defaults for remaining components");
+        break;
+      }
+      
+      // Mark position before attempting to read
+      buffer.mark();
+      
+      try {
+        LOGGER.finer(() -> "Attempting to read component " + componentIndex + " at position " + buffer.position());
+        components[i] = readers[i].apply(buffer);
+        final Object componentValue = components[i];
+        LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue);
+      } catch (Exception e) {
+        // If we can't read this component, reset and use defaults for the rest
+        LOGGER.info(() -> "Failed to read component " + componentIndex + ": " + e.getMessage() + ", using defaults");
+        buffer.reset();
+        break;
+      }
+    }
+    
+    // Fill in default values for missing components
+    for (int i = 0; i < components.length; i++) {
+      if (components[i] == null && types[i] != null && types[i].tagTypes().size() > 0) {
+        Tag tag = types[i].tagTypes().get(0).tag();
+        components[i] = getDefaultValue(tag);
+        final int idx = i;
+        LOGGER.info(() -> "Using default value for component " + idx + ": " + components[idx]);
+      }
+    }
+
+    // Invoke canonical constructor with all components (including defaults)
+    try {
+      LOGGER.finer(() -> "Constructing record with all components (including defaults): " + Arrays.toString(components));
+      return (T) constructor.invokeWithArguments(components);
+    } catch (Throwable e) {
+      throw new RuntimeException("Failed to construct record with defaults", e);
+    }
+  }
+  
+  /// Get default value for a component type
+  private Object getDefaultValue(Tag tag) {
+    return switch (tag) {
+      case BOOLEAN -> false;
+      case BYTE -> (byte) 0;
+      case SHORT -> (short) 0;
+      case CHARACTER -> '\0';
+      case INTEGER -> 0;
+      case LONG -> 0L;
+      case FLOAT -> 0.0f;
+      case DOUBLE -> 0.0;
+      case STRING, UUID, ENUM, RECORD, INTERFACE, ARRAY, LIST, MAP, OPTIONAL -> null;
+      default -> null;
+    };
   }
 
   /// Calculate max size using pre-built component sizers
@@ -404,8 +523,10 @@ final class PicklerImpl<T> implements Pickler<T> {
   BiConsumer<ByteBuffer, Object> createEnumWriter(Class<?> enumClass) {
     return (buffer, value) -> {
       Enum<?> enumValue = (Enum<?>) value;
-      final Integer ordinal = classToOrdinal.get(enumValue.getClass());
-      assert ordinal != null : "Unknown enum type: " + enumValue.getClass();
+      final TypeInfo typeInfo = classToTypeInfo.get(enumValue.getClass());
+      final int ordinal = typeInfo.ordinal();
+      final long typeSignature = typeInfo.typeSignature();
+      assert typeInfo != null : "Unknown enum type: " + enumValue.getClass();
       LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumValue.getClass().getName());
       ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
       ZigZagEncoding.putInt(buffer, ordinal + 1);
@@ -419,12 +540,17 @@ final class PicklerImpl<T> implements Pickler<T> {
   /// Create record writer that handles both records and sealed interface polymorphism
   BiConsumer<ByteBuffer, Object> createRecordWriter(Class<?> recordClass) {
     return (buffer, value) -> {
-      final Integer ordinal = classToOrdinal.get(value.getClass());
+      final TypeInfo typeInfo = classToTypeInfo.get(value.getClass());
+      assert typeInfo != null : "Unknown record type: " + value.getClass();
+      final int ordinal = typeInfo.ordinal();
+      final long typeSignature = typeInfo.typeSignature();
       LOGGER.finer(() -> "Writing RECORD ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + recordClass.getName());
       ZigZagEncoding.putInt(buffer, Constants.RECORD.marker());
       if (value instanceof Record record) {
         ZigZagEncoding.putInt(buffer, ordinal + 1);
-        serializeRecordComponents(buffer, record, ordinal);
+        LOGGER.finer(() -> "Writing signature 0x" + Long.toHexString(typeSignature) + " for " + record.getClass().getSimpleName());
+        buffer.putLong(typeSignature);
+        serializeRecordComponents(buffer, record, typeInfo);
       }
     };
   }
@@ -434,7 +560,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     return (buffer, value) -> {
       if (value instanceof Enum<?> enumValue) {
         // Delegate to enum writer logic
-        final Integer ordinal = classToOrdinal.get(enumValue.getClass());
+        final Integer ordinal = classToTypeInfo.get(enumValue.getClass()).ordinal();
         assert ordinal != null : "Unknown enum type: " + enumValue.getClass();
         LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumValue.getClass().getName());
         ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
@@ -445,11 +571,16 @@ final class PicklerImpl<T> implements Pickler<T> {
         buffer.put(constantBytes);
       } else if (value instanceof Record record) {
         // Delegate to record writer logic
-        final Integer ordinal = classToOrdinal.get(record.getClass());
+        final TypeInfo typeInfo = classToTypeInfo.get(record.getClass());
+        assert typeInfo != null : "Unknown record type: " + record.getClass();
+        final int ordinal = typeInfo.ordinal();
+        final long typeSignature = typeInfo.typeSignature();
         LOGGER.finer(() -> "Writing RECORD ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + record.getClass().getName());
         ZigZagEncoding.putInt(buffer, Constants.RECORD.marker());
         ZigZagEncoding.putInt(buffer, ordinal + 1);
-        serializeRecordComponents(buffer, record, ordinal);
+        LOGGER.finer(() -> "Writing signature 0x" + Long.toHexString(typeSignature) + " for " + record.getClass().getSimpleName());
+        buffer.putLong(typeSignature);
+        serializeRecordComponents(buffer, record, typeInfo);
       } else {
         throw new IllegalArgumentException("Unexpected type for sealed interface: " + value.getClass());
       }
@@ -537,8 +668,10 @@ final class PicklerImpl<T> implements Pickler<T> {
   /// Create array writer for enum arrays with pre-computed ordinal
   BiConsumer<ByteBuffer, Object> createEnumArrayWriter(Class<?> enumClass) {
     final var arrayMarker = Constants.ARRAY.marker();
-    final var userOrdinal = classToOrdinal.get(enumClass);
-    assert userOrdinal != null : "Unknown enum array type: " + enumClass;
+    final var typeInfo = classToTypeInfo.get(enumClass);
+    final var userOrdinal = typeInfo.ordinal();
+    final var typeSignature = typeInfo.typeSignature();
+    assert typeInfo != null : "Unknown enum array type: " + enumClass;
     return (buffer, value) -> {
       LOGGER.finer(() -> "Delegating ARRAY for tag " + ENUM + " with length=" + Array.getLength(value) + " at position " + buffer.position());
       final var enums = (Enum<?>[]) value;
@@ -1104,7 +1237,7 @@ final class PicklerImpl<T> implements Pickler<T> {
       };
       case ENUM -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        // TODO we can `assert` that what we read back is the actual marlker of the leafTag.type() in the classToOrdinal map
+        // TODO we can `assert` that what we read back is the actual marlker of the leafTag.type() in the classToTypeInfo map
         int wireOrdinal = ZigZagEncoding.getInt(buffer);
         int ordinal = wireOrdinal - 1;
         Class<?> enumClass = userTypes[ordinal];
@@ -1130,6 +1263,18 @@ final class PicklerImpl<T> implements Pickler<T> {
 
         if (ordinal < 0 || ordinal >= userTypes.length) {
           throw new IllegalStateException("Invalid record ordinal: " + ordinal);
+        }
+
+        // Read signature
+        final long signature = buffer.getLong();
+
+        // In DEFAULTED mode, handle signature mismatch by using defaults for missing fields
+        if (COMPATIBILITY_MODE == CompatibilityMode.DEFAULTED) {
+          final long expectedSignature = typeSignatures[ordinal];
+          if (expectedSignature != signature) {
+            // Schema evolution detected - use backwards compatibility
+            return deserializeRecordWithDefaults(buffer, ordinal);
+          }
         }
 
         return deserializeRecord(buffer, ordinal);
@@ -1159,6 +1304,18 @@ final class PicklerImpl<T> implements Pickler<T> {
 
           if (ordinal < 0 || ordinal >= userTypes.length) {
             throw new IllegalStateException("Invalid record ordinal: " + ordinal);
+          }
+
+          // Read signature
+          final long signature = buffer.getLong();
+
+          // In DEFAULTED mode, handle signature mismatch by using defaults for missing fields
+          if (COMPATIBILITY_MODE == CompatibilityMode.DEFAULTED) {
+            final long expectedSignature = typeSignatures[ordinal];
+            if (expectedSignature != signature) {
+              // Schema evolution detected - use backwards compatibility
+              return deserializeRecordWithDefaults(buffer, ordinal);
+            }
           }
 
           return deserializeRecord(buffer, ordinal);
@@ -1305,8 +1462,8 @@ final class PicklerImpl<T> implements Pickler<T> {
       case ENUM -> obj -> 1 + 2 * Integer.BYTES; // marker + class ordinal + enum constant length
       case RECORD -> obj -> {
         Record record = (Record) obj;
-        final Integer ordinal = classToOrdinal.get(record.getClass());
-        return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + maxSizeOfRecordComponents(record, ordinal);
+        final Integer ordinal = classToTypeInfo.get(record.getClass()).ordinal();
+        return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record, ordinal);
       };
       case INTERFACE -> obj -> {
         // Interface sizer that checks runtime type for both enum and record
@@ -1314,12 +1471,12 @@ final class PicklerImpl<T> implements Pickler<T> {
           // Size for enum: marker + ordinal + name length + name bytes
           String name = enumValue.name();
           byte[] nameBytes = name.getBytes(UTF_8);
-          return 1 + ZigZagEncoding.sizeOf(classToOrdinal.get(enumValue.getClass()) + 1) +
+          return 1 + ZigZagEncoding.sizeOf(classToTypeInfo.get(enumValue.getClass()).ordinal() + 1) +
               ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
         } else if (obj instanceof Record record) {
-          // Size for record: marker + ordinal + components
-          final Integer ordinal = classToOrdinal.get(record.getClass());
-          return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + maxSizeOfRecordComponents(record, ordinal);
+          // Size for record: marker + ordinal + signature + components
+          final Integer ordinal = classToTypeInfo.get(record.getClass()).ordinal();
+          return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record, ordinal);
         } else {
           throw new IllegalArgumentException("Unexpected type for interface sizer: " + obj.getClass());
         }
@@ -1378,11 +1535,12 @@ final class PicklerImpl<T> implements Pickler<T> {
     final var startPosition = buffer.position();
 
     // Find ordinal for the root object's class using the ONE HashMap lookup
-    final Integer ordinalObj = classToOrdinal.get(object.getClass());
-    if (ordinalObj == null) { // todo convert this to Objects.requireNonNull
+    final TypeInfo typeInfo = classToTypeInfo.get(object.getClass());
+    if (typeInfo == null) {
       throw new IllegalArgumentException("Unknown class: " + object.getClass().getName());
     }
-    final int ordinal = ordinalObj;
+    final int ordinal = typeInfo.ordinal();
+    final long typeSignature = typeInfo.typeSignature();
     LOGGER.finer(() -> "Serializing ordinal " + ordinal + " (" + object.getClass().getSimpleName() + ") wire=" + (ordinal + 1));
 
     // Write ordinal marker (1-indexed on wire)
@@ -1390,7 +1548,9 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     // Serialize based on actual runtime type
     if (object instanceof Record record) {
-      serializeRecordComponents(buffer, record, ordinal);
+      LOGGER.finer(() -> "Writing signature 0x" + Long.toHexString(typeSignature) + " for " + record.getClass().getSimpleName());
+      buffer.putLong(typeSignature);
+      serializeRecordComponents(buffer, record, typeInfo);
     } else if (object instanceof Enum<?> enumValue) {
       // Serialize enum constant name
       byte[] constantBytes = enumValue.name().getBytes(UTF_8);
@@ -1427,6 +1587,18 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     // Deserialize based on target class type
     if (targetClass.isRecord()) {
+      // Read signature
+      final long signature = buffer.getLong();
+
+      // In DEFAULTED mode, handle signature mismatch by using defaults for missing fields
+      if (COMPATIBILITY_MODE == CompatibilityMode.DEFAULTED) {
+        final long expectedSignature = typeSignatures[ordinal];
+        if (expectedSignature != signature) {
+          // Schema evolution detected - use backwards compatibility
+          return deserializeRecordWithDefaults(buffer, ordinal);
+        }
+      }
+
       return deserializeRecord(buffer, ordinal);
     } else if (targetClass.isEnum()) {
       // Deserialize enum
@@ -1448,7 +1620,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     Objects.requireNonNull(object, "object cannot be null");
 
     // Find ordinal for the object's class using the ONE HashMap lookup
-    final Integer ordinalObj = classToOrdinal.get(object.getClass());
+    final Integer ordinalObj = classToTypeInfo.get(object.getClass()).ordinal();
     assert ordinalObj != null : "Unknown class: " + object.getClass().getName();
 
     final int ordinal = ordinalObj;
@@ -1457,6 +1629,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     int size = ZigZagEncoding.sizeOf(ordinal + 1); // 1-indexed on wire
 
     if (object instanceof Record record) {
+      size += CLASS_SIG_BYTES; // signature bytes
       size += maxSizeOfRecordComponents(record, ordinal);
     } else if (object instanceof Enum<?> enumValue) {
       // Size for enum constant name

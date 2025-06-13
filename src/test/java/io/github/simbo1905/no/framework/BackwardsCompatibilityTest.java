@@ -32,16 +32,12 @@ public class BackwardsCompatibilityTest {
         }
         """;
 
-    // Evolved schema with two additional fields and backward compatibility constructor
+    // Evolved schema with two additional fields
     static final String GENERATION_2 = """
         package io.github.simbo1905.no.framework.evolution;
         
-        /// An evolved record with additional fields and backward compatibility.
+        /// An evolved record with additional fields.
         public record SimpleRecord(int value, String name, double score) {
-            /// Backward compatibility constructor for original schema.
-            public SimpleRecord(int value) {
-                this(value, "default", 0.0);
-            }
         }
         """;
 
@@ -55,7 +51,7 @@ public class BackwardsCompatibilityTest {
     @Test
     void testBackwardsCompatibilityWithSystemProperty() throws Exception {
         // Set the backwards compatibility system property
-        System.setProperty("no.framework.Pickler.Compatibility", "BACKWARDS");
+        System.setProperty("no.framework.Pickler.Compatibility", "DEFAULTED");
         try {
             // Compile and load the original schema
             Class<?> originalClass = compileAndClassLoad(FULL_CLASS_NAME, GENERATION_1);
@@ -75,11 +71,11 @@ public class BackwardsCompatibilityTest {
             Object evolvedInstance = deserializeRecord(evolvedClass, serializedData);
 
             // Verify the deserialized instance has the expected values
-            verifyRecordComponents(evolvedInstance, Map.of(
-                "value", 42,
-                "name", "default",  // Should use default from compatibility constructor
-                "score", 0.0        // Should use default from compatibility constructor
-            ));
+            Map<String, Object> expectedValues = new HashMap<>();
+            expectedValues.put("value", 42);
+            expectedValues.put("name", null);   // Should use null default for missing String
+            expectedValues.put("score", 0.0);   // Should use 0.0 default for missing double
+            verifyRecordComponents(evolvedInstance, expectedValues);
         } finally {
             System.clearProperty("no.framework.Pickler.Compatibility");
         }

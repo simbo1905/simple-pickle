@@ -357,12 +357,13 @@ Set the system property `no.framework.Pickler.Compatibility`:
 -Dno.framework.Pickler.Compatibility=DISABLED|DEFAULTED
 ```
 
-- **`DISABLED`** (default): Strict mode. Any schema mismatch fails fast with `InvalidClassException`.
-- **`DEFAULTED`**: Emulates JDK behavior for missing fields at the end of the record definition:
-  - Primitives get default values (`0`, `false`, `0.0`, etc.)
-  - References get `null` (including arrays of primitives)
-  - Only supports adding fields to the end of records  `record Demo(int i, byte b) =/= record Demo(int i, short s, int i)`
-  - Can lead to silent data corruption if you recorder components `record Point(int x, int y) =/= record Point(int y, int x)`
+- **`DISABLED`** (default): Strict mode. Signatures are always written but never checked. Schema evolution works by position.
+- **`DEFAULTED`**: Backwards compatibility mode. Signatures are checked and mismatches throw `InvalidClassException`:
+  - **NOT IMPLEMENTED**: Missing field defaulting
+  - **NOT IMPLEMENTED**: Component name serialization
+  - Currently just throws on signature mismatch like JDK serialization
+  - To be implemented: Primitives get default values (`0`, `false`, `0.0`, etc.)
+  - To be implemented: References get `null` (including arrays of primitives)
 
 ### Safe Evolution Rules
 
@@ -379,31 +380,28 @@ More sophisticated picklers like Protocol Buffers, Apache Avro, and others use e
 
 **Original Record (V1):**
 ```java
-package com.example.protocol;
+package io.github.simbo1905.no.framework.evolution;
 
-public record UserInfo(String name, int accessLevel) {
+public record SimpleRecord(int value) {
 }
 ```
 
 **Evolved Record (V2) - Safe Evolution:**
 ```java
-package com.example.protocol;
+package io.github.simbo1905.no.framework.evolution;
 
 // Only works with: -Dno.framework.Pickler.Compatibility=DEFAULTED
-public record UserInfo(String name, int accessLevel, String department) {
-    // With DEFAULTED mode, new fields get Java defaults (null for references)
-    public UserInfo(String name, int accessLevel, String department) {
-         // As per JDK serialization you use the canonical constructor to convert the implicit default to your logcal default
-        this.name = name;
-        this.accessLevel = accessLevel;
-        this.department = department == null ? "Unknown" : department;
+public record SimpleRecord(int value, String name, double score) {
+    // Backward compatibility constructor for original schema
+    public SimpleRecord(int value) {
+        this(value, "default", 0.0);
     }
 }
 ```
 
 When deserializing V1 data with V2 code in `DEFAULTED` mode:
-- `name` and `accessLevel` retain their serialized values
-- `department` is set to `null` automatically
+- `value` retains its serialized value (42)
+- `name` and `score` use the compatibility constructor's defaults ("default" and 0.0)
 
 **Dangerous Evolution - Never Do This:**
 ```java
