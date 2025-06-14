@@ -1,4 +1,6 @@
-// TODO delete me when finished with adding similar support and having documented everything
+// Learning tests documenting how JDK serialization handles backwards compatibility
+// These tests demonstrate the differences between JDK's name-based approach and 
+// No Framework Pickler's position-based approach
 package io.github.simbo1905.no.framework;
 
 import org.junit.jupiter.api.Test;

@@ -357,13 +357,11 @@ Set the system property `no.framework.Pickler.Compatibility`:
 -Dno.framework.Pickler.Compatibility=DISABLED|DEFAULTED
 ```
 
-- **`DISABLED`** (default): Strict mode. Signatures are always written but never checked. Schema evolution works by position.
-- **`DEFAULTED`**: Backwards compatibility mode. Signatures are checked and mismatches throw `InvalidClassException`:
-  - **NOT IMPLEMENTED**: Missing field defaulting
-  - **NOT IMPLEMENTED**: Component name serialization
-  - Currently just throws on signature mismatch like JDK serialization
-  - To be implemented: Primitives get default values (`0`, `false`, `0.0`, etc.)
-  - To be implemented: References get `null` (including arrays of primitives)
+- **`DISABLED`** (default): Strict mode. Signatures are always written but never checked. Any signature mismatch is ignored.
+- **`DEFAULTED`**: Backwards compatibility mode. Signatures are checked and mismatches are handled gracefully:
+  - Missing fields get default values: primitives get `0`, `false`, `0.0`, etc.
+  - Reference types (including arrays) get `null`
+  - **NOT IMPLEMENTED**: Component name serialization (not needed for position-based compatibility)
 
 ### Safe Evolution Rules
 

@@ -58,6 +58,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   public static final String SHA_256 = "SHA-256";
 
   static final int CLASS_SIG_BYTES = Long.BYTES;
+  static final int MAP_TYPE_ARG_COUNT = 2;
 
   static final CompatibilityMode COMPATIBILITY_MODE =
       CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
@@ -167,6 +168,30 @@ final class PicklerImpl<T> implements Pickler<T> {
       //      Byte Index:   0       1       2        3        4        5        6        7
       //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
       //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
+      return IntStream.range(0, CLASS_SIG_BYTES)
+          .mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8))
+          .reduce(0L, (a, b) -> a | b);
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(SHA_256 + " not available", e);
+    }
+  }
+  
+  /// Compute a CLASS_SIG_BYTES signature from enum class and constant names
+  static long hashEnumSignature(Class<?> enumClass) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance(SHA_256);
+      
+      Object[] enumConstants = enumClass.getEnumConstants();
+      assert enumConstants != null : "Not an enum class: " + enumClass;
+      
+      String input = Stream.concat(
+          Stream.of(enumClass.getSimpleName()),
+          Arrays.stream(enumConstants)
+              .map(e -> ((Enum<?>) e).name())
+      ).collect(Collectors.joining("!"));
+
+      byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+
       return IntStream.range(0, CLASS_SIG_BYTES)
           .mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8))
           .reduce(0L, (a, b) -> a | b);
@@ -519,7 +544,6 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Create enum writer with runtime ordinal lookup
-  // FIXME TODO this should be writing out the enum original not the name - is this code actually reachable? 
   BiConsumer<ByteBuffer, Object> createEnumWriter(Class<?> enumClass) {
     return (buffer, value) -> {
       Enum<?> enumValue = (Enum<?>) value;
@@ -527,19 +551,20 @@ final class PicklerImpl<T> implements Pickler<T> {
       final int ordinal = typeInfo.ordinal();
       final long typeSignature = typeInfo.typeSignature();
       assert typeInfo != null : "Unknown enum type: " + enumValue.getClass();
-      LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumValue.getClass().getName());
+      LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumValue.getClass().getName() + " constant ordinal=" + enumValue.ordinal());
       ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
       ZigZagEncoding.putInt(buffer, ordinal + 1);
-      String constantName = enumValue.name();
-      byte[] constantBytes = constantName.getBytes(UTF_8);
-      ZigZagEncoding.putInt(buffer, constantBytes.length);
-      buffer.put(constantBytes);
+      // Write signature for enum class
+      buffer.putLong(typeSignature);
+      // Write enum constant ordinal (not name) for better compression
+      ZigZagEncoding.putInt(buffer, enumValue.ordinal());
     };
   }
 
   /// Create record writer that handles both records and sealed interface polymorphism
   BiConsumer<ByteBuffer, Object> createRecordWriter(Class<?> recordClass) {
     return (buffer, value) -> {
+      // we cannot hoist this out as we may have a sealed interface that permits both records and enums
       final TypeInfo typeInfo = classToTypeInfo.get(value.getClass());
       assert typeInfo != null : "Unknown record type: " + value.getClass();
       final int ordinal = typeInfo.ordinal();
@@ -560,15 +585,15 @@ final class PicklerImpl<T> implements Pickler<T> {
     return (buffer, value) -> {
       if (value instanceof Enum<?> enumValue) {
         // Delegate to enum writer logic
-        final Integer ordinal = classToTypeInfo.get(enumValue.getClass()).ordinal();
-        assert ordinal != null : "Unknown enum type: " + enumValue.getClass();
+        final TypeInfo typeInfo = classToTypeInfo.get(enumValue.getClass());
+        assert typeInfo != null : "Unknown enum type: " + enumValue.getClass();
+        final int ordinal = typeInfo.ordinal();
+        final long typeSignature = typeInfo.typeSignature();
         LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumValue.getClass().getName());
         ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
         ZigZagEncoding.putInt(buffer, ordinal + 1);
-        String constantName = enumValue.name();
-        byte[] constantBytes = constantName.getBytes(UTF_8);
-        ZigZagEncoding.putInt(buffer, constantBytes.length);
-        buffer.put(constantBytes);
+        buffer.putLong(typeSignature);
+        ZigZagEncoding.putInt(buffer, enumValue.ordinal());
       } else if (value instanceof Record record) {
         // Delegate to record writer logic
         final TypeInfo typeInfo = classToTypeInfo.get(record.getClass());
@@ -666,6 +691,8 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Create array writer for enum arrays with pre-computed ordinal
+  // FIXME TODO we should compute the long signature of the enum class at construction time so that reordering of names so such that we need to name needs to be prevented.
+  // FIXME TODO this should be writing out the enum original not the name - is this code actually reachable?
   BiConsumer<ByteBuffer, Object> createEnumArrayWriter(Class<?> enumClass) {
     final var arrayMarker = Constants.ARRAY.marker();
     final var typeInfo = classToTypeInfo.get(enumClass);
@@ -1237,19 +1264,23 @@ final class PicklerImpl<T> implements Pickler<T> {
       };
       case ENUM -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        // TODO we can `assert` that what we read back is the actual marlker of the leafTag.type() in the classToTypeInfo map
+        assert marker == Constants.ENUM.marker() : "Expected ENUM marker but got: " + marker;
         int wireOrdinal = ZigZagEncoding.getInt(buffer);
         int ordinal = wireOrdinal - 1;
         Class<?> enumClass = userTypes[ordinal];
+        assert enumClass.equals(leafTag.type()) : "Expected enum type " + leafTag.type() + " but got " + enumClass;
 
-        int constantLength = ZigZagEncoding.getInt(buffer);
-        byte[] constantBytes = new byte[constantLength];
-        buffer.get(constantBytes);
-        String constantName = new String(constantBytes, UTF_8);
-
-        @SuppressWarnings({"unchecked", "rawtypes"})
-        Enum<?> value = Enum.valueOf((Class<? extends Enum>) enumClass, constantName);
-        return value;
+        // Read signature
+        long signature = buffer.getLong();
+        
+        // Read enum constant ordinal
+        int enumOrdinal = ZigZagEncoding.getInt(buffer);
+        
+        Object[] enumConstants = enumClass.getEnumConstants();
+        assert enumConstants != null : "Not an enum class: " + enumClass;
+        assert enumOrdinal >= 0 && enumOrdinal < enumConstants.length : "Invalid enum ordinal: " + enumOrdinal;
+        
+        return enumConstants[enumOrdinal];
       };
       case RECORD -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
@@ -1289,14 +1320,17 @@ final class PicklerImpl<T> implements Pickler<T> {
           int ordinal = wireOrdinal - 1;
           Class<?> enumClass = userTypes[ordinal];
 
-          int constantLength = ZigZagEncoding.getInt(buffer);
-          byte[] constantBytes = new byte[constantLength];
-          buffer.get(constantBytes);
-          String constantName = new String(constantBytes, UTF_8);
-
-          @SuppressWarnings({"unchecked", "rawtypes"})
-          Enum<?> value = Enum.valueOf((Class<? extends Enum>) enumClass, constantName);
-          return value;
+          // Read signature
+          long signature = buffer.getLong();
+          
+          // Read enum constant ordinal
+          int enumOrdinal = ZigZagEncoding.getInt(buffer);
+          
+          Object[] enumConstants = enumClass.getEnumConstants();
+          assert enumConstants != null : "Not an enum class: " + enumClass;
+          assert enumOrdinal >= 0 && enumOrdinal < enumConstants.length : "Invalid enum ordinal: " + enumOrdinal;
+          
+          return enumConstants[enumOrdinal];
         } else if (marker == Constants.RECORD.marker()) {
           // This is a record implementing the sealed interface
           int wireOrdinal = ZigZagEncoding.getInt(buffer);
@@ -1602,14 +1636,17 @@ final class PicklerImpl<T> implements Pickler<T> {
       return deserializeRecord(buffer, ordinal);
     } else if (targetClass.isEnum()) {
       // Deserialize enum
-      int constantLength = ZigZagEncoding.getInt(buffer);
-      byte[] constantBytes = new byte[constantLength];
-      buffer.get(constantBytes);
-      String constantName = new String(constantBytes, UTF_8);
-
-      @SuppressWarnings({"unchecked", "rawtypes"})
-      Enum<?> value = Enum.valueOf((Class<? extends Enum>) targetClass, constantName);
-      return (T) value;
+      // Read signature
+      long signature = buffer.getLong();
+      
+      // Read enum constant ordinal
+      int enumOrdinal = ZigZagEncoding.getInt(buffer);
+      
+      Object[] enumConstants = targetClass.getEnumConstants();
+      assert enumConstants != null : "Not an enum class: " + targetClass;
+      assert enumOrdinal >= 0 && enumOrdinal < enumConstants.length : "Invalid enum ordinal: " + enumOrdinal;
+      
+      return (T) enumConstants[enumOrdinal];
     } else {
       throw new IllegalArgumentException("Expected Record or Enum class but got: " + targetClass.getName());
     }
@@ -1681,6 +1718,8 @@ record TagWithType(Tag tag, Class<?> type) {
 
 /// TypeStructure record for analyzing generic types
 record TypeStructure(List<TagWithType> tagTypes) {
+  
+  static final int MAP_TYPE_ARG_COUNT = 2;
 
   TypeStructure(List<Tag> tags, List<Class<?>> types) {
     this(IntStream.range(0, Math.min(tags.size(), types.size()))
@@ -1713,11 +1752,11 @@ record TypeStructure(List<TagWithType> tagTypes) {
             tags.add(MAP);
             types.add(Map.class); // Container class for symmetry
             Type[] typeArgs = paramType.getActualTypeArguments();
-            if (typeArgs.length == 2) { // TODO i do not like this magic number
+            if (typeArgs.length == MAP_TYPE_ARG_COUNT) {
               // For Map<K,V>, we need to analyze both key and value types
               // Store Map marker, then key structure, then value structure
-              TypeStructure keyStructure = analyze(typeArgs[0]); // TODO i do not like this magic number
-              TypeStructure valueStructure = analyze(typeArgs[1]);// TODO i do not like this magic number 
+              TypeStructure keyStructure = analyze(typeArgs[0]);
+              TypeStructure valueStructure = analyze(typeArgs[1]); 
 
               // Combine: [MAP, ...key tags, ...value tags]
               for (TagWithType tt : keyStructure.tagTypes()) {

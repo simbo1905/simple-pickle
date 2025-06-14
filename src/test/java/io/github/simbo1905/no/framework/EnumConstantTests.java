@@ -31,17 +31,10 @@ class EnumConstantTests {
 
     @Test
     void testEnumConstantSerialization() {
-        // FIXME: This test will fail due to enum serialization bug
-        // Error: Cannot invoke "String.getBytes(java.nio.charset.Charset)" because "internedName" is null
-        // at io.github.simbo1905.no.framework.Writers.writeCompressedClassName
-
-      // Skip this test analysis - using unified architecture now
-
        final var pickler2 = Pickler.forClass(DataCommand.class);
 
         final var pickler = Pickler.forClass(Command.class);
         
-        // This should work but currently fails
         assertDoesNotThrow(() -> {
             final var buffer = ByteBuffer.allocate(1024);
             pickler.serialize(buffer, NoOperation.NOOP);
@@ -50,8 +43,6 @@ class EnumConstantTests {
 
     @Test  
     void testEnumInRecordSerialization() {
-        // FIXME: This test may also fail due to enum handling
-        
         final var pickler = Pickler.forClass(NoOperation.class);
         final var operation = new NoOperation(Operation.READ);
         
