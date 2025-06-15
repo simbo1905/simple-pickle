@@ -3,10 +3,6 @@
 
 package io.github.simbo1905.no.framework;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-
 /// Enum containing constants used throughout the Pickler implementation
 enum Constants {
   NULL(0, null),

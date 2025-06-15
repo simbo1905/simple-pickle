@@ -1,0 +1,29 @@
+package io.github.simbo1905.no.framework;
+
+/// Compatibility mode. Set via system property `no.framework.Pickler.Compatibility`. The default is DISABLED.
+/// **Record Types** If set to DISABLED (our default) the pickler will during deserialization of `records`:
+/// - verify 8-bytes of a sha256 hash of class simple nane as well as components full generic types and name.
+/// - verify the length of the `record` class matches the number of components. // TODO this is unnecessary due to the hash check.
+/// If set to DEFAULTED (the opt-in), the pickler will:
+/// - defaults missing component fields to null for reference types and default values for primitives (e.g., 0 for int).
+/// - bypass the hash check
+/// This allows for renaming of fields but not reordering.
+///
+/// **Enum Types** If set to DISABLED (our default) the pickler will during deserialization of `enums`:
+/// - verify 8-bytes of a sha256 hash of class simple name as well as enum constant names
+/// If set to DEFAULTED (the opt-in), the pickler will:
+/// - bypass the hash check
+///
+/// In contrast, JDK deserialization using ObjectInputStream:
+///  - defaults missing component fields in the wire. Reference types are null, primitives use default values (e.g., 0 for int).
+///  - writes out the class name, component names, and types onto the wire.
+/// This allows for reordering of fields but not renaming.
+enum CompatibilityMode {
+  /// Strict mode: Disallows any schema changes. Verifies hashes, types, and length.
+  /// Throws exceptions for any mismatches or unexpected fields.
+  DISABLED,
+
+  /// Lenient mode: Allows missing fields (uses defaults) but does not permit field reordering.
+  /// More permissive than DISABLED but differs from JDK behavior by disallowing reordering.
+  DEFAULTED
+}

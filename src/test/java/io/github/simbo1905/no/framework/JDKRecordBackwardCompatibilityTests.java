@@ -6,6 +6,7 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.Test;
 
 import java.io.*;
+import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
 import java.util.logging.Logger;
 
@@ -14,9 +15,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /// Learning test to understand JDK's built-in serialization backwards compatibility rules
 /// for records. This will help us implement similar behavior in No Framework Pickler.
-public class JDKRecordBackwardCompatiblityTests {
+public class JDKRecordBackwardCompatibilityTests {
 
-    static final Logger LOGGER = Logger.getLogger(JDKRecordBackwardCompatiblityTests.class.getName());
+    static final Logger LOGGER = Logger.getLogger(JDKRecordBackwardCompatibilityTests.class.getName());
+
 
     // Original record with one field
     static final String JDK_V1_RECORD = """
@@ -467,6 +469,247 @@ public class JDKRecordBackwardCompatiblityTests {
         }) {
             return ois.readObject();
         }
+    }
+
+    // ========== ENUM LEARNING TESTS ==========
+
+    @Test
+    void testJDKEnumSerializationBasics() throws Exception {
+        // V1: Basic enum
+        String v1Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Status implements Serializable {
+                ACTIVE, INACTIVE, PENDING
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Status", v1Enum);
+        Object activeStatus = v1Class.getEnumConstants()[0]; // ACTIVE
+        
+        byte[] data = serializeWithJDK(activeStatus);
+        LOGGER.info("Enum ACTIVE serialized to " + data.length + " bytes");
+        
+        Object deserialized = deserializeWithJDK(data, v1Class);
+        LOGGER.info("Deserialized enum: " + deserialized);
+        assertEquals("ACTIVE", deserialized.toString());
+    }
+
+    @Test
+    void testJDKEnumReordering() throws Exception {
+        // V1: Original order
+        String v1Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Priority implements Serializable {
+                LOW, MEDIUM, HIGH
+            }
+            """;
+        
+        // V2: Reordered
+        String v2Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Priority implements Serializable {
+                HIGH, MEDIUM, LOW  // Reordered!
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Priority", v1Enum);
+        Object mediumV1 = v1Class.getEnumConstants()[1]; // MEDIUM (ordinal 1 in V1)
+        
+        byte[] data = serializeWithJDK(mediumV1);
+        
+        Class<?> v2Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Priority", v2Enum);
+        Object deserializedV2 = deserializeWithJDK(data, v2Class);
+        
+        LOGGER.info("V1 MEDIUM (ordinal 1) deserialized to V2: " + deserializedV2 + 
+                   " with ordinal: " + ((Enum<?>)deserializedV2).ordinal());
+        
+        // JDK serialization uses names, so MEDIUM remains MEDIUM even though ordinal changed
+        assertEquals("MEDIUM", deserializedV2.toString());
+        assertEquals(1, ((Enum<?>)mediumV1).ordinal()); // V1 MEDIUM ordinal
+        assertEquals(1, ((Enum<?>)deserializedV2).ordinal()); // V2 MEDIUM ordinal (still 1)
+    }
+
+    @Test
+    void testJDKEnumRenaming() throws Exception {
+        // V1: Original names
+        String v1Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum State implements Serializable {
+                STARTED, STOPPED, PAUSED
+            }
+            """;
+        
+        // V2: Renamed constant
+        String v2Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum State implements Serializable {
+                RUNNING, STOPPED, PAUSED  // STARTED renamed to RUNNING
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.State", v1Enum);
+        Object startedV1 = v1Class.getEnumConstants()[0]; // STARTED
+        
+        byte[] data = serializeWithJDK(startedV1);
+        
+        Class<?> v2Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.State", v2Enum);
+        
+        try {
+            Object deserializedV2 = deserializeWithJDK(data, v2Class);
+            LOGGER.info("Unexpectedly succeeded deserializing renamed enum: " + deserializedV2);
+            fail("Should have failed with renamed enum constant");
+        } catch (Exception e) {
+            LOGGER.info("Failed as expected with renamed enum: " + e.getClass().getName() + " - " + e.getMessage());
+            // Expected: java.lang.IllegalArgumentException: No enum constant State.STARTED
+        }
+    }
+
+    @Test
+    void testJDKEnumAddingConstants() throws Exception {
+        // V1: Three constants
+        String v1Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Level implements Serializable {
+                INFO, WARN, ERROR
+            }
+            """;
+        
+        // V2: Added DEBUG at beginning
+        String v2Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Level implements Serializable {
+                DEBUG, INFO, WARN, ERROR  // Added DEBUG
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Level", v1Enum);
+        Object warnV1 = v1Class.getEnumConstants()[1]; // WARN (ordinal 1 in V1)
+        
+        byte[] data = serializeWithJDK(warnV1);
+        
+        Class<?> v2Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Level", v2Enum);
+        Object deserializedV2 = deserializeWithJDK(data, v2Class);
+        
+        LOGGER.info("V1 WARN deserialized to V2: " + deserializedV2 + 
+                   " with ordinal: " + ((Enum<?>)deserializedV2).ordinal());
+        
+        // JDK uses names, so WARN is still WARN but ordinal changed from 1 to 2
+        assertEquals("WARN", deserializedV2.toString());
+        assertEquals(1, ((Enum<?>)warnV1).ordinal()); // V1 WARN ordinal
+        assertEquals(2, ((Enum<?>)deserializedV2).ordinal()); // V2 WARN ordinal (shifted by DEBUG)
+    }
+
+    @Test
+    void testJDKEnumRemovingConstants() throws Exception {
+        // V1: Four constants
+        String v1Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Mode implements Serializable {
+                READ, WRITE, APPEND, DELETE
+            }
+            """;
+        
+        // V2: Removed APPEND
+        String v2Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Mode implements Serializable {
+                READ, WRITE, DELETE  // Removed APPEND
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Mode", v1Enum);
+        Object appendV1 = v1Class.getEnumConstants()[2]; // APPEND
+        
+        byte[] data = serializeWithJDK(appendV1);
+        
+        Class<?> v2Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Mode", v2Enum);
+        
+        try {
+            Object deserializedV2 = deserializeWithJDK(data, v2Class);
+            LOGGER.info("Unexpectedly succeeded deserializing removed enum: " + deserializedV2);
+            fail("Should have failed with removed enum constant");
+        } catch (Exception e) {
+            LOGGER.info("Failed as expected with removed enum: " + e.getClass().getName() + " - " + e.getMessage());
+            // Expected: java.lang.IllegalArgumentException: No enum constant Mode.APPEND
+        }
+    }
+
+    @Test
+    void testJDKEnumInRecord() throws Exception {
+        // Test enum reordering with records - simpler test case
+        // V1: enum with original order
+        String v1Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Color implements Serializable {
+                RED, GREEN, BLUE
+            }
+            """;
+        
+        // V2: enum with reordered constants
+        String v2Enum = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Color implements Serializable {
+                BLUE, RED, GREEN  // Reordered
+            }
+            """;
+        
+        Class<?> v1Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Color", v1Enum);
+        Object greenV1 = v1Class.getEnumConstants()[1]; // GREEN (ordinal 1 in V1)
+        
+        byte[] data = serializeWithJDK(greenV1);
+        
+        Class<?> v2Class = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Color", v2Enum);
+        Object greenV2 = deserializeWithJDK(data, v2Class);
+        
+        LOGGER.info("V1 GREEN (ordinal 1) deserialized to V2: " + greenV2 + 
+                   " with ordinal: " + ((Enum<?>)greenV2).ordinal());
+        
+        // JDK preserves enum by name, so GREEN is still GREEN but ordinal changed
+        assertEquals("GREEN", greenV2.toString());
+        assertEquals(1, ((Enum<?>)greenV1).ordinal()); // V1 GREEN ordinal
+        assertEquals(2, ((Enum<?>)greenV2).ordinal()); // V2 GREEN ordinal (now at position 2)
+    }
+
+    @Test
+    void testJDKEnumArraySerialization() throws Exception {
+        // Test how JDK serializes enum arrays
+        String enumDef = """
+            package io.github.simbo1905.no.framework.jdktest;
+            import java.io.Serializable;
+            public enum Color implements Serializable {
+                RED, GREEN, BLUE
+            }
+            """;
+        
+        Class<?> colorClass = compileAndClassLoad("io.github.simbo1905.no.framework.jdktest.Color", enumDef);
+        Object[] colors = colorClass.getEnumConstants();
+        
+        // Single enum
+        byte[] singleData = serializeWithJDK(colors[1]); // GREEN
+        LOGGER.info("Single enum GREEN serialized to " + singleData.length + " bytes");
+        
+        // Array of enums
+        Object colorArray = Array.newInstance(colorClass, 3);
+        Array.set(colorArray, 0, colors[0]); // RED
+        Array.set(colorArray, 1, colors[1]); // GREEN
+        Array.set(colorArray, 2, colors[2]); // BLUE
+        
+        byte[] arrayData = serializeWithJDK(colorArray);
+        LOGGER.info("Enum array [RED, GREEN, BLUE] serialized to " + arrayData.length + " bytes");
+        
+        // JDK writes enum names for both single and array cases
+        LOGGER.info("JDK enum serialization uses names, not ordinals");
     }
 
 }

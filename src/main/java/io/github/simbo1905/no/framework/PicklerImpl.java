@@ -3,7 +3,6 @@
 
 package io.github.simbo1905.no.framework;
 
-import java.io.InvalidClassException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.*;
@@ -31,37 +30,15 @@ final class PicklerImpl<T> implements Pickler<T> {
   record TypeInfo(int ordinal, long typeSignature) {
   }
 
-  /// Compatibility mode. Set via system property `no.framework.Pickler.Compatibility`. The default is DISABLED.
-  /// If set to DISABLED (our default) the pickler will:
-  /// - verify hashes, types, and length during deserialization.
-  /// - throws InvalidClassException for any mismatches, absent or unexpected fields.
-  /// If set to DEFAULTED, the pickler will:
-  /// - defaults missing fields to null for reference types and default values for primitives (e.g., 0 for int).
-  /// - writes out the class name, component names, and types onto the wire.
-  /// This allows for renaming of fields but not reordering.
-  ///
-  /// In contrast, JDK deserialization using ObjectInputStream:
-  ///  - defaults missing component fields in the wire. Reference types are null, primitives use default values (e.g., 0 for int).
-  ///  - writes out the class name, component names, and types onto the wire.
-  /// This allows for reordering of fields but not renaming.
-  enum CompatibilityMode {
-    /// Strict mode: Disallows any schema changes. Verifies hashes, types, and length.
-    /// Throws exceptions for any mismatches or unexpected fields.
-    DISABLED,
-
-    /// Lenient mode: Allows missing fields (uses defaults) but does not permit field reordering.
-    /// More permissive than DISABLED but differs from JDK behavior by disallowing reordering.
-    DEFAULTED;
-  }
-
   static final int SAMPLE_SIZE = 32;
   public static final String SHA_256 = "SHA-256";
 
   static final int CLASS_SIG_BYTES = Long.BYTES;
-  static final int MAP_TYPE_ARG_COUNT = 2;
 
   static final CompatibilityMode COMPATIBILITY_MODE =
       CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
+
+  final Class<?> rootClass; // Root class for this pickler, used for discovery and serialization
 
   // Global lookup tables indexed by ordinal - the core of the unified architecture
   final Class<?>[] userTypes;     // Lexicographically sorted user types which are subclasses of Record or Enum
@@ -81,7 +58,12 @@ final class PicklerImpl<T> implements Pickler<T> {
   PicklerImpl(Class<T> rootClass) {
     Objects.requireNonNull(rootClass, "rootClass cannot be null");
 
+    if (!rootClass.isRecord() && !rootClass.isSealed()) {
+      throw new IllegalArgumentException("Root class must be a record or sealed interface: " + rootClass.getName());
+    }
+
     LOGGER.info(() -> "Creating unified pickler for root class: " + rootClass.getName());
+    this.rootClass = rootClass;
 
     // Phase 1: Static analysis to discover all reachable user types using recordClassHierarchy
     Set<Class<?>> allReachableClasses = recordClassHierarchy(rootClass, new HashSet<>())
@@ -91,7 +73,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     LOGGER.info(() -> "Discovered " + allReachableClasses.size() + " reachable user types: " +
         allReachableClasses.stream().map(Class::getSimpleName).toList());
 
-    // Phase 2: Filter out sealed interfaces (keep only concrete records and enums for serialization)
+    // Phase 2: Filter out sealed interfaces (keep only concrete records, enums, and arrays for serialization)
     this.userTypes = allReachableClasses.stream()
         .filter(clazz -> !clazz.isSealed()) // Remove sealed interfaces - they're only for discovery
         .sorted(Comparator.comparing(Class::getName))
@@ -123,13 +105,18 @@ final class PicklerImpl<T> implements Pickler<T> {
     this.typeSignatures = new long[numRecordTypes];
 
     IntStream.range(0, numRecordTypes).forEach(ordinal -> {
-      Class<?> recordClass = userTypes[ordinal];
-      if (recordClass.isRecord()) {
+      Class<?> userClass = userTypes[ordinal];
+      if (userClass.isRecord()) {
         try {
-          metaprogramming(ordinal, recordClass);
+          metaprogramming(ordinal, userClass);
         } catch (Exception e) {
           throw new RuntimeException(e);
         }
+      } else if (userClass.isEnum()) {
+        // Compute enum signature
+        typeSignatures[ordinal] = hashEnumSignature(userClass);
+        LOGGER.fine(() -> "Computed enum signature for " + userClass.getSimpleName() + 
+            ": 0x" + Long.toHexString(typeSignatures[ordinal]));
       }
     });
 
@@ -201,6 +188,15 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Build component metadata for a record type using meta-programming
+  /// This is done for Records only as we do not encounter a sealed interface at runtime we will only encounter either
+  /// records or enums. With enums we only record the type signature so that we can detect recording of enum constants.
+  /// This allows us to fail fast if the enum constants have been reordered when backwards compatibility is disabled
+  /// which is the default as we are writing out the enum constant ordinal not the name.
+  /// Metaprogramming for building serialization chains for record types
+  /// Implements recursive metaprogramming pattern: (ARRAY|LIST|MAP)* -> (ENUM|RECORD|DOUBLE|INTEGER|...)
+  /// This supports arbitrary nesting of containers to any depth, e.g. List<List<List<Double[]>[]>[]>
+  /// We walk right-to-left from leaf types back through containers, building delegation chains
+  /// Each container handler delegates to its inner type handler, creating a chain of responsibility
   @SuppressWarnings({"unchecked"})
   void metaprogramming(int ordinal, Class<?> recordClass) throws Exception {
     LOGGER.fine(() -> "Building metadata for ordinal " + ordinal + ": " + recordClass.getSimpleName());
@@ -259,7 +255,7 @@ final class PicklerImpl<T> implements Pickler<T> {
           }
         };
         //componentSizers[ordinal][i] = createLeafSizer(leafType);
-        final var primitiveSizer = createLeafSizer(leafType);
+        final var primitiveSizer = createLeafSizer(ordinal, leafType);
         componentSizers[ordinal][i] = record -> {
           Object componentValue;
           try {
@@ -350,9 +346,8 @@ final class PicklerImpl<T> implements Pickler<T> {
 
     // Read components using pre-built readers, use defaults for missing ones
     Object[] components = new Object[readers.length];
-    int startPos = buffer.position();
-    
-    for (int i = 0; i < readers.length; i++) {
+
+    for (int i = 0; i < readers.length; i++) { // TODO remove counting for-loop
       final int componentIndex = i;
       
       // Check if we have more data to read
@@ -378,9 +373,9 @@ final class PicklerImpl<T> implements Pickler<T> {
     }
     
     // Fill in default values for missing components
-    for (int i = 0; i < components.length; i++) {
-      if (components[i] == null && types[i] != null && types[i].tagTypes().size() > 0) {
-        Tag tag = types[i].tagTypes().get(0).tag();
+    for (int i = 0; i < components.length; i++) { // TODO remove counting for-loop
+      if (components[i] == null && types[i] != null && !types[i].tagTypes().isEmpty()) {
+        Tag tag = types[i].tagTypes().getFirst().tag();
         components[i] = getDefaultValue(tag);
         final int idx = i;
         LOGGER.info(() -> "Using default value for component " + idx + ": " + components[idx]);
@@ -408,7 +403,6 @@ final class PicklerImpl<T> implements Pickler<T> {
       case FLOAT -> 0.0f;
       case DOUBLE -> 0.0;
       case STRING, UUID, ENUM, RECORD, INTERFACE, ARRAY, LIST, MAP, OPTIONAL -> null;
-      default -> null;
     };
   }
 
@@ -426,6 +420,20 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Build writer chain for a component - creates type-specific writers at construction time
+  /// 
+  /// This method implements the recursive metaprogramming pattern that enables arbitrary nesting
+  /// of container types. The pattern follows: (ARRAY|LIST|MAP)* -> (ENUM|RECORD|DOUBLE|INTEGER|...)
+  /// 
+  /// Given a TypeStructure representing a chain of container types ending in a leaf type,
+  /// this method builds a delegation chain of writers from right-to-left (leaf to outer container).
+  /// Each container writer knows how to serialize its structure (e.g., array length) and then
+  /// delegates to its component type's writer for each element.
+  /// 
+  /// Example: For List<List<Double[]>>, the chain would be:
+  /// LIST writer -> LIST writer -> ARRAY writer -> DOUBLE writer
+  /// 
+  /// This enables serialization of arbitrarily nested structures like List<Map<String, Integer[]>[]>
+  /// without any special-case code - the metaprogramming handles all combinations automatically.
   BiConsumer<ByteBuffer, Object> buildWriterChain(TypeStructure typeStructure, MethodHandle accessor) {
     LOGGER.finer(() -> "Building writer chain for type structure: " +
         typeStructure.tagTypes().stream().map(t -> t.tag().name()).collect(Collectors.joining("->")));
@@ -520,6 +528,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     return writer;
   }
 
+  // TODO we might see built-in keys and values here in which case we can make it a MAP_VALUES and array encord the keys and values for performance
   BiConsumer<ByteBuffer, Object> createMapWriter(BiConsumer<ByteBuffer, Object> keyWriter, BiConsumer<ByteBuffer, Object> valueWriter) {
     return (buffer, obj) -> {
       Map<?, ?> map = (Map<?, ?>) obj;
@@ -550,7 +559,6 @@ final class PicklerImpl<T> implements Pickler<T> {
       final TypeInfo typeInfo = classToTypeInfo.get(enumValue.getClass());
       final int ordinal = typeInfo.ordinal();
       final long typeSignature = typeInfo.typeSignature();
-      assert typeInfo != null : "Unknown enum type: " + enumValue.getClass();
       LOGGER.finer(() -> "Writing ENUM ordinal=" + ordinal + " wire=" + (ordinal + 1) + " for " + enumValue.getClass().getName() + " constant ordinal=" + enumValue.ordinal());
       ZigZagEncoding.putInt(buffer, Constants.ENUM.marker());
       ZigZagEncoding.putInt(buffer, ordinal + 1);
@@ -691,14 +699,11 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Create array writer for enum arrays with pre-computed ordinal
-  // FIXME TODO we should compute the long signature of the enum class at construction time so that reordering of names so such that we need to name needs to be prevented.
-  // FIXME TODO this should be writing out the enum original not the name - is this code actually reachable?
   BiConsumer<ByteBuffer, Object> createEnumArrayWriter(Class<?> enumClass) {
     final var arrayMarker = Constants.ARRAY.marker();
     final var typeInfo = classToTypeInfo.get(enumClass);
     final var userOrdinal = typeInfo.ordinal();
     final var typeSignature = typeInfo.typeSignature();
-    assert typeInfo != null : "Unknown enum array type: " + enumClass;
     return (buffer, value) -> {
       LOGGER.finer(() -> "Delegating ARRAY for tag " + ENUM + " with length=" + Array.getLength(value) + " at position " + buffer.position());
       final var enums = (Enum<?>[]) value;
@@ -749,7 +754,6 @@ final class PicklerImpl<T> implements Pickler<T> {
         final var length = Array.getLength(value);
         final var sampleAverageSize = length > 0 ? estimateAverageSizeInt(integers, length) : 1;
         // Here we must be saving one byte per integer to justify the encoding cost
-        // TODO we can do a more worst case estimate by looking at the worst case of the total count of one two many bytes for unsaple longs
         if (sampleAverageSize < Integer.BYTES - 1) {
           LOGGER.finer(() -> "Delegating ARRAY for tag " + INTEGER_VAR + " with length=" + Array.getLength(value) + " at position " + buffer.position());
           ZigZagEncoding.putInt(buffer, arrayMarker);
@@ -774,7 +778,6 @@ final class PicklerImpl<T> implements Pickler<T> {
         final var length = Array.getLength(value);
         final var sampleAverageSize = length > 0 ? estimateAverageSizeLong(longs, length) : 1;
         // Require 1 byte saving if we sampled the whole array. Require 2 byte saving if we did not sample the whole array.
-        // TODO we can do a more worst case estimate by looking at the worst case of the total count of one two many bytes for unsaple longs
         if ((length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) ||
             (length > SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
           LOGGER.fine(() -> "Writing LONG_VAR array - position=" + buffer.position() + " length=" + length);
@@ -817,16 +820,25 @@ final class PicklerImpl<T> implements Pickler<T> {
         }
       };
       case STRING -> (buffer, value) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag " + STRING + " with length=" + Array.getLength(value) + " at position " + buffer.position());
+        if (value == null) {
+          LOGGER.finer(() -> "Writing null STRING array at position " + buffer.position());
+          ZigZagEncoding.putInt(buffer, Constants.NULL.marker());
+          return;
+        }
         final var strings = (String[]) value;
         final var length = Array.getLength(value);
+        LOGGER.finer(() -> "Delegating ARRAY for tag " + STRING + " with length=" + length + " at position " + buffer.position());
         ZigZagEncoding.putInt(buffer, arrayMarker);
         ZigZagEncoding.putInt(buffer, Constants.STRING.marker());
         ZigZagEncoding.putInt(buffer, length);
         for (String s : strings) {
-          byte[] bytes = s.getBytes(UTF_8);
-          ZigZagEncoding.putInt(buffer, bytes.length);
-          buffer.put(bytes);
+          if (s == null) {
+            ZigZagEncoding.putInt(buffer, Constants.NULL.marker());
+          } else {
+            byte[] bytes = s.getBytes(UTF_8);
+            ZigZagEncoding.putInt(buffer, bytes.length);
+            buffer.put(bytes);
+          }
         }
       };
       case UUID -> (buffer, value) -> {
@@ -926,6 +938,19 @@ final class PicklerImpl<T> implements Pickler<T> {
 
   /// Build reader chain for a component
   /// Use `assert` to check that the read back type match what we expected
+  /// 
+  /// This method implements the recursive metaprogramming pattern for deserialization,
+  /// mirroring the writer chain pattern. Given a TypeStructure representing nested containers,
+  /// it builds a delegation chain of readers from right-to-left (leaf to outer container).
+  /// 
+  /// The pattern follows: (ARRAY|LIST|MAP)* -> (ENUM|RECORD|DOUBLE|INTEGER|...)
+  /// 
+  /// Each container reader knows how to deserialize its structure (e.g., read array length)
+  /// and then delegates to its component type's reader for each element. This enables
+  /// deserialization of arbitrarily nested structures without special-case code.
+  /// 
+  /// Example: For Map<String, List<Integer>[]>, the chain would be:
+  /// MAP reader -> STRING reader (for keys) and ARRAY reader -> LIST reader -> INTEGER reader (for values)
   Function<ByteBuffer, Object> buildReaderChain(TypeStructure typeStructure) {
     // Build the type-specific reader chain
     Function<ByteBuffer, Object> typeReader = buildTypeReaderChain(typeStructure);
@@ -1084,14 +1109,22 @@ final class PicklerImpl<T> implements Pickler<T> {
       };
       case STRING -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
+        if (marker == Constants.NULL.marker()) {
+          LOGGER.finer(() -> "Reading null STRING array");
+          return null;
+        }
         assert marker == Constants.STRING.marker() : "Expected STRING marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         String[] strings = new String[length];
         IntStream.range(0, length).forEach(i -> {
-          int strLength = ZigZagEncoding.getInt(buffer);
-          byte[] bytes = new byte[strLength];
-          buffer.get(bytes);
-          strings[i] = new String(bytes, UTF_8);
+          final int strLengthOrMarker = ZigZagEncoding.getInt(buffer);
+          if (strLengthOrMarker == Constants.NULL.marker()) {
+            strings[i] = null;
+          } else {
+            byte[] bytes = new byte[strLengthOrMarker];
+            buffer.get(bytes);
+            strings[i] = new String(bytes, UTF_8);
+          }
         });
         return strings;
       };
@@ -1139,6 +1172,7 @@ final class PicklerImpl<T> implements Pickler<T> {
 
   Function<ByteBuffer, Object> createEnumArrayReader(TagWithType priorTag) {
     final var userType = priorTag.type();
+    LOGGER.finer(() -> "Creating enum array reader for type: " + userType + " isEnum: " + userType.isEnum());
     final var values = userType.getEnumConstants();
     assert values != null : "Expected ENUM type but got: " + userType.getSimpleName();
     return (buffer) -> {
@@ -1414,6 +1448,19 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Build sizer chain for a component - creates type-specific sizers at construction time
+  /// 
+  /// This method implements the recursive metaprogramming pattern for computing serialized sizes.
+  /// Given a TypeStructure representing nested containers, it builds a delegation chain of sizers
+  /// from right-to-left (leaf to outer container).
+  /// 
+  /// The pattern follows: (ARRAY|LIST|MAP)* -> (ENUM|RECORD|DOUBLE|INTEGER|...)
+  /// 
+  /// Each container sizer knows how to compute the size of its structure metadata (e.g., array
+  /// length encoding) plus the sum of its elements' sizes by delegating to the component sizer.
+  /// This enables efficient size computation for arbitrarily nested structures.
+  /// 
+  /// The computed size is used to allocate exactly the right buffer size before serialization,
+  /// avoiding reallocation and ensuring optimal memory usage.
   ToIntFunction<Object> buildSizerChain(TypeStructure typeStructure, MethodHandle accessor) {
     // Build the type-specific sizer
     ToIntFunction<Object> typeSizer = buildTypeSizerChain(typeStructure);
@@ -1430,18 +1477,33 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Build type-specific sizer chain based on TypeStructure
+  /// This creates a chain of sizers for nested types (e.g., List<Optional<String>>).
+  /// The ordinal parameter passed to createLeafSizer is only used by RECORD and ENUM cases.
+  /// For INTERFACE types, the ordinal is ignored - the runtime type will be determined
+  /// when sizing the actual object (which will always be a concrete record or enum).
+  /// 
+  /// This is the core recursive metaprogramming method that builds type-specific sizer chains.
+  /// It processes the TypeStructure from right-to-left, creating a nested chain of sizers where
+  /// each container delegates to its component type's sizer.
+  /// 
+  /// The recursion enables handling of arbitrary nesting depth - the metaprogramming pattern
+  /// automatically handles any combination of containers and leaf types.
   ToIntFunction<Object> buildTypeSizerChain(TypeStructure structure) {
     List<TagWithType> tags = structure.tagTypes();
     if (tags.isEmpty()) {
       throw new IllegalArgumentException("Type structure must have at least one tag");
     }
 
+    // TODO: this is a code smell. we need to refactor to have a createLeafSizerUserType and createLeafSizerBuiltInType
+    // and make those DRY and we only need to resolve the ordinal in the createLeafSizerUserType
+    int ordinal = 0;
+
     // For complex types, build chain from right to left
     Iterator<TagWithType> reversedTags = tags.reversed().iterator();
     List<ToIntFunction<Object>> sizers = new ArrayList<>(tags.size());
 
     TagWithType rightmostTag = reversedTags.next();
-    ToIntFunction<Object> sizer = createLeafSizer(rightmostTag);
+    ToIntFunction<Object> sizer = createLeafSizer(ordinal, rightmostTag);
     sizers.add(sizer);
 
     while (reversedTags.hasNext()) {
@@ -1460,7 +1522,7 @@ final class PicklerImpl<T> implements Pickler<T> {
           final var valueSizer = sizers.get(sizers.size() - 2);
           yield createMapSizer(keySizer, valueSizer);
         }
-        default -> createLeafSizer(tag);
+        default -> createLeafSizer(ordinal, tag);
       };
       sizers.add(sizer);
     }
@@ -1469,7 +1531,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Create leaf sizer for primitive/basic types
-  ToIntFunction<Object> createLeafSizer(TagWithType leafTag) {
+  ToIntFunction<Object> createLeafSizer(int ordinal, TagWithType leafTag) {
     return switch (leafTag.tag()) {
       case BOOLEAN -> obj -> 1 + 1; // marker + boolean byte
       case BYTE -> obj -> 1 + 1; // marker + byte
@@ -1488,29 +1550,28 @@ final class PicklerImpl<T> implements Pickler<T> {
       case FLOAT -> obj -> 1 + Float.BYTES;
       case DOUBLE -> obj -> 1 + Double.BYTES;
       case STRING -> obj -> {
+        if (obj == null) return 1; // NULL marker
         String s = (String) obj;
         byte[] bytes = s.getBytes(UTF_8);
         return 1 + ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
       };
       case UUID -> obj -> 1 + 2 * Long.BYTES;
-      case ENUM -> obj -> 1 + 2 * Integer.BYTES; // marker + class ordinal + enum constant length
+      case ENUM -> obj -> 1 + ZigZagEncoding.sizeOf(1) + CLASS_SIG_BYTES + ZigZagEncoding.sizeOf(((Enum<?>)obj).ordinal()); // marker + class ordinal + signature + enum ordinal
       case RECORD -> obj -> {
         Record record = (Record) obj;
-        final Integer ordinal = classToTypeInfo.get(record.getClass()).ordinal();
         return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record, ordinal);
       };
       case INTERFACE -> obj -> {
-        // Interface sizer that checks runtime type for both enum and record
+        // Interface sizer for sealed interfaces - must be fast approximation, no map lookups
+        // We use worst-case Integer.BYTES for ordinal size to avoid expensive lookups
         if (obj instanceof Enum<?> enumValue) {
-          // Size for enum: marker + ordinal + name length + name bytes
-          String name = enumValue.name();
-          byte[] nameBytes = name.getBytes(UTF_8);
-          return 1 + ZigZagEncoding.sizeOf(classToTypeInfo.get(enumValue.getClass()).ordinal() + 1) +
-              ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
+          // Size for enum: marker + ordinal (worst case) + signature + enum ordinal (worst case)
+          return 1 + Integer.BYTES + CLASS_SIG_BYTES + Integer.BYTES;
         } else if (obj instanceof Record record) {
-          // Size for record: marker + ordinal + signature + components
-          final Integer ordinal = classToTypeInfo.get(record.getClass()).ordinal();
-          return 1 + ZigZagEncoding.sizeOf(ordinal + 1) + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record, ordinal);
+          // Size for record: marker + ordinal (worst case) + signature + components
+          // We need the actual record ordinal to size components correctly
+          int recordOrdinal = classToTypeInfo.get(record.getClass()).ordinal();
+          return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record, recordOrdinal);
         } else {
           throw new IllegalArgumentException("Unexpected type for interface sizer: " + obj.getClass());
         }
@@ -1552,7 +1613,12 @@ final class PicklerImpl<T> implements Pickler<T> {
   /// Create sizer for Array values with element delegation
   ToIntFunction<Object> createArraySizer(ToIntFunction<Object> elementSizer) {
     return obj -> {
+      if (obj == null) {
+        LOGGER.finer(() -> "Sizing null array");
+        return 1; // NULL marker only
+      }
       int length = Array.getLength(obj);
+      LOGGER.finer(() -> "Sizing array of length " + length);
       int size = 1 + 1 + ZigZagEncoding.sizeOf(length); // ARRAY marker + element type marker + length
       return size + IntStream.range(0, length)
           .mapToObj(i -> Array.get(obj, i))
@@ -1580,16 +1646,17 @@ final class PicklerImpl<T> implements Pickler<T> {
     // Write ordinal marker (1-indexed on wire)
     ZigZagEncoding.putInt(buffer, ordinal + 1);
 
-    // Serialize based on actual runtime type
+    // Serialize based on actual runtime user type
     if (object instanceof Record record) {
       LOGGER.finer(() -> "Writing signature 0x" + Long.toHexString(typeSignature) + " for " + record.getClass().getSimpleName());
       buffer.putLong(typeSignature);
       serializeRecordComponents(buffer, record, typeInfo);
     } else if (object instanceof Enum<?> enumValue) {
-      // Serialize enum constant name
-      byte[] constantBytes = enumValue.name().getBytes(UTF_8);
-      ZigZagEncoding.putInt(buffer, constantBytes.length);
-      buffer.put(constantBytes);
+      // Write enum signature then ordinal
+      LOGGER.finer(() -> "Writing enum signature 0x" + Long.toHexString(typeSignature) + " for " + enumValue.getClass().getSimpleName());
+      buffer.putLong(typeSignature);
+      LOGGER.finer(() -> "Writing enum ordinal " + enumValue.ordinal() + " for " + enumValue.name());
+      ZigZagEncoding.putInt(buffer, enumValue.ordinal());
     } else {
       throw new IllegalArgumentException("Expected Record or Enum but got: " + object.getClass().getName());
     }
@@ -1645,22 +1712,28 @@ final class PicklerImpl<T> implements Pickler<T> {
       Object[] enumConstants = targetClass.getEnumConstants();
       assert enumConstants != null : "Not an enum class: " + targetClass;
       assert enumOrdinal >= 0 && enumOrdinal < enumConstants.length : "Invalid enum ordinal: " + enumOrdinal;
-      
+
+      //noinspection unchecked
       return (T) enumConstants[enumOrdinal];
     } else {
       throw new IllegalArgumentException("Expected Record or Enum class but got: " + targetClass.getName());
     }
   }
 
+  /// Compute the worst case maximum size for the given object without check whether advanced compaction techniques can be applied.
+  /// The estimate will still be less JDK Serializer size, but may be significantly larger than the actual size in some narrow cases.
+  /// @throws IllegalArgumentException if the object is not a Record or Enum.
   @Override
   public int maxSizeOf(T object) {
     Objects.requireNonNull(object, "object cannot be null");
 
-    // Find ordinal for the object's class using the ONE HashMap lookup
-    final Integer ordinalObj = classToTypeInfo.get(object.getClass()).ordinal();
-    assert ordinalObj != null : "Unknown class: " + object.getClass().getName();
+    // Handle arrays at root level
+    if (!object.getClass().isEnum() && !object.getClass().isRecord() ) {
+      throw new IllegalArgumentException("Expected Record or Enum object but got: " + object.getClass().getName());
+    }
 
-    final int ordinal = ordinalObj;
+    // Find ordinal for the object's class using the ONE HashMap lookup
+    final int ordinal = classToTypeInfo.get(object.getClass()).ordinal();
 
     // Size = ordinal marker + type-specific content size
     int size = ZigZagEncoding.sizeOf(ordinal + 1); // 1-indexed on wire
@@ -1669,18 +1742,40 @@ final class PicklerImpl<T> implements Pickler<T> {
       size += CLASS_SIG_BYTES; // signature bytes
       size += maxSizeOfRecordComponents(record, ordinal);
     } else if (object instanceof Enum<?> enumValue) {
-      // Size for enum constant name
-      byte[] nameBytes = enumValue.name().getBytes(UTF_8);
-      size += ZigZagEncoding.sizeOf(nameBytes.length) + nameBytes.length;
+      // Size for enum signature + ordinal
+      size += CLASS_SIG_BYTES; // signature bytes
+      size += ZigZagEncoding.sizeOf(enumValue.ordinal()); // enum ordinal
     }
 
     return size;
+  }
+
+  /// Check if an array type contains user-defined types (records, enums)
+  static boolean isUserDefinedArrayType(Class<?> arrayType) {
+    if (!arrayType.isArray()) return false;
+    Class<?> componentType = arrayType.getComponentType();
+    // Keep going down for multi-dimensional arrays
+    while (componentType.isArray()) {
+      componentType = componentType.getComponentType();
+    }
+    return componentType.isRecord() || componentType.isEnum();
   }
 
   /// Discover all reachable types from a root class including sealed hierarchies and record components
   static Stream<Class<?>> recordClassHierarchy(final Class<?> current, final Set<Class<?>> visited) {
     if (!visited.add(current)) {
       return Stream.empty();
+    }
+
+    // Handle array types - discover their component types
+    if (current.isArray()) {
+      Class<?> componentType = current.getComponentType();
+      LOGGER.finer(() -> "Root is array type: " + current.getSimpleName() + " with component type: " + componentType.getSimpleName());
+      // Include both the array type and its component type
+      return Stream.concat(
+          Stream.of(current),
+          recordClassHierarchy(componentType, visited)
+      );
     }
 
     return Stream.concat(
@@ -1694,17 +1789,26 @@ final class PicklerImpl<T> implements Pickler<T> {
                 ? Arrays.stream(current.getRecordComponents())
                 .flatMap(component -> {
                   LOGGER.finer(() -> "Analyzing component " + component.getName() + " with type " + component.getGenericType());
-                  try {
-                    TypeStructure structure = TypeStructure.analyze(component.getGenericType());
-                    LOGGER.finer(() -> "Component " + component.getName() + " discovered types: " +
-                        structure.tagTypes().stream().map(TagWithType::type).map(Class::getSimpleName).toList());
-                    return structure.tagTypes().stream().map(TagWithType::type);
-                  } catch (Exception e) {
-                    LOGGER.finer(() -> "Failed to analyze component " + component.getName() + ": " + e.getMessage());
-                    return Stream.of(component.getType()); // Fallback to direct type
+                  Class<?> directType = component.getType();
+                  
+                  // Search array to check if they contain user-defined types
+                  Stream<Class<?>> arrayStream = Stream.empty();
+                  if (directType.isArray()) {
+                    Class<?> componentType = directType.getComponentType();
+                    if (componentType.isRecord() || componentType.isEnum() || !componentType.isPrimitive()) {
+                      LOGGER.finer(() -> "Including array type: " + directType.getSimpleName());
+                      arrayStream = Stream.of(directType);
+                    }
                   }
+                  
+                  TypeStructure structure = TypeStructure.analyze(component.getGenericType());
+                  LOGGER.finer(() -> "Component " + component.getName() + " discovered types: " +
+                      structure.tagTypes().stream().map(TagWithType::type).map(Class::getSimpleName).toList());
+                  Stream<Class<?>> structureStream = structure.tagTypes().stream().map(TagWithType::type);
+                  return Stream.concat(arrayStream, structureStream);
                 })
-                .filter(t -> t.isRecord() || t.isSealed() || t.isEnum())
+                .filter(t -> t.isRecord() || t.isSealed() || t.isEnum() || 
+                        (t.isArray() && (t.getComponentType().isRecord() || t.getComponentType().isEnum() || !t.getComponentType().isPrimitive())))
                 : Stream.empty()
         ).flatMap(child -> recordClassHierarchy(child, visited))
     );
@@ -1732,6 +1836,25 @@ record TypeStructure(List<TagWithType> tagTypes) {
   }
 
   /// Analyze a generic type and extract its structure
+  /// 
+  /// This method is the entry point for the recursive metaprogramming pattern. It performs
+  /// static analysis on a Java Type to decompose it into a chain of container types
+  /// followed by a leaf type.
+  /// 
+  /// The analysis recursively unwraps:
+  /// - Generic types (List<T>, Map<K,V>, Optional<T>)
+  /// - Array types (T[], T[][], etc.)
+  /// - Raw types to their component types
+  /// 
+  /// The result is a TypeStructure containing a list like:
+  /// [LIST, ARRAY, MAP, RECORD] for a type like List<String[][]>
+  /// 
+  /// This static analysis enables the builder methods (buildWriterChain, buildReaderChain,
+  /// buildSizerChain) to construct appropriate delegation chains at construction time,
+  /// avoiding any runtime type inspection during serialization/deserialization.
+  /// 
+  /// The pattern supports arbitrary nesting depth - e.g., List<Map<String, Optional<Integer[]>[]>>
+  /// is fully supported without any special-case code.
   static TypeStructure analyze(Type type) {
     List<Tag> tags = new ArrayList<>();
     List<Class<?>> types = new ArrayList<>();

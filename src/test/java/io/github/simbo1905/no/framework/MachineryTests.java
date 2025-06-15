@@ -248,6 +248,88 @@ class MachineryTests {
   public enum EnumImpl1 implements EnumOnlyInterface { A, B }
   public enum EnumImpl2 implements EnumOnlyInterface { X, Y }
   
+  // ========== ENUM SIGNATURE TESTS ==========
+  
+  // Test enums for signature computation
+  public enum Color { RED, GREEN, BLUE }
+  public enum Status { ACTIVE, INACTIVE, PENDING }
+  public enum Priority { LOW, MEDIUM, HIGH }
+  
+  @Test
+  void testEnumSignatureComputation() {
+    // Test that enum signatures are computed from class name + constant names
+    long colorSig = PicklerImpl.hashEnumSignature(Color.class);
+    long statusSig = PicklerImpl.hashEnumSignature(Status.class);
+    long prioritySig = PicklerImpl.hashEnumSignature(Priority.class);
+    
+    // All should be different
+    assertNotEquals(colorSig, statusSig, "Different enums should have different signatures");
+    assertNotEquals(colorSig, prioritySig, "Different enums should have different signatures");
+    assertNotEquals(statusSig, prioritySig, "Different enums should have different signatures");
+    
+    // All should be non-zero
+    assertNotEquals(0L, colorSig, "Enum signature should not be zero");
+    assertNotEquals(0L, statusSig, "Enum signature should not be zero");
+    assertNotEquals(0L, prioritySig, "Enum signature should not be zero");
+    
+    LOGGER.info(() -> "Color signature: 0x" + Long.toHexString(colorSig));
+    LOGGER.info(() -> "Status signature: 0x" + Long.toHexString(statusSig));
+    LOGGER.info(() -> "Priority signature: 0x" + Long.toHexString(prioritySig));
+  }
+  
+  @Test
+  void testEnumSignatureStability() {
+    // Test that signature is stable across multiple calls
+    long sig1 = PicklerImpl.hashEnumSignature(Color.class);
+    long sig2 = PicklerImpl.hashEnumSignature(Color.class);
+    
+    assertEquals(sig1, sig2, "Enum signature should be stable");
+  }
+  
+  @Test
+  void testEnumSignatureSensitiveToConstants() {
+    // Two enums with same name but different constants should have different signatures
+    enum Size1 { SMALL, MEDIUM, LARGE }
+    enum Size2 { TINY, SMALL, MEDIUM, LARGE, HUGE }
+    
+    long sig1 = PicklerImpl.hashEnumSignature(Size1.class);
+    long sig2 = PicklerImpl.hashEnumSignature(Size2.class);
+    
+    assertNotEquals(sig1, sig2, "Enums with different constants should have different signatures");
+  }
+  
+  @Test
+  void testEnumSignatureSensitiveToConstantOrder() {
+    // Test that reordering constants changes signature
+    enum OrderA { FIRST, SECOND, THIRD }
+    enum OrderB { THIRD, FIRST, SECOND }
+    
+    long sigA = PicklerImpl.hashEnumSignature(OrderA.class);
+    long sigB = PicklerImpl.hashEnumSignature(OrderB.class);
+    
+    assertNotEquals(sigA, sigB, "Enums with reordered constants should have different signatures");
+  }
+  
+  @Test
+  void testEnumSignatureFormatString() {
+    // Test the actual format of the signature string
+    // Should be: "EnumSimpleName!CONSTANT1!CONSTANT2!..."
+    enum TestEnum { ALPHA, BETA, GAMMA }
+    
+    // We can't easily test the internal string directly, but we can verify
+    // the signature is computed and consistent
+    long sig = PicklerImpl.hashEnumSignature(TestEnum.class);
+    assertNotEquals(0L, sig);
+    
+    // The signature should be based on "TestEnum!ALPHA!BETA!GAMMA"
+    // Different from another enum even with same constant names
+    enum TestEnum2 { ALPHA, BETA, GAMMA }
+    long sig2 = PicklerImpl.hashEnumSignature(TestEnum2.class);
+    
+    // Even with same constants, different class names should give different signatures
+    assertNotEquals(sig, sig2, "Different enum classes should have different signatures");
+  }
+  
   // Case 3: Sealed interface with both records and enums (should get INTERFACE tag)
   public sealed interface MixedInterface permits MixedRecord, MixedEnum {}
   public record MixedRecord(String data) implements MixedInterface {}

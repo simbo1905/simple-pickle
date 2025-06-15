@@ -2,8 +2,10 @@ package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
 import io.github.simbo1905.no.framework.model.ArrayExample;
+import io.github.simbo1905.no.framework.model.NestedArrayExample;
 import io.github.simbo1905.no.framework.model.NullableFieldsExample;
 import io.github.simbo1905.no.framework.model.Person;
+import io.github.simbo1905.no.framework.model.TestEnum;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
@@ -996,20 +998,6 @@ public class RefactorTests {
    * @param actual The actual array record
    */
   void assertArrayRecordEquals(ArrayExample expected, ArrayExample actual) {
-    /*
-             new boolean[0],
-        new byte[0],
-        new Short[0],
-        new Character[0],
-        new int[0],
-        new long[0],
-        new float[0],
-        new double[0],
-        new String[0],
-        new Integer[0],
-        new Person[0]
-
-     */
     assertArrayEquals(expected.booleanArray(), actual.booleanArray());
     assertArrayEquals(expected.byteArray(), actual.byteArray());
     assertArrayEquals(expected.shortArray(), actual.shortArray());
@@ -1392,4 +1380,48 @@ public class RefactorTests {
     assertEquals(LinkEnd.END, deserializedEnd);
   }
 
+  // Recursive containers are valid to any depth
+  @Test
+  void testNestedArrayUsingModelNestedArray(){
+    
+    // Create a record with nested array structures of different depths
+    NestedArrayExample original = new NestedArrayExample(
+        new int[][] {{1, 2}, {3, 4}}, // 2D int array
+        new String[][] {{"A", "B"}, {"C", "D"}}, // 2D String array
+        new TestEnum[][][] { // 3D enum array
+            {{TestEnum.FIRST, TestEnum.SECOND}, {TestEnum.THIRD}},
+            {{TestEnum.SECOND}, {TestEnum.FIRST, TestEnum.THIRD}}
+        }
+    );
+
+    // Get a pickler for the record
+    Pickler<NestedArrayExample> pickler = Pickler.forClass(NestedArrayExample.class);
+
+    // Calculate size and allocate buffer
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+
+    // Serialize
+    pickler.serialize(buffer, original);
+
+    var buf = buffer.flip();
+
+    // Deserialize
+    NestedArrayExample deserialized = pickler.deserialize(buf);
+
+    // Verify the 2D int array
+    assertArrayEquals(original.nestedIntArray()[0], deserialized.nestedIntArray()[0]);
+    assertArrayEquals(original.nestedIntArray()[1], deserialized.nestedIntArray()[1]);
+    
+    // Verify the 2D string array
+    assertArrayEquals(original.nestedStringArray()[0], deserialized.nestedStringArray()[0]);
+    assertArrayEquals(original.nestedStringArray()[1], deserialized.nestedStringArray()[1]);
+    
+    // Verify the 3D enum array
+    for (int i = 0; i < original.nested3DEnumArray().length; i++) {
+      for (int j = 0; j < original.nested3DEnumArray()[i].length; j++) {
+        assertArrayEquals(original.nested3DEnumArray()[i][j], deserialized.nested3DEnumArray()[i][j]);
+      }
+    }
+  }
+  
 }

@@ -65,6 +65,9 @@ IMPORTANT: Never disable tests written for logic that we are yet to write we do 
 * Chain operations without intermediate variables
 * Support immutability throughout processing
 * Example: `IntStream.range(0, 100).filter(i -> i % 2 == 0).sum()` instead of counting loops
+* Always use final variables in functional style. 
+* Prefer `final var` with self documenting names over `int i` or `String s` but its not possible to do that on a `final` variable that is not yet initialized so its a weak preference not a strong one.
+* Avoid just adding new functionality to the top of a method to make an early return. It is fine to have a simple guard statement. Yet general you should pattern match over the input to do different things with the same method. Adding special case logic is a code smell that should be avoided.
 
 ## Documentation using JEP 467 Markdown documentation
 

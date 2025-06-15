@@ -77,6 +77,15 @@ When handling sealed interfaces it is requires all permitted subclasses within t
 
 ## Usage
 
+No Framework Pickler enforces that the root type passed to `Pickler.forClass()` must be either:
+- A `record` type
+- A `sealed interface` that permits mixtures of `record` or `enum` types
+- A `sealed interface` that permits mixtures of `record` or `enum` types or nested `sealed interface` of `record` or `enum` types to any level
+
+See the Complex Nested Sealed Interfaces example below and also the demo files `PublicApiDemo.java` and `TreeNodeSealedInterfacePicklerTest.java`.
+
+Java Data Oriented Programming allows for strongly typed and exhaustive switch statements to work with `sealed interface` types. As library code, No Framework Pickler has no direct access to the complex types and it avoids reflection on the hot path. This precludes passing outer container types (arrays, List or Map) to the pickler. In practice this is not a significant limitation as users of the library that have a List, Map or array of a complex sealed type can simply manually write out the length/size then loop invoking the pickler. To read back, they can manually read the length/size then loop with an exhaustive switch to handle the concrete types as they wish. See the demo file `PublicApiDemo.java` for an example.
+
 ### Basic Record Serialization
 
 Here the optional `maxSizeOf` will recursively walk any large nested structures or arrays to calculate the exact size of the buffer needed to hold the serialized data:
@@ -349,30 +358,36 @@ In the default `DISABLED` mode, any schema change (reordering, renaming, type ch
 
 **Security Note**: It is always wise to add encryption-level message confidentiality and message integrity security to prevent against any form of tampering attack, which is beyond the scope of this documentation.
 
-### Compatibility Modes
+### Backward Compatibility Modes
 
-Set the system property `no.framework.Pickler.Compatibility`:
+## TL;DR
+
+- **DISABLED**: Default mode. Strictly no backwards compatibility. Fails fast on any schema mismatch.
+- **DEFAULTED**: Opt-in mode. Emulates JDK serialization functionality with a risky corner case.
+- If you do opt-in **never** reorder existing fields or enum constants in your source file to avoid the risky corner case of "swapping" components or enum constants when deserializing.
+
+To opt-in set the system property `no.framework.Pickler.Compatibility`:
 
 ```shell
 -Dno.framework.Pickler.Compatibility=DISABLED|DEFAULTED
 ```
 
-- **`DISABLED`** (default): Strict mode. Signatures are always written but never checked. Any signature mismatch is ignored.
-- **`DEFAULTED`**: Backwards compatibility mode. Signatures are checked and mismatches are handled gracefully:
-  - Missing fields get default values: primitives get `0`, `false`, `0.0`, etc.
-  - Reference types (including arrays) get `null`
-  - **NOT IMPLEMENTED**: Component name serialization (not needed for position-based compatibility)
+## Compatibility Modes Explained
 
-### Safe Evolution Rules
+With No Framework Pickler your java code is the "schema" of your data structures. You can evolve your records and enums in a way that is safe only by adding new values to the end of the record or enum definitions. This is because we do not write out field names or enum constant names to the wire. 
 
-When `DEFAULTED` mode is enabled:
-- **Only Append** new component fields to the end of record definitions (this avoids all the issues detailed below)
-- **Never change field types** as this will cause deserialization errors (just like JDK serialization)
-- **Field renaming works** as component field positions, not component field names, are written onto the wire (unlike JDK serialization which writes out names)
-- **Never reorder existing fields** as this may cause silent data corruption (unlike JDK serialization which writes out names)
+The two gotcha are only if you opt in to the `DEFAULTED` mode:
+ - If you serialize to storage when your code was `record Point(int x, int y)`, then later read it back with `record Point(int y, int x)`, there is an undetectable "swapping" of data. 
+ - If you serialize to storage when your code was `enum Status{GOOD,BAD}`, then later read it back with `enum Status{GOOD,BAD}`, there is an undetectable "swapping" of constants.
 
-The difference between JDK serialization and No Framework Pickler is deliberate. Writing out component names bloats the wire format and slows things down. 
-More sophisticated picklers like Protocol Buffers, Apache Avro, and others use external schema-like files. Those require you to read the manual to understand how to get started. That upfront effort and ongoing complexity gives them more options to explicitly handle schema evolution. No Framework Pickler deliberately makes it so that your record Java source code is the "schema file". If you reorder your record components in your Java source code then you are trashing the compatibility of the serialized data between versions of your Java code. This may lead to a silent data corruption if the types of the reordered components are binary compatible (i.e. `record Point(int x, int y)` -> `record Point(int y, int x)`). Which is why it is an opt-in feature; you can safely rename components and add new components to the end of the record definition as long as you not break the invariants of your record definitions through reordering. 
+More sophisticated picklers like Protocol Buffers, Apache Avro, and others use external schema-like files. Those require users to read the manual to understand how to get started. That upfront effort and ongoing complexity gives them more options to explicitly handle schema evolution. They also allow for fail fast modes on wire format changes. JDK Serialization as the concept of serialVersionUID mechanism handle schema evolution. We all know how that worked out in practice. 
+
+No Framework Pickler is designed:
+ - simple and easy to use.
+ - compact and fast
+ - safe by default
+
+This requires us to use cryptographic hashes to detect schema changes and forbid them by default to be safe by default. 
 
 ### Example: Adding a Field to a Record
 
@@ -417,7 +432,11 @@ public record UserInfo(int accessLevel, String name, String department) {
 
 There are unit tests that dynamically compile and class load different versions of records to explicitly test both backwards and forwards compatibility across three generations. See `SchemaEvolutionTest.java` and `BackwardsCompatibilityTest.java` for examples of how to write your own tests.
 
-## Wire Protocol
+## Fine Compatibility Details
+
+See [BACKWARDS_COMPATIBILITY.md](BACKWARDS_COMPATIBILITY.md) for details.
+
+# Wire Protocol
 
 The wire protocol uses ZigZag-encoded markers for types:
 
@@ -549,6 +568,31 @@ That amount of choice is overwhelming. You are spoilt for choices you become a p
 ## Acknowledgements
 
 This library uses ZigZag-encoded LEB128-64b9B "varint" functionality written by Gil Tene of Azul Systems. The original identical code can be found at [github.com/HdrHistogram/HdrHistogram](https://github.com/HdrHistogram/HdrHistogram/blob/ad76bb512b510a37f6a55fdea32f8f3dd3355771/src/main/java/org/HdrHistogram/ZigZagEncoding.java). The code was released to the public domain under [CC0 1.0 Universal](http://creativecommons.org/publicdomain/zero/1.0/).
+
+## Implementation Note: Recursive Meta-programming
+
+No Framework Pickler achieves its support for arbitrarily nested container types through a recursive metaprogramming pattern implemented at construction time. This pattern enables serialization of deeply nested structures like `List<Map<String, Optional<Integer[]>[]>>` without any special-case code.
+
+The core pattern is: `(ARRAY|LIST|MAP)* -> (ENUM|RECORD|DOUBLE|INTEGER|...)`
+
+When you create a pickler, it performs static analysis on your types using `TypeStructure.analyze()`, which recursively unwraps:
+- Generic types (List<T>, Map<K,V>, Optional<T>)
+- Array types (T[], T[][], etc.)
+- Raw types to their component types
+
+This analysis produces a chain of container types ending in a leaf type. The metaprogramming then walks this chain from right-to-left (leaf back through containers), building delegation chains where each container handler knows how to:
+1. Serialize/deserialize its own structure (e.g., array length, map size)
+2. Delegate to its component type's handler for each element
+
+For example, given `List<List<Double[]>>`, the system builds:
+- A DOUBLE writer that knows how to write individual doubles
+- An ARRAY writer that writes array metadata then delegates to the DOUBLE writer for each element
+- A LIST writer that writes list size then delegates to the ARRAY writer for each element
+- An outer LIST writer that delegates to the inner LIST writer
+
+This delegation chain is built once at construction time using the `buildWriterChain()`, `buildReaderChain()`, and `buildSizerChain()` methods. At runtime, there's zero type inspection - just direct method handle invocations through the pre-built chain.
+
+The beauty of this approach is that it automatically handles any nesting depth and any combination of container types. Whether you have `Optional<Map<String, List<Integer[]>[]>>` or `List<List<List<List<String>>>>`, the same recursive pattern builds the appropriate delegation chain without any special cases in the code.
 
 ## License
 

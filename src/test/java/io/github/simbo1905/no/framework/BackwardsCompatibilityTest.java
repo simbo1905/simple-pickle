@@ -50,6 +50,9 @@ public class BackwardsCompatibilityTest {
 
     @Test
     void testBackwardsCompatibilityWithSystemProperty() throws Exception {
+        // Save the original property value
+        String originalValue = System.getProperty("no.framework.Pickler.Compatibility");
+        
         // Set the backwards compatibility system property
         System.setProperty("no.framework.Pickler.Compatibility", "DEFAULTED");
         try {
@@ -77,7 +80,12 @@ public class BackwardsCompatibilityTest {
             expectedValues.put("score", 0.0);   // Should use 0.0 default for missing double
             verifyRecordComponents(evolvedInstance, expectedValues);
         } finally {
-            System.clearProperty("no.framework.Pickler.Compatibility");
+            // Restore the original property value
+            if (originalValue != null) {
+                System.setProperty("no.framework.Pickler.Compatibility", originalValue);
+            } else {
+                System.clearProperty("no.framework.Pickler.Compatibility");
+            }
         }
     }
 
