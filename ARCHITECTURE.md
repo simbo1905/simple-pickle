@@ -2,130 +2,19 @@
 
 ## Project Overview
 
-**No Framework Pickler** is a lightweight, zero-dependency Java 21+ serialization library that generates type-safe, compact and fast, serializers for records containing value-like types as well as container-like types such as arrays, lists, optionals, and maps of value-like types through **Abstract Syntax Tree (AST) construction**, **staged metaprogramming**, and **static type analysis**.
+**No Framework Pickler** is a lightweight, zero-dependency Java 21+ serialization library that generates type-safe, compact and fast, serializers for records containing value-like types as well as container-like types. This includes value-like types such as `UUID`, `String`, `enum` was well as container-like such as optionals, arrays, lists, and maps of value-like types. This is done by constructing type specific serializers using:
+- **Abstract Syntax Tree construction** for the parameterized types of `record` components
+- **Multi-stage programming** with a meta-stage during `Pickler.forClass(Class<?>)` construction that performs **static semantic analysis** to build an **Abstract Syntax Tree (AST)** representation of the type structure
+- **Static semantic analysis** preserving type safety guarantees
 
-## Core Concept
+### Recursive Type Analysis Algorithm
 
-The library performs **multi-stage programming** where compilation is divided into a series of intermediate phases, enabling typesafe run-time code generation without reflection on the hot path. The user provides classes and the system builds a pickler that has array tables used for serialization and deserialization. Picklers are aggressively cached so that this work is done once typically at startup time. The pickler is then used to serialize and deserialize objects of the user `record` types that contain lots of internal structure that may be heavily nested.
+The analysis performs **recursive descent parsing** of Java's `Type` hierarchy:
 
-Naive implementations would use reflection on the hot path and `switch` statements to dispatch to the correct serialization logic. This would be slow and not scale well. We use **static semantic analysis** that constructs `switch` statements at the **meta-stage** (construction time), writing specific lambdas into arrays for every component. These lambdas are "typed" in that they know whether a component is `Map<Enum,List<String>[]>` or any other sophisticated generic type structure through **type environment** (Γ) preservation. There is then no need to use a switch statement on the hot path - we can build specific lambdas to do each of the write, read and size operations.
-
-The **static semantic analysis** phase creates an **Abstract Syntax Tree (AST)** representation for each component using **recursive descent parsing** of Java's Type hierarchy. This works because only method return types preserve their generic signatures at runtime, providing the **typing context** necessary for AST construction.
-
-The AST enables **compile-time specialization** where specific user types are resolved. There are no built-in `Enum<>` types so the `ENUM` is one of possibly several discovered user types. When deserializing we must instantiate the specific user type, so we use the `TagWithType` nodes which close over that type in generated lambdas such that (once again) there is no need to use a `switch` statement or `Map.get` on the hot path.
-
-Note that a specific example might have a list of five `TagWithType` nodes yet in the simple case we have only one. We could have twenty if users have crazily complex nested container types for a component. We never use fixed offsets into such lists. We recursively delegate and only use relative offsets. Containers may (or may not) need to chain to adjacent types in the list. The `MAP` has to delegate to two adjacent lambdas as it is a container over two inner types. So the list is arbitrarily long and we first reverse it as the more specific `TagWithType` nodes are to the right of the container types. We then build specific lambdas for the value types (leaf types) and then build up a chain of lambdas that delegate to the inner lambdas.
-
-If we have a trivial component that is only `double` we have a list of one `TagWithType` which is `[DOUBLE]` and the type is `double.class`. The delegation chain is then a single lambda that writes/reads/sizes the double value. If we have a more complex component such as `List<Optional<Person[]>>` there is a longer specific chain of lambdas that are built. This implements **staged computation** where early stages generate specialized code for later stages.
-
-## Philosophy
-
-The JDK has [Project Valhalla](https://openjdk.org/projects/valhalla/) and "Project Valhalla is augmenting the Java object model with value objects, combining the abstractions of object-oriented programming with the performance characteristics of simple primitives." In future JDKs when more Valhalla JEPs land we will be able to add support for user types that are `value` objects. At this point in time only `Record` is the existing value-like type when used in a way that has conventions that honour the intent that it be a pure data carrier even though it is a reference type. Users of `record` can currently abuse its nature to make it not at all like a value type. In the future there will be language support to give compile time and runtime ensured value-like semantics to any user types. Yet as-at Java 21, the only value-like user types are `Record` and `Enum` types. Our library will attempt to validate at construction of the pickler that the user types are used in a value-like manner as far as we can (application unit tests must do the rest).
-
-As at Java 21 this framework has a number of JDK types such as `String`, `Integer`, `UUID`, etc. that are value-like types. This library supplies code to marshal and unmarshal the state of these value-like objects to the wire. The original contribution of No Framework Pickler is to generate fast logic that uses unreflected direct method handles to serialize and deserialize user-defined `Record` types through **AST-guided metaprogramming**. The intention of this library in the future is to support future JDK value-like types and user value-like types as they are introduced via future Valhalla JEPs.
-
-## Unified Pickler Architecture
-
-### Primary Components
-
-- `Pickler.java` - Main interface with `of(Class<?>)` factory method
-- `PicklerImpl.java` - Single unified pickler handling all reachable types with global lookup tables
-- `MetaStage.java` - **Static semantic analysis** engine performing **AST construction**
-- `TypeStructureAST.java` - **Abstract Syntax Tree** representation of Java generic type hierarchies
-- `Constants.java` - Type markers and Tag enum for wire protocol
-- `ZigZagEncoding.java` - Compact integer encoding for ordinals
-
-### Core Design
-
-- Single `PicklerImpl<T>` performs **multi-stage programming** where all **static semantic analysis** and type discovery occurs at construction time (**meta-stage**), creating optimal logic using direct method handles without reflection on the hot path (**object-stage**) or switching over values, as the switching is done as metaprogramming at construction time where types known via **typing context** analysis allow switches to create lambdas that know the types that will be encountered at runtime.
-- Array-based O(1) operations replace the majority of Map lookups on hot path. Only one map of user classes to their index in an array remains for a single lookup on the write path. On the read path the index into the array can be used as a jump to the pre-constructed lambdas that were built to handle specific user types. We might expect a tiny number of user types in the remaining map such that the lookup will be fast. Yet in an adversarial case with 100s of user types the map lookup is far better than a linear search over the array of `userTypes`. The map lookup is O(1) and the linear search is O(n).
-- Ordinal-based wire protocol with 1-indexed logical ordinals (0=NULL) for built-in types and positive numbers as array indexes for the user types. These will be small integers that are ZigZag encoded and will normally only take one byte to encode.
-
-The net effect is that the **static semantic analysis** and zigzag encoding means that as long as there are fewer than 63 user types in any sealed hierarchy, a single byte is used to encode the types rather than having to encode the entire user type class name. Then rather than doing `Class.forName` at runtime we have lambdas that invoke the unreflected constructor.
-
-### No-Reflection Principle
-
-*Core Design Philosophy:* The library avoids reflection on the hot path for performance.
-All reflective operations are done once during `Pickler.forClass(Class<?>)` construction to build method handles and global lookup tables through **AST construction**.
-
-**Meta-Stage (Construction Time)**:
-- **Type Discovery**: Exhaustively discover ALL reachable types from root class using **recursive descent parsing**
-- **AST Construction**: Build **Abstract Syntax Trees** for each component's generic type structure using `MetaStage.analyze()`
-- **Type Environment**: Build global lookup tables indexed by ordinal for O(1) operations, preserving **typing context** (Γ)
-- **Method Handle Caching**: Cache method handles for record constructors and field accessors using `MetaStage.forRecord()`
-- **Stable Ordering**: Sort discovered classes lexicographically for stable ordinals
-- **Static Analysis**: Create `TypeStructureAST` for generic components
-    - Example: `UserRecord[]` → AST: `[TagWithType(ARRAY, Arrays.class), TagWithType(RECORD, UserRecord.class)]`
-    - Pre-resolve all user type ordinals and close over them in writers/readers/sizers
-    - Eliminates need for runtime type inspection or map lookups on hot path (except one case explained below)
-- **Tag vs Constants Distinction**: `StructuralTag` enum represents logical types at **static semantic analysis** (OPTIONAL, ARRAY, RECORD). `Constants` enum represents runtime wire markers (OPTIONAL_EMPTY, OPTIONAL_OF, specific ordinals)
-- **Collections Writer Pattern**: Lists, Maps and Arrays have boxed types and delegate to a chained writer per element
-- **Collections Arrays Pattern**: Arrays can optimise _some_ but not all writes:
-    - `byte[]` is directly written as `ByteBuffer#put(bytes)`
-    - `boolean[]` is packed as a `BitSet` then written as `ByteBuffer#put(bytes)`
-    - `int[]`/`long[]` arrays are sampled for up to 32 elements to estimate if ZigZagEncoding will save space. If so they are written as varint/varlong and if not they are written as `putInt` or `putLong` leaf nodes in delegation chains
-    - `Record[]` and `Enum[]` are written as RECORD or ENUM markers and then elements are written using the record or enum writer
-
-**Object-Stage (Runtime)**:
-- Execute pre-built delegation chains without type inspection
-- Use cached method handles for optimal performance
-- Leverage **staging context** for specialized serialization paths
-
-### Wire Protocol Design
-
-- Negative ordinals (-1, -2, -3...): Built-in types (int, String, etc.)
-- Positive ordinals (1, 2, 3...): User types (1-indexed logical, 0-indexed physical)
-- Zero (0): NULL marker for memory safety
-
-**Wire Protocol Implementation**:
-- **Negative markers**: Built-in types (STRING, UUID, primitives) use negative ZigZag encoded values
-- **Positive markers**: User types use array index as ZigZag encoded ordinal
-- **NULL marker**: Remains 0 (uninitialized memory safety)
-- **No Class Name Serialization**: Ordinals eliminate need for class name compression
-- Our built-in value types in `Constants` have a `marker()` method that returns `-1*ordinal()` which is their position in the enum's logical `values()` array yet we do not need to use that physical method as we use the `ordinal()` API
-- The user types are stored in the `discoveredClasses` array and we use `classToOrdinal(clazz)` to get the ordinal of the class. We can then `+1` to not overlap with the built-in ordinals
-- We ZigZag encode the ordinals which are typically tiny so typically only one byte on the wire. This is a vast performance improvement over writing class names as strings
-
-We will likely never put in more than 63 future built-in types and the application will likely never have more than 63 user types for one pickler so we will get a one byte encoding. Yet we have no such artificial limit - we can support up to 2^31 types of each. If we only had two or three user types then scanning `Class<?>[] userTypes` to do an equals will be optimal. That might even be the typical case - my most complex protocol that I encode only has a half dozen user types. Yet we may face adversarial cases with 100s of user types. In that case the map lookup is O(1) and the linear search is O(n). The JVM has specific logic for small maps to change their behaviour as more elements are added. We can then lean upon the JVM to optimise the map lookup for both the typical small map case and the adversarial large map case.
-
-### Wire Protocol: 1-Indexed Logical Ordinals
-
-**Safety First Design**:
-- `0` = NULL marker (safe for uninitialized memory buffers)
-- Negative numbers (-1, -2, etc.) = Built-in types (int, String, etc.)
-- **Positive numbers (1, 2, 3, etc.) = User types with 1-indexed logical ordinals**
-
-**Ordinal Mapping**:
-- **Logical ordinal 1** → **Physical array index 0** (first discovered type)
-- **Logical ordinal 2** → **Physical array index 1** (second discovered type)
-- etc.
-
-**Memory Safety Benefit**: Accidental zero-filled buffers become `null` instead of crashing on invalid array access.
-
-### Serialization Strategy
-
-**Top-Level Objects**:
-1. Write logical ordinal (1, 2, 3, ...) using `Constants.marker()` for built-in types or `classToOrdinal(clazz) + 1` for user types which will correctly write `-1 * ordinal` for built-in types and `index + 1` for user types
-2. Based on AST tag, serialize type-specific content:
-    - **ENUM**: Write `enum.ordinal()`
-    - **RECORD**: Recursively serialize all components via `serializeRecordComponents()`
-
-**Record Components**:
-- Built-in types: Write negative marker + value
-- User types: Write logical ordinal + recursive content
-- NULL values: Write 0 marker
-
-### Deserialization Strategy
-
-**Ordinal-to-Type Lookup**:
-1. Read logical ordinal from buffer
-2. Convert to physical array index: `physicalIndex = logicalOrdinal - 1`
-3. Look up type: `discoveredClasses[physicalIndex]`
-4. Dispatch based on AST tag: `tags[physicalIndex]`
-
-**Type-Specific Deserialization**:
-- **ENUM**: Read constant name, use `Enum.valueOf()`
-- **RECORD**: Read all components, invoke constructor via `MethodHandle`
+1. **Container Recognition**: Identifies parameterized types (List<T>, Map<K,V>, Optional<T>) and arrays (T[])
+2. **Recursive Decomposition**: Recursively analyzes type arguments to arbitrary depth
+3. **AST Construction**: Builds parallel sequences of structural tags and concrete types
+4. **Termination**: Reaches leaf nodes at primitive/user-defined types
 
 ### Abstract Syntax Tree (AST) Construction and Formal Grammar
 
@@ -215,6 +104,35 @@ tagTypes: [TagWithType(LIST, List.class), TagWithType(MAP, Map.class),
           TagWithType(ARRAY, Arrays.class), TagWithType(OPTIONAL, Optional.class), 
           TagWithType(ARRAY, Arrays.class), TagWithType(INTEGER, Integer.class)]
 ```
+
+### No-Reflection Principle
+
+*Core Design Philosophy:* The library avoids reflection on the Object-stage (Runtime) "hot path"  for performance.
+All reflective operations are done during Meta-stage (Construction Time) in `Pickler.forClass(Class<?>)`. 
+This construction resolves method handles and creates delegation chains that are used at runtime without further reflection.
+
+**Meta-Stage (Construction Time)**:
+- **Type Discovery**: Exhaustively discover ALL reachable types from root class using **recursive descent parsing**
+- **AST Construction**: Build **Abstract Syntax Trees** for each component's generic type structure using `MetaStage.analyze()`
+- **Type Environment**: Build global lookup tables indexed by ordinal for O(1) operations, preserving **typing context** (Γ)
+- **Method Handle Caching**: Cache method handles for record constructors and field accessors using `MetaStage.forRecord()`
+- **Stable Ordering**: Sort discovered classes lexicographically for stable ordinals
+- **Static Analysis**: Create `TypeStructureAST` for generic components
+    - Example: `UserRecord[]` → AST: `[TagWithType(ARRAY, Arrays.class), TagWithType(RECORD, UserRecord.class)]`
+    - Pre-resolve all user type ordinals and close over them in writers/readers/sizers
+    - Eliminates need for runtime type inspection or map lookups on hot path (except one case explained below)
+- **Tag vs Constants Distinction**: `StructuralTag` enum represents logical types at **static semantic analysis** (OPTIONAL, ARRAY, RECORD). `Constants` enum represents runtime wire markers (OPTIONAL_EMPTY, OPTIONAL_OF, specific ordinals)
+- **Collections Writer Pattern**: Lists, Maps and Arrays have boxed types and delegate to a chained writer per element
+- **Collections Arrays Pattern**: Arrays can optimise _some_ but not all writes:
+    - `byte[]` is directly written as `ByteBuffer#put(bytes)`
+    - `boolean[]` is packed as a `BitSet` then written as `ByteBuffer#put(bytes)`
+    - `int[]`/`long[]` arrays are sampled for up to 32 elements to estimate if ZigZagEncoding will save space. If so they are written as varint/varlong and if not they are written as `putInt` or `putLong` leaf nodes in delegation chains
+    - `Record[]` and `Enum[]` are written as RECORD or ENUM markers and then elements are written using the record or enum writer
+
+**Object-Stage (Runtime)**:
+- Execute pre-built delegation chains without type inspection
+- Use cached method handles for optimal performance
+- Leverage **staging context** for specialized serialization paths
 
 #### Delegation Chain Construction
 
@@ -321,25 +239,6 @@ When you create a pickler, the system performs **static semantic analysis** on a
     - `buildReaderChain()` - Creates deserialization lambdas from **TypeStructureAST**
     - `buildSizerChain()` - Creates size computation lambdas from **TypeStructureAST**
 
-### How It Works
-
-Given a complex nested type like `List<Map<String, Optional<Integer[]>[]>>`, the **AST construction** produces:
-- **TypeStructureAST** with `TagWithType` nodes: [LIST, MAP, STRING, MAP_SEPARATOR, ARRAY, OPTIONAL, ARRAY, INTEGER]
-- Each node represents a layer in the nesting structure with both structural and semantic information
-
-The **staged metaprogramming** then walks this AST from right-to-left:
-1. Creates an INTEGER writer/reader/sizer (the leaf)
-2. Wraps it in an ARRAY handler
-3. Wraps that in an OPTIONAL handler
-4. Wraps that in another ARRAY handler (for the Optional[] array)
-5. Creates a STRING handler for map keys
-6. Combines key and value handlers in a MAP handler
-7. Wraps everything in a LIST handler
-
-Each handler knows how to:
-- Serialize/deserialize its own structure (e.g., array length, map size)
-- Delegate to its component handler(s) for each element
-
 ### Runtime Performance
 
 At runtime, there's zero type inspection or switching. The pre-built delegation chains execute as direct method handle invocations through **object-stage specialization**. Whether you have:
@@ -360,9 +259,60 @@ The key methods that implement this pattern leverage **AST construction**:
 
 Each method uses the **TypeStructureAST** to enable **compile-time specialization** where the **type environment** (Γ) is preserved and used to generate optimal delegation chains without runtime type inspection.
 
-### Next Steps
-1. **List immutability**: Return immutable lists from deserialization (current test expectation)
-2. **Complete wire protocol consistency**: Implement ZigZag encoding for all markers
-3. **Legacy cleanup**: Remove old RecordPickler/SealedPickler classes and replace with **AST-based implementation**
-4. **AST Integration**: Replace existing `TypeStructure.analyze()` with `MetaStage.analyze()` for **formal grammar compliance**
-5. **Enhanced Type Safety**: Leverage **static semantic analysis** for compile-time validation of serialization support
+### Wire Protocol: 1-Indexed Logical Ordinals
+
+**Safety First Design**:
+- `0` = NULL marker (safe for uninitialized memory buffers)
+- Negative numbers (-1, -2, etc.) = Built-in types (int, String, etc.)
+- **Positive numbers (1, 2, 3, etc.) = User types with 1-indexed logical ordinals**
+
+**Ordinal Mapping**:
+- **Logical ordinal 1** → **Physical array index 0** (first discovered type)
+- **Logical ordinal 2** → **Physical array index 1** (second discovered type)
+- etc.
+
+**Memory Safety Benefit**: Accidental zero-filled buffers become `null` instead of crashing on invalid array access.
+
+### Serialization Strategy
+
+**Top-Level Objects**:
+1. Write logical ordinal (1, 2, 3, ...) using `Constants.marker()` for built-in types or `classToOrdinal(clazz) + 1` for user types which will correctly write `-1 * ordinal` for built-in types and `index + 1` for user types
+2. Based on AST tag, serialize type-specific content:
+    - **ENUM**: Write `enum.ordinal()`
+    - **RECORD**: Recursively serialize all components via `serializeRecordComponents()`
+
+**Record Components**:
+- Built-in types: Write negative marker + value
+- User types: Write logical ordinal + recursive content
+- NULL values: Write 0 marker
+
+### Deserialization Strategy
+
+**Ordinal-to-Type Lookup**:
+1. Read logical ordinal from buffer
+2. Convert to physical array index: `physicalIndex = logicalOrdinal - 1`
+3. Look up type: `discoveredClasses[physicalIndex]`
+4. Dispatch based on AST tag: `tags[physicalIndex]`
+
+**Type-Specific Deserialization**:
+- **ENUM**: Read constant name, use `Enum.valueOf()`
+- **RECORD**: Read all components, invoke constructor via `MethodHandle`
+
+### Wire Protocol Design
+
+- Negative ordinals (-1, -2, -3...): Built-in types (int, String, etc.)
+- Positive ordinals (1, 2, 3...): User types (1-indexed logical, 0-indexed physical)
+- Zero (0): NULL marker for memory safety
+
+**Wire Protocol Implementation**:
+- **Negative markers**: Built-in types (STRING, UUID, primitives) use negative ZigZag encoded values
+- **Positive markers**: User types use array index as ZigZag encoded ordinal
+- **NULL marker**: Remains 0 (uninitialized memory safety)
+- **No Class Name Serialization**: Ordinals eliminate need for class name compression
+- Our built-in value types in `Constants` have a `marker()` method that returns `-1*ordinal()` which is their position in the enum's logical `values()` array yet we do not need to use that physical method as we use the `ordinal()` API
+- The user types are stored in the `discoveredClasses` array and we use `classToOrdinal(clazz)` to get the ordinal of the class. We can then `+1` to not overlap with the built-in ordinals
+- We ZigZag encode the ordinals which are typically tiny so typically only one byte on the wire. This is a vast performance improvement over writing class names as strings
+
+We will likely never put in more than 63 future built-in types and the application will likely never have more than 63 user types for one pickler so we will get a one byte encoding. Yet we have no such artificial limit - we can support up to 2^31 types of each.
+
+End. 
