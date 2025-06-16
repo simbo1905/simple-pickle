@@ -49,7 +49,7 @@ class MetaStageAnalysisTest {
   public enum SimpleEnum { ONE, TWO, THREE }
   public enum ComplexEnum {
     ALPHA("a"), BETA("b"), GAMMA("g");
-    private final String code;
+    final String code;
     ComplexEnum(String code) { this.code = code; }
     public String getCode() { return code; }
   }
@@ -218,9 +218,9 @@ class MetaStageAnalysisTest {
 
     // Fields needed for reflection-based generic type access
     @SuppressWarnings("unused")
-    private List<Integer> integerList;
+    List<Integer> integerList;
     @SuppressWarnings("unused")
-    private Optional<String> optionalString;
+    Optional<String> optionalString;
   }
 
   /**
@@ -267,9 +267,9 @@ class MetaStageAnalysisTest {
     }
 
     @SuppressWarnings("unused")
-    private Map<String, Integer> stringIntMap;
+    Map<String, Integer> stringIntMap;
     @SuppressWarnings("unused")
-    private Map<UUID, List<String>> complexMap;
+    Map<UUID, List<String>> complexMap;
   }
 
   /**
@@ -456,9 +456,9 @@ class MetaStageAnalysisTest {
     }
 
     @SuppressWarnings("unused")
-    private List<Optional<String[]>> listOptionalStringArray;
+    List<Optional<String[]>> listOptionalStringArray;
     @SuppressWarnings("unused")
-    private Map<String, Optional<Integer[]>> mapComplexNested;
+    Map<String, Optional<Integer[]>> mapComplexNested;
   }
 
   /**
@@ -559,7 +559,7 @@ class MetaStageAnalysisTest {
     }
 
     @SuppressWarnings("unused")
-    private List<Map<String, Optional<Integer[]>[]>> readmeComplexExample;
+    List<Map<String, Optional<Integer[]>[]>> readmeComplexExample;
   }
 
   /**
@@ -701,6 +701,6 @@ class MetaStageAnalysisTest {
     }
 
     @SuppressWarnings("unused")
-    private List<Optional<Map<String, List<Integer[]>>>> deeplyNested;
+    List<Optional<Map<String, List<Integer[]>>>> deeplyNested;
   }
 }

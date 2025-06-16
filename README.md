@@ -598,4 +598,3 @@ The beauty of this approach is that it automatically handles any nesting depth a
 
 SPDX-FileCopyrightText: 2025 Simon Massey  
 SPDX-License-Identifier: Apache-2.0
-

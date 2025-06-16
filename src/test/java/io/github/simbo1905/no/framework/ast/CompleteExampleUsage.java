@@ -1,4 +1,5 @@
 package io.github.simbo1905.no.framework.ast;
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
 import java.lang.reflect.RecordComponent;
 import java.util.*;
@@ -37,7 +38,7 @@ public class CompleteExampleUsage {
    * 3. Object-stage: Execute generated code without reflection
    */
   public static void main(String[] args) {
-    System.out.println("=== No Framework Pickler: AST Construction Demo ===\n");
+    LOGGER.finer(() -> "=== No Framework Pickler: AST Construction Demo ===\n");
 
     // Stage 1: Meta-stage Analysis - Build ASTs for all components
     demonstrateBasicTypeAnalysis();
@@ -47,138 +48,138 @@ public class CompleteExampleUsage {
     demonstrateSealedHierarchyAnalysis();
     demonstratePerformanceAnalysis();
 
-    System.out.println("\n=== Analysis Complete: Ready for Code Generation ===");
-    System.out.println("The ASTs constructed above would now be used to generate");
-    System.out.println("specialized serialization code for zero-reflection runtime performance.");
+    LOGGER.finer(() -> "\n=== Analysis Complete: Ready for Code Generation ===");
+    LOGGER.finer(() -> "The ASTs constructed above would now be used to generate");
+    LOGGER.finer(() -> "specialized serialization code for zero-reflection runtime performance.");
   }
 
-  private static void demonstrateBasicTypeAnalysis() {
-    System.out.println("1. Basic Type Analysis (Primitive and Built-in Types)");
-    System.out.println("==================================================");
+  static void demonstrateBasicTypeAnalysis() {
+    LOGGER.finer(() -> "1. Basic Type Analysis (Primitive and Built-in Types)");
+    LOGGER.finer(() -> "==================================================");
 
     // Analyze primitive types
     TypeStructureAST intAST = MetaStage.analyze(int.class);
     TypeStructureAST stringAST = MetaStage.analyze(String.class);
     TypeStructureAST uuidAST = MetaStage.analyze(UUID.class);
 
-    System.out.printf("  int.class     -> %s (simple: %b)%n", intAST.toStructureString(), intAST.isSimple());
-    System.out.printf("  String.class  -> %s (simple: %b)%n", stringAST.toStructureString(), stringAST.isSimple());
-    System.out.printf("  UUID.class    -> %s (simple: %b)%n", uuidAST.toStructureString(), uuidAST.isSimple());
+    LOGGER.finer(() -> String.format("  int.class     -> %s (simple: %b)%n", intAST.toStructureString(), intAST.isSimple()));
+    LOGGER.finer(() -> String.format("  String.class  -> %s (simple: %b)%n", stringAST.toStructureString(), stringAST.isSimple()));
+    LOGGER.finer(() -> String.format("  UUID.class    -> %s (simple: %b)%n", uuidAST.toStructureString(), uuidAST.isSimple()));
 
     // Validate all are serialization-ready
     MetaStage.validateSerializationSupport(intAST);
     MetaStage.validateSerializationSupport(stringAST);
     MetaStage.validateSerializationSupport(uuidAST);
 
-    System.out.println("  ✓ All basic types validated for serialization\n");
+    LOGGER.finer(() -> "  ✓ All basic types validated for serialization\n");
   }
 
-  private static void demonstrateContainerAnalysis() {
-    System.out.println("2. Container Type Analysis (Arrays, Lists, Optionals, Maps)");
-    System.out.println("=========================================================");
+  static void demonstrateContainerAnalysis() {
+    LOGGER.finer(() -> "2. Container Type Analysis (Arrays, Lists, Optionals, Maps)");
+    LOGGER.finer(() -> "=========================================================");
 
     // Analyze container types
     TypeStructureAST arrayAST = MetaStage.analyze(String[].class);
-    System.out.printf("  String[]      -> %s (containers: %d)%n",
-        arrayAST.toStructureString(), arrayAST.containerCount());
+    LOGGER.finer(() -> String.format("  String[]      -> %s (containers: %d)%n",
+        arrayAST.toStructureString(), arrayAST.containerCount()));
 
     // For generic types, we need to use reflection field access
     try {
       var field = CompleteExampleUsage.class.getDeclaredField("exampleList");
       TypeStructureAST listAST = MetaStage.analyze(field.getGenericType());
-      System.out.printf("  List<String>  -> %s (containers: %d)%n",
-          listAST.toStructureString(), listAST.containerCount());
+      LOGGER.finer(() -> String.format("  List<String>  -> %s (containers: %d)%n",
+          listAST.toStructureString(), listAST.containerCount()));
 
       field = CompleteExampleUsage.class.getDeclaredField("exampleOptional");
       TypeStructureAST optionalAST = MetaStage.analyze(field.getGenericType());
-      System.out.printf("  Optional<Int> -> %s (containers: %d)%n",
-          optionalAST.toStructureString(), optionalAST.containerCount());
+      LOGGER.finer(() -> String.format("  Optional<Int> -> %s (containers: %d)%n",
+          optionalAST.toStructureString(), optionalAST.containerCount()));
 
       field = CompleteExampleUsage.class.getDeclaredField("exampleMap");
       TypeStructureAST mapAST = MetaStage.analyze(field.getGenericType());
-      System.out.printf("  Map<Str,Int>  -> %s (containers: %d)%n",
-          mapAST.toStructureString(), mapAST.containerCount());
+      LOGGER.finer(() -> String.format("  Map<Str,Int>  -> %s (containers: %d)%n",
+          mapAST.toStructureString(), mapAST.containerCount()));
 
-      System.out.println("  ✓ All container types analyzed successfully\n");
+      LOGGER.finer(() -> "  ✓ All container types analyzed successfully\n");
 
     } catch (NoSuchFieldException e) {
-      System.err.println("  Error accessing example fields: " + e.getMessage());
+      LOGGER.warning(() -> "  Error accessing example fields: " + e.getMessage());
     }
   }
 
-  private static void demonstrateUserDefinedTypeAnalysis() {
-    System.out.println("3. User-Defined Type Analysis (Records, Enums, Interfaces)");
-    System.out.println("========================================================");
+  static void demonstrateUserDefinedTypeAnalysis() {
+    LOGGER.finer(() -> "3. User-Defined Type Analysis (Records, Enums, Interfaces)");
+    LOGGER.finer(() -> "========================================================");
 
     // Analyze user-defined types
     TypeStructureAST personAST = MetaStage.analyze(Person.class);
     TypeStructureAST treeEnumAST = MetaStage.analyze(TreeEnum.class);
     TypeStructureAST treeInterfaceAST = MetaStage.analyze(TreeNode.class);
 
-    System.out.printf("  Person.class    -> %s%n", personAST.toStructureString());
-    System.out.printf("  TreeEnum.class  -> %s%n", treeEnumAST.toStructureString());
-    System.out.printf("  TreeNode.class  -> %s%n", treeInterfaceAST.toStructureString());
+    LOGGER.finer(() -> String.format("  Person.class    -> %s%n", personAST.toStructureString()));
+    LOGGER.finer(() -> String.format("  TreeEnum.class  -> %s%n", treeEnumAST.toStructureString()));
+    LOGGER.finer(() -> String.format("  TreeNode.class  -> %s%n", treeInterfaceAST.toStructureString()));
 
     // Analyze record components
     Map<String, TypeStructureAST> personComponents = MetaStage.analyzeRecordComponents(Person.class);
-    System.out.println("  Person record components:");
+    LOGGER.finer(() -> "  Person record components:");
     personComponents.forEach((name, ast) ->
-        System.out.printf("    %s: %s%n", name, ast.toStructureString()));
+        LOGGER.finer(() -> String.format("    %s: %s%n", name, ast.toStructureString())));
 
-    System.out.println("  ✓ All user-defined types analyzed successfully\n");
+    LOGGER.finer(() -> "  ✓ All user-defined types analyzed successfully\n");
   }
 
-  private static void demonstrateComplexNestedAnalysis() {
-    System.out.println("4. Complex Nested Structure Analysis");
-    System.out.println("===================================");
+  static void demonstrateComplexNestedAnalysis() {
+    LOGGER.finer(() -> "4. Complex Nested Structure Analysis");
+    LOGGER.finer(() -> "===================================");
 
     // Analyze the complex record and its components
     Map<String, TypeStructureAST> complexComponents = MetaStage.analyzeRecordComponents(ComplexRecord.class);
 
-    System.out.println("  ComplexRecord components:");
+    LOGGER.finer(() -> "  ComplexRecord components:");
     complexComponents.forEach((name, ast) -> {
-      System.out.printf("    %-20s: %s%n", name, ast.toStructureString());
-      System.out.printf("    %-20s  containers: %d, nested: %b%n",
-          "", ast.containerCount(), ast.isNested());
+      LOGGER.finer(() -> String.format("    %-20s: %s%n", name, ast.toStructureString()));
+      LOGGER.finer(() -> String.format("    %-20s  containers: %d, nested: %b%n",
+          "", ast.containerCount(), ast.isNested()));
     });
 
     // Demonstrate substructure analysis for complex nested types
     TypeStructureAST nestedStructure = complexComponents.get("nestedStructure");
     if (nestedStructure.size() > 2) {
       TypeStructureAST subStructure = nestedStructure.substructure(1);
-      System.out.printf("    Substructure from index 1: %s%n", subStructure.toStructureString());
+      LOGGER.finer(() -> String.format("    Substructure from index 1: %s%n", subStructure.toStructureString()));
     }
 
-    System.out.println("  ✓ Complex nested structures analyzed successfully\n");
+    LOGGER.finer(() -> "  ✓ Complex nested structures analyzed successfully\n");
   }
 
-  private static void demonstrateSealedHierarchyAnalysis() {
-    System.out.println("5. Sealed Interface Hierarchy Analysis");
-    System.out.println("====================================");
+  static void demonstrateSealedHierarchyAnalysis() {
+    LOGGER.finer(() -> "5. Sealed Interface Hierarchy Analysis");
+    LOGGER.finer(() -> "====================================");
 
     // Analyze the complete sealed hierarchy
     Map<Class<?>, TypeStructureAST> hierarchy = MetaStage.analyzeSealedHierarchy(TreeNode.class);
 
-    System.out.println("  TreeNode sealed hierarchy:");
+    LOGGER.finer(() -> "  TreeNode sealed hierarchy:");
     hierarchy.forEach((clazz, ast) -> {
-      System.out.printf("    %-20s: %s%n", clazz.getSimpleName(), ast.toStructureString());
+      LOGGER.finer(() -> String.format("    %-20s: %s%n", clazz.getSimpleName(), ast.toStructureString()));
 
       // For record types, show their components
       if (clazz.isRecord()) {
         Map<String, TypeStructureAST> components = MetaStage.analyzeRecordComponents(clazz);
         components.forEach((name, componentAST) ->
-            System.out.printf("      %-18s: %s%n", name, componentAST.toStructureString()));
+            LOGGER.finer(() -> String.format("      %-18s: %s%n", name, componentAST.toStructureString())));
       }
     });
 
-    System.out.println("  ✓ Sealed hierarchy analyzed successfully\n");
+    LOGGER.finer(() -> "  ✓ Sealed hierarchy analyzed successfully\n");
   }
 
-  private static void demonstratePerformanceAnalysis() {
-    System.out.println("6. Performance and Caching Analysis");
-    System.out.println("=================================");
+  static void demonstratePerformanceAnalysis() {
+    LOGGER.finer(() -> "6. Performance and Caching Analysis");
+    LOGGER.finer(() -> "=================================");
 
-    System.out.printf("  Cache size before: %d%n", MetaStage.getCacheSize());
+    LOGGER.finer(() -> String.format("  Cache size before: %d%n", MetaStage.getCacheSize()));
 
     // Perform multiple analyses to test caching
     long startTime = System.nanoTime();
@@ -189,21 +190,21 @@ public class CompleteExampleUsage {
     TypeStructureAST ast2 = MetaStage.analyze(ComplexRecord.class);
     long secondAnalysis = System.nanoTime() - startTime;
 
-    System.out.printf("  Cache size after: %d%n", MetaStage.getCacheSize());
-    System.out.printf("  First analysis:  %,d ns%n", firstAnalysis);
-    System.out.printf("  Second analysis: %,d ns%n", secondAnalysis);
-    System.out.printf("  Cache speedup:   %.1fx%n", (double) firstAnalysis / secondAnalysis);
-    System.out.printf("  Same instance:   %b%n", ast1 == ast2);
+    LOGGER.finer(() -> String.format("  Cache size after: %d%n", MetaStage.getCacheSize()));
+    LOGGER.finer(() -> String.format("  First analysis:  %,d ns%n", firstAnalysis));
+    LOGGER.finer(() -> String.format("  Second analysis: %,d ns%n", secondAnalysis));
+    LOGGER.finer(() -> String.format("  Cache speedup:   %.1fx%n", (double) firstAnalysis / secondAnalysis));
+    LOGGER.finer(() -> String.format("  Same instance:   %b%n", ast1 == ast2));
 
     // Analyze performance with complex nested structures
     startTime = System.nanoTime();
     Map<String, TypeStructureAST> components = MetaStage.analyzeRecordComponents(ComplexRecord.class);
     long componentAnalysis = System.nanoTime() - startTime;
 
-    System.out.printf("  Component analysis: %,d ns (%d components)%n",
-        componentAnalysis, components.size());
+    LOGGER.finer(() -> String.format("  Component analysis: %,d ns (%d components)%n",
+        componentAnalysis, components.size()));
 
-    System.out.println("  ✓ Performance analysis complete\n");
+    LOGGER.finer(() -> "  ✓ Performance analysis complete\n");
   }
 
   /**
@@ -228,7 +229,7 @@ public class CompleteExampleUsage {
     return codeBuilder.toString();
   }
 
-  private static String generateComponentSerialization(String componentName, TypeStructureAST ast, int indent) {
+  static String generateComponentSerialization(String componentName, TypeStructureAST ast, int indent) {
     String indentStr = "  ".repeat(indent);
     StringBuilder code = new StringBuilder();
 
@@ -239,8 +240,11 @@ public class CompleteExampleUsage {
         case STRING -> code.append(String.format("%swriteString(buffer, instance.%s());%n", indentStr, componentName));
         case INTEGER -> code.append(String.format("%swriteInt(buffer, instance.%s());%n", indentStr, componentName));
         case BOOLEAN -> code.append(String.format("%swriteBoolean(buffer, instance.%s());%n", indentStr, componentName));
-        case RECORD -> code.append(String.format("%s// Delegate to %s serializer%n%sserialize%s(buffer, instance.%s());%n",
-            indentStr, tag.type().getSimpleName(), indentStr, tag.type().getSimpleName(), componentName));
+        case RECORD -> {
+          String className = tag.type() instanceof Class<?> clazz ? clazz.getSimpleName() : tag.type().getTypeName();
+          code.append(String.format("%s// Delegate to %s serializer%n%sserialize%s(buffer, instance.%s());%n",
+              indentStr, className, indentStr, className, componentName));
+        }
         case ENUM -> code.append(String.format("%swriteEnum(buffer, instance.%s());%n", indentStr, componentName));
         default -> code.append(String.format("%s// Serialize %s: %s%n", indentStr, componentName, ast.toStructureString()));
       }
@@ -255,11 +259,11 @@ public class CompleteExampleUsage {
 
   // Example fields for reflection-based generic type access
   @SuppressWarnings("unused")
-  private List<String> exampleList;
+  List<String> exampleList;
   @SuppressWarnings("unused")
-  private Optional<Integer> exampleOptional;
+  Optional<Integer> exampleOptional;
   @SuppressWarnings("unused")
-  private Map<String, Integer> exampleMap;
+  Map<String, Integer> exampleMap;
 }
 
 /**
@@ -273,40 +277,40 @@ class ASTIntegrationDemo {
    * the existing PicklerImpl code generation.
    */
   public static void demonstrateIntegration() {
-    System.out.println("=== AST Integration with No Framework Pickler ===\n");
+    LOGGER.finer(() -> "=== AST Integration with No Framework Pickler ===\n");
 
     // This is where the AST construction would integrate with the existing
     // TypeStructure.analyze() method mentioned in the requirements
 
-    System.out.println("1. Legacy TypeStructure.analyze() method would be replaced by:");
-    System.out.println("   MetaStage.analyze(Type) -> TypeStructureAST");
-    System.out.println();
+    LOGGER.finer(() -> "1. Legacy TypeStructure.analyze() method would be replaced by:");
+    LOGGER.finer(() -> "   MetaStage.analyze(Type) -> TypeStructureAST");
+    LOGGER.finer(() -> "");
 
-    System.out.println("2. The existing parallel lists (tags, types) would be replaced by:");
-    System.out.println("   TypeStructureAST.tagTypes() -> List<TagWithType>");
-    System.out.println();
+    LOGGER.finer(() -> "2. The existing parallel lists (tags, types) would be replaced by:");
+    LOGGER.finer(() -> "   TypeStructureAST.tagTypes() -> List<TagWithType>");
+    LOGGER.finer(() -> "");
 
-    System.out.println("3. The AST enables more sophisticated analysis:");
-    System.out.println("   - Component-level analysis for records");
-    System.out.println("   - Sealed hierarchy discovery");
-    System.out.println("   - Static validation of serialization support");
-    System.out.println("   - Performance optimization through caching");
-    System.out.println();
+    LOGGER.finer(() -> "3. The AST enables more sophisticated analysis:");
+    LOGGER.finer(() -> "   - Component-level analysis for records");
+    LOGGER.finer(() -> "   - Sealed hierarchy discovery");
+    LOGGER.finer(() -> "   - Static validation of serialization support");
+    LOGGER.finer(() -> "   - Performance optimization through caching");
+    LOGGER.finer(() -> "");
 
-    System.out.println("4. Code generation becomes more structured:");
-    System.out.println("   - AST nodes map directly to serialization operations");
-    System.out.println("   - Delegation chains are explicit in the tree structure");
-    System.out.println("   - Right-to-left construction follows leaf-to-root traversal");
-    System.out.println();
+    LOGGER.finer(() -> "4. Code generation becomes more structured:");
+    LOGGER.finer(() -> "   - AST nodes map directly to serialization operations");
+    LOGGER.finer(() -> "   - Delegation chains are explicit in the tree structure");
+    LOGGER.finer(() -> "   - Right-to-left construction follows leaf-to-root traversal");
+    LOGGER.finer(() -> "");
 
     // Example of how existing code would be updated
-    System.out.println("5. Migration path from existing code:");
-    System.out.println("   OLD: TypeStructure structure = TypeStructure.analyze(componentType);");
-    System.out.println("   NEW: TypeStructureAST ast = MetaStage.analyze(componentType);");
-    System.out.println("        MetaStage.validateSerializationSupport(ast);");
-    System.out.println();
+    LOGGER.finer(() -> "5. Migration path from existing code:");
+    LOGGER.finer(() -> "   OLD: TypeStructure structure = TypeStructure.analyze(componentType);");
+    LOGGER.finer(() -> "   NEW: TypeStructureAST ast = MetaStage.analyze(componentType);");
+    LOGGER.finer(() -> "        MetaStage.validateSerializationSupport(ast);");
+    LOGGER.finer(() -> "");
 
-    System.out.println("=== Integration Analysis Complete ===");
+    LOGGER.finer(() -> "=== Integration Analysis Complete ===");
   }
 
   public static void main(String[] args) {

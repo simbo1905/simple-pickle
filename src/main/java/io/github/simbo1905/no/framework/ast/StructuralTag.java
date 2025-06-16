@@ -92,12 +92,12 @@ record TagWithType(StructuralTag tag, Type type) {
     return new TagWithType(StructuralTag.MAP_SEPARATOR, null);
   }
 
-  private static boolean isContainerTag(StructuralTag tag) {
+  static boolean isContainerTag(StructuralTag tag) {
     return tag == StructuralTag.ARRAY || tag == StructuralTag.LIST ||
         tag == StructuralTag.OPTIONAL || tag == StructuralTag.MAP;
   }
 
-  private static boolean isPrimitiveTag(StructuralTag tag) {
+  static boolean isPrimitiveTag(StructuralTag tag) {
     return tag == StructuralTag.BOOLEAN || tag == StructuralTag.BYTE ||
         tag == StructuralTag.SHORT || tag == StructuralTag.CHARACTER ||
         tag == StructuralTag.INTEGER || tag == StructuralTag.LONG ||
@@ -105,7 +105,7 @@ record TagWithType(StructuralTag tag, Type type) {
         tag == StructuralTag.STRING || tag == StructuralTag.UUID;
   }
 
-  private static boolean isUserDefinedTag(StructuralTag tag) {
+  static boolean isUserDefinedTag(StructuralTag tag) {
     return tag == StructuralTag.ENUM || tag == StructuralTag.RECORD ||
         tag == StructuralTag.INTERFACE;
   }

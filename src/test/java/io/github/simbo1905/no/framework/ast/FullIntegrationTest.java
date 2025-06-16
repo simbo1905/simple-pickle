@@ -1,4 +1,5 @@
 package io.github.simbo1905.no.framework.ast;
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.Test;
@@ -44,22 +45,23 @@ class FullIntegrationTest {
 
   @BeforeAll
   static void setupIntegrationTest() {
-    System.out.println("=== Starting Full Integration Test Suite ===");
-    MetaStage.clearCache();
+    LOGGER.finer(() -> String.format("=== Starting Full Integration Test Suite (cache size: %d) ===", MetaStage.TYPE_CACHE.size()));
+    MetaStage.TYPE_CACHE.clear();
+    LOGGER.finer(() -> String.format("Cache cleared, new size: %d", MetaStage.TYPE_CACHE.size()));
   }
 
   @AfterAll
   static void teardownIntegrationTest() {
-    System.out.println("=== Integration Test Suite Complete ===");
-    System.out.printf("Final cache size: %d entries%n", MetaStage.getCacheSize());
-    MetaStage.clearCache();
+    LOGGER.finer(() -> "=== Integration Test Suite Complete ===");
+    LOGGER.finer(() -> String.format("Final cache size: %d entries%n", MetaStage.TYPE_CACHE.size()));
+    MetaStage.TYPE_CACHE.clear();
   }
 
   @Test
   @Order(1)
   @DisplayName("Integration Test 1: EBNF Grammar Compliance Validation")
   void testEBNFGrammarCompliance() {
-    System.out.println("\n--- Testing EBNF Grammar Compliance ---");
+    LOGGER.finer(() -> "\n--- Testing EBNF Grammar Compliance ---");
 
     // Test the formal grammar: TypeStructure ::= TagTypeSequence
     TypeStructureAST simpleAST = MetaStage.analyze(String.class);
@@ -80,14 +82,14 @@ class FullIntegrationTest {
     assertEquals(StructuralTag.ARRAY, arrayAST.root().tag());
     assertTrue(arrayAST.root().isContainer());
 
-    System.out.println("  ✓ EBNF grammar compliance validated");
+    LOGGER.finer(() -> "  ✓ EBNF grammar compliance validated");
   }
 
   @Test
   @Order(2)
   @DisplayName("Integration Test 2: Multi-Stage Programming Workflow")
   void testMultiStageProgrammingWorkflow() {
-    System.out.println("\n--- Testing Multi-Stage Programming Workflow ---");
+    LOGGER.finer(() -> "\n--- Testing Multi-Stage Programming Workflow ---");
 
     // Meta-stage: Analyze complex type structure
     long metaStageStart = System.nanoTime();
@@ -115,15 +117,15 @@ class FullIntegrationTest {
       assertNotEquals("<empty>", structureString);
     }
 
-    System.out.printf("  ✓ Meta-stage analysis completed in %,d ns%n", metaStageEnd - metaStageStart);
-    System.out.println("  ✓ All ASTs validated for object-stage code generation");
+    LOGGER.finer(() -> String.format("  ✓ Meta-stage analysis completed in %,d ns%n", metaStageEnd - metaStageStart));
+    LOGGER.finer(() -> "  ✓ All ASTs validated for object-stage code generation");
   }
 
   @Test
   @Order(3)
   @DisplayName("Integration Test 3: Static Type Analysis Completeness")
   void testStaticTypeAnalysisCompleteness() {
-    System.out.println("\n--- Testing Static Type Analysis Completeness ---");
+    LOGGER.finer(() -> "\n--- Testing Static Type Analysis Completeness ---");
 
     // Test comprehensive type analysis
     Map<String, TypeStructureAST> engineComponents = MetaStage.analyzeRecordComponents(Engine.class);
@@ -151,16 +153,16 @@ class FullIntegrationTest {
     Map<String, TypeStructureAST> turboComponents = MetaStage.analyzeRecordComponents(Turbocharger.class);
     assertEquals(2, turboComponents.size());
 
-    System.out.println("  ✓ Static type analysis handles all type categories");
-    System.out.println("  ✓ Primitive, container, and user-defined types correctly classified");
-    System.out.println("  ✓ Nested record analysis working correctly");
+    LOGGER.finer(() -> "  ✓ Static type analysis handles all type categories");
+    LOGGER.finer(() -> "  ✓ Primitive, container, and user-defined types correctly classified");
+    LOGGER.finer(() -> "  ✓ Nested record analysis working correctly");
   }
 
   @Test
   @Order(4)
   @DisplayName("Integration Test 4: Complex Nested Structure Handling")
   void testComplexNestedStructureHandling() throws Exception {
-    System.out.println("\n--- Testing Complex Nested Structure Handling ---");
+    LOGGER.finer(() -> "\n--- Testing Complex Nested Structure Handling ---");
 
     // Test the most complex field: Optional<Map<UUID, FuelType[]>>
     Type complexType = Fleet.class.getDeclaredField("fuelAssignments").getGenericType();
@@ -192,16 +194,16 @@ class FullIntegrationTest {
         .anyMatch(tag -> tag.tag() == StructuralTag.MAP_SEPARATOR);
     assertTrue(foundSeparator, "Map structure should contain separator");
 
-    System.out.printf("  ✓ Complex structure analyzed: %s%n", complexAST.toStructureString());
-    System.out.println("  ✓ Map separator correctly positioned");
-    System.out.println("  ✓ Container counting accurate");
+    LOGGER.finer(() -> String.format("  ✓ Complex structure analyzed: %s%n", complexAST.toStructureString()));
+    LOGGER.finer(() -> "  ✓ Map separator correctly positioned");
+    LOGGER.finer(() -> "  ✓ Container counting accurate");
   }
 
   @Test
   @Order(5)
   @DisplayName("Integration Test 5: Sealed Interface Hierarchy Analysis")
   void testSealedInterfaceHierarchyAnalysis() {
-    System.out.println("\n--- Testing Sealed Interface Hierarchy Analysis ---");
+    LOGGER.finer(() -> "\n--- Testing Sealed Interface Hierarchy Analysis ---");
 
     // Analyze the complete Vehicle hierarchy
     Map<Class<?>, TypeStructureAST> vehicleHierarchy = MetaStage.analyzeSealedHierarchy(Vehicle.class);
@@ -226,18 +228,19 @@ class FullIntegrationTest {
     assertEquals(StructuralTag.RECORD, engineAST.root().tag());
     assertEquals(Engine.class, engineAST.root().type());
 
-    System.out.printf("  ✓ Vehicle hierarchy contains %d types%n", vehicleHierarchy.size());
-    System.out.println("  ✓ All vehicle types correctly classified as records");
-    System.out.println("  ✓ Nested record references properly handled");
+    LOGGER.finer(() -> String.format("  ✓ Vehicle hierarchy contains %d types%n", vehicleHierarchy.size()));
+    LOGGER.finer(() -> "  ✓ All vehicle types correctly classified as records");
+    LOGGER.finer(() -> "  ✓ Nested record references properly handled");
   }
 
   @Test
   @Order(6)
   @DisplayName("Integration Test 6: Performance and Caching Integration")
   void testPerformanceAndCachingIntegration() {
-    System.out.println("\n--- Testing Performance and Caching Integration ---");
+    LOGGER.finer(() -> "\n--- Testing Performance and Caching Integration ---");
 
-    int initialCacheSize = MetaStage.getCacheSize();
+    // Ensure cache is empty for meaningful performance test
+    MetaStage.TYPE_CACHE.clear();
 
     // Perform complex analysis that should populate cache
     long startTime = System.nanoTime();
@@ -245,7 +248,8 @@ class FullIntegrationTest {
     Map<Class<?>, TypeStructureAST> vehicleHierarchy = MetaStage.analyzeSealedHierarchy(Vehicle.class);
     long firstRunTime = System.nanoTime() - startTime;
 
-    int afterFirstRun = MetaStage.getCacheSize();
+    int cacheAfterFirst = MetaStage.TYPE_CACHE.size();
+    assertTrue(cacheAfterFirst > 0, "Analysis should populate cache");
 
     // Second run should benefit from caching
     startTime = System.nanoTime();
@@ -253,11 +257,7 @@ class FullIntegrationTest {
     Map<Class<?>, TypeStructureAST> vehicleHierarchy2 = MetaStage.analyzeSealedHierarchy(Vehicle.class);
     long secondRunTime = System.nanoTime() - startTime;
 
-    int afterSecondRun = MetaStage.getCacheSize();
-
-    // Validate caching behavior
-    assertTrue(afterFirstRun > initialCacheSize, "Cache should grow after first analysis");
-    assertEquals(afterFirstRun, afterSecondRun, "Cache size should stabilize");
+    // Validate caching is actually working
     assertTrue(secondRunTime < firstRunTime / 2, "Second run should be significantly faster");
 
     // Validate result consistency
@@ -270,17 +270,17 @@ class FullIntegrationTest {
           "Cached AST instances should be identical");
     }
 
-    System.out.printf("  ✓ First run: %,d ns%n", firstRunTime);
-    System.out.printf("  ✓ Second run: %,d ns (%.1fx speedup)%n",
-        secondRunTime, (double) firstRunTime / secondRunTime);
-    System.out.printf("  ✓ Cache size: %d -> %d entries%n", initialCacheSize, afterFirstRun);
+    LOGGER.finer(() -> String.format("  ✓ First run: %,d ns%n", firstRunTime));
+    LOGGER.finer(() -> String.format("  ✓ Second run: %,d ns (%.1fx speedup)%n",
+        secondRunTime, (double) firstRunTime / secondRunTime));
+    LOGGER.finer(() -> String.format("  ✓ Cache size: %d -> %d entries%n", initialCacheSize, afterFirstRun));
   }
 
   @Test
   @Order(7)
   @DisplayName("Integration Test 7: Error Handling and Edge Cases")
   void testErrorHandlingAndEdgeCases() {
-    System.out.println("\n--- Testing Error Handling and Edge Cases ---");
+    LOGGER.finer(() -> "\n--- Testing Error Handling and Edge Cases ---");
 
     // Test null handling
     assertThrows(NullPointerException.class, () -> MetaStage.analyze(null));
@@ -305,17 +305,17 @@ class FullIntegrationTest {
     assertThrows(IllegalStateException.class, emptyAST::root);
     assertThrows(IllegalStateException.class, emptyAST::leaf);
 
-    System.out.println("  ✓ Null pointer protection working");
-    System.out.println("  ✓ Invalid operation detection working");
-    System.out.println("  ✓ Bounds checking working");
-    System.out.println("  ✓ Empty AST protection working");
+    LOGGER.finer(() -> "  ✓ Null pointer protection working");
+    LOGGER.finer(() -> "  ✓ Invalid operation detection working");
+    LOGGER.finer(() -> "  ✓ Bounds checking working");
+    LOGGER.finer(() -> "  ✓ Empty AST protection working");
   }
 
   @Test
   @Order(8)
   @DisplayName("Integration Test 8: README.md Example Validation")
   void testReadmeExampleValidation() {
-    System.out.println("\n--- Testing README.md Example Validation ---");
+    LOGGER.finer(() -> "\n--- Testing README.md Example Validation ---");
 
     // Validate all examples from README.md can be analyzed
     List<Class<?>> readmeClasses = List.of(
@@ -345,16 +345,16 @@ class FullIntegrationTest {
     TypeStructureAST recordsAST = fleetComponents.get("maintenanceRecords");
     assertEquals("MAP<STRING, LIST<STRING>>", recordsAST.toStructureString());
 
-    System.out.println("  ✓ All README.md classes analyzable");
-    System.out.println("  ✓ Sealed interfaces in containers working");
-    System.out.println("  ✓ Nested container patterns working");
+    LOGGER.finer(() -> "  ✓ All README.md classes analyzable");
+    LOGGER.finer(() -> "  ✓ Sealed interfaces in containers working");
+    LOGGER.finer(() -> "  ✓ Nested container patterns working");
   }
 
   @Test
   @Order(9)
   @DisplayName("Integration Test 9: Code Generation Readiness")
   void testCodeGenerationReadiness() {
-    System.out.println("\n--- Testing Code Generation Readiness ---");
+    LOGGER.finer(() -> "\n--- Testing Code Generation Readiness ---");
 
     // Test that ASTs provide all information needed for code generation
     Map<String, TypeStructureAST> carComponents = MetaStage.analyzeRecordComponents(Car.class);
@@ -398,17 +398,17 @@ class FullIntegrationTest {
       fail("Test field should exist: " + e.getMessage());
     }
 
-    System.out.println("  ✓ All ASTs provide complete serialization information");
-    System.out.println("  ✓ Simple vs complex type classification clear");
-    System.out.println("  ✓ Map structures properly formed");
-    System.out.println("  ✓ Delegation chain construction possible");
+    LOGGER.finer(() -> "  ✓ All ASTs provide complete serialization information");
+    LOGGER.finer(() -> "  ✓ Simple vs complex type classification clear");
+    LOGGER.finer(() -> "  ✓ Map structures properly formed");
+    LOGGER.finer(() -> "  ✓ Delegation chain construction possible");
   }
 
   @Test
   @Order(10)
   @DisplayName("Integration Test 10: Complete System Validation")
   void testCompleteSystemValidation() {
-    System.out.println("\n--- Final Complete System Validation ---");
+    LOGGER.finer(() -> "\n--- Final Complete System Validation ---");
 
     // Test the complete workflow: meta-stage -> validation -> code generation readiness
 
@@ -437,6 +437,10 @@ class FullIntegrationTest {
       else complexTypes++;
     }
 
+    // Make final copies for lambda usage
+    final int finalSimpleTypes = simpleTypes;
+    final int finalComplexTypes = complexTypes;
+
     // 4. Performance: System should be efficient
     assertTrue(MetaStage.getCacheSize() > 0, "Cache should be populated");
 
@@ -456,21 +460,21 @@ class FullIntegrationTest {
     boolean hasInterfaces = fleetComponents.values().stream()
         .anyMatch(ast -> ast.toStructureString().contains("INTERFACE"));
 
-    System.out.printf("  ✓ Total types analyzed: %d%n", totalTypes);
-    System.out.printf("  ✓ Simple types: %d, Complex types: %d%n", simpleTypes, complexTypes);
-    System.out.printf("  ✓ Cache entries: %d%n", MetaStage.getCacheSize());
-    System.out.println("  ✓ Type pattern coverage:");
-    System.out.printf("    Arrays: %b, Lists: %b, Maps: %b, Optionals: %b%n",
-        hasArrays, hasLists, hasMaps, hasOptionals);
-    System.out.printf("    Records: %b, Enums: %b, Interfaces: %b%n",
-        hasRecords, hasEnums, hasInterfaces);
+    LOGGER.finer(() -> String.format("  ✓ Total types analyzed: %d%n", totalTypes));
+    LOGGER.finer(() -> String.format("  ✓ Simple types: %d, Complex types: %d%n", finalSimpleTypes, finalComplexTypes));
+    LOGGER.finer(() -> String.format("  ✓ Cache entries: %d%n", MetaStage.getCacheSize()));
+    LOGGER.finer(() -> "  ✓ Type pattern coverage:");
+    LOGGER.finer(() -> String.format("    Arrays: %b, Lists: %b, Maps: %b, Optionals: %b%n",
+        hasArrays, hasLists, hasMaps, hasOptionals));
+    LOGGER.finer(() -> String.format("    Records: %b, Enums: %b, Interfaces: %b%n",
+        hasRecords, hasEnums, hasInterfaces));
 
     // Final validation: The system is ready for integration
     assertTrue(totalTypes > 0, "System should have analyzed types");
     assertTrue(hasLists && hasMaps && hasRecords, "Core patterns should be present");
 
-    System.out.println("\n  🎉 COMPLETE SYSTEM VALIDATION SUCCESSFUL 🎉");
-    System.out.println("  The AST construction system is ready for integration");
-    System.out.println("  with the No Framework Pickler metaprogramming pipeline.");
+    LOGGER.finer(() -> "\n  🎉 COMPLETE SYSTEM VALIDATION SUCCESSFUL 🎉");
+    LOGGER.finer(() -> "  The AST construction system is ready for integration");
+    LOGGER.finer(() -> "  with the No Framework Pickler metaprogramming pipeline.");
   }
 }

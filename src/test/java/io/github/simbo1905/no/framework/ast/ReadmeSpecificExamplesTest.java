@@ -354,7 +354,6 @@ class ReadmeSpecificExamplesTest {
     // Verify nested properties
     assertTrue(ast.isNested());
     assertFalse(ast.isSimple());
-    assertEquals(4, ast.containerCount()); // LIST, MAP, ARRAY, OPTIONAL, ARRAY (but OPTIONAL+ARRAY should be 3 containers: LIST, MAP, ARRAY, OPTIONAL, ARRAY)
     // Actually: LIST(1) + MAP(1) + ARRAY(1) + OPTIONAL(1) + ARRAY(1) = 5 containers
     assertEquals(5, ast.containerCount());
   }
@@ -440,11 +439,11 @@ class ReadmeSpecificExamplesTest {
 
   // Required fields for reflection-based generic type access
   @SuppressWarnings("unused")
-  private List<Map<String, Optional<Integer[]>[]>> complexAcademicExample;
+  List<Map<String, Optional<Integer[]>[]>> complexAcademicExample;
   @SuppressWarnings("unused")
-  private List<String> stringList;
+  List<String> stringList;
   @SuppressWarnings("unused")
-  private Optional<String> optionalString;
+  Optional<String> optionalString;
   @SuppressWarnings("unused")
-  private Map<String, Integer> stringIntMap;
+  Map<String, Integer> stringIntMap;
 }

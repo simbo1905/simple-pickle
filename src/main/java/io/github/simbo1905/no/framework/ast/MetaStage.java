@@ -21,12 +21,12 @@ public final class MetaStage {
    * Cache for analyzed type structures to avoid redundant analysis.
    * This implements memoization for the expensive reflection-based analysis.
    */
-  private static final Map<Type, TypeStructureAST> TYPE_CACHE = new ConcurrentHashMap<>();
+  static final Map<Type, TypeStructureAST> TYPE_CACHE = new ConcurrentHashMap<>();
 
   /**
    * Set of types currently being analyzed to detect and handle circular references.
    */
-  private static final ThreadLocal<Set<Type>> ANALYSIS_STACK = ThreadLocal.withInitial(HashSet::new);
+  static final ThreadLocal<Set<Type>> ANALYSIS_STACK = ThreadLocal.withInitial(HashSet::new);
 
   /**
    * Analyzes a Java Type and constructs its complete AST representation.
@@ -49,8 +49,7 @@ public final class MetaStage {
    *
    * @param type Java Type to analyze (from RecordComponent.getGenericType())
    * @return TypeStructureAST representing the complete container hierarchy
-   * @throws IllegalArgumentException if the type contains unsupported structures
-   * @throws StackOverflowError if circular type references are detected
+   * @throws IllegalArgumentException if the type contains unsupported structures or circular type references are detected
    */
   public static TypeStructureAST analyze(Type type) {
     Objects.requireNonNull(type, "Type cannot be null");
@@ -81,7 +80,7 @@ public final class MetaStage {
    * Performs the actual recursive descent analysis of a Java Type.
    * This is the core implementation of the AST construction algorithm.
    */
-  private static TypeStructureAST performAnalysis(Type type) {
+  static TypeStructureAST performAnalysis(Type type) {
     List<TagWithType> tagTypes = new ArrayList<>();
     analyzeTypeRecursively(type, tagTypes);
     return new TypeStructureAST(tagTypes);
@@ -96,7 +95,7 @@ public final class MetaStage {
    * - Recursively analyzes type arguments
    * - Terminates at primitive/user-defined leaf types
    */
-  private static void analyzeTypeRecursively(Type type, List<TagWithType> tagTypes) {
+  static void analyzeTypeRecursively(Type type, List<TagWithType> tagTypes) {
 
     // Handle arrays first (both primitive arrays and object arrays)
     if (type instanceof Class<?> clazz && clazz.isArray()) {
@@ -203,7 +202,7 @@ public final class MetaStage {
    * Classifies a Java Class into the appropriate StructuralTag.
    * This method implements the static semantic analysis for leaf types.
    */
-  private static StructuralTag classifyClass(Class<?> clazz) {
+  static StructuralTag classifyClass(Class<?> clazz) {
     // Handle primitive types and their boxed equivalents
     if (clazz == boolean.class || clazz == Boolean.class) {
       return StructuralTag.BOOLEAN;

@@ -22,49 +22,116 @@ The **static semantic analysis** implements **recursive descent parsing** of Jav
 
 #### Formal EBNF Grammar
 
-The AST construction produces type structures conforming to the following formal grammar:
+# Readable AST Grammar with Parenthesized Notation
+
+## EBNF Grammar
 
 ```ebnf
-TypeStructure ::= TagTypeSequence
+TypeStructure ::= TypeExpression
 
-TagTypeSequence ::= TagWithType { TagWithType }
+TypeExpression ::= PrimitiveType | ContainerExpression
 
-TagWithType ::= Tag Type
+ContainerExpression ::= ArrayExpression 
+                     | ListExpression 
+                     | OptionalExpression 
+                     | MapExpression
 
-Tag ::= ContainerTag | PrimitiveTag
+ArrayExpression ::= 'ARRAY(' TypeExpression ')'
 
-ContainerTag ::= 'ARRAY' | 'LIST' | 'OPTIONAL' | 'MAP'
+ListExpression ::= 'LIST(' TypeExpression ')'
 
-PrimitiveTag ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
-               | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE' 
-               | 'STRING' | 'UUID' | 'ENUM' | 'RECORD' | 'INTERFACE'
+OptionalExpression ::= 'OPTIONAL(' TypeExpression ')'
 
-Type ::= PrimitiveType | ContainerType
+MapExpression ::= 'MAP(' TypeExpression ',' TypeExpression ')'
 
-PrimitiveType ::= JavaPrimitive | UserDefinedType
-
-JavaPrimitive ::= 'boolean.class' | 'byte.class' | 'short.class' | 'char.class'
-                | 'int.class' | 'long.class' | 'float.class' | 'double.class'
-                | 'String.class' | 'UUID.class'
-
-UserDefinedType ::= EnumClass | RecordClass | InterfaceClass
-
-ContainerType ::= 'Arrays.class' | 'List.class' | 'Map.class' | 'Optional.class'
+PrimitiveType ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
+                | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE' 
+                | 'STRING' | 'UUID' | 'ENUM' | 'RECORD' | 'INTERFACE'
 ```
 
-#### Type Pattern Grammar for Nested Structures
+## Examples with Tree Structure
 
-For recursive nesting patterns:
+### Simple Examples
+- `boolean` → `BOOLEAN`
+- `int[]` → `ARRAY(INTEGER)`
+- `List<String>` → `LIST(STRING)`
+- `Optional<Double>` → `OPTIONAL(DOUBLE)`
+- `Map<String, Integer>` → `MAP(STRING, INTEGER)`
 
-```ebnf
-TypePattern ::= SimplePattern | MapPattern
+### Nested Examples
+- `List<Double>[]` → `ARRAY(LIST(DOUBLE))`
+- `Optional<String[]>` → `OPTIONAL(ARRAY(STRING))`
+- `Map<String, List<Integer>>` → `MAP(STRING, LIST(INTEGER))`
+- `List<Optional<Boolean>>` → `LIST(OPTIONAL(BOOLEAN))`
 
-SimplePattern ::= { SimpleContainer } PrimitiveTag
+### Complex Nested Example
+`List<Map<String, Optional<Integer[]>[]>>`
 
-MapPattern ::= { SimpleContainer } 'MAP' TypePattern ',' TypePattern
+Breaking it down:
+- Outer container: `List<...>`
+- Inside List: `Map<String, Optional<Integer[]>[]>`
+- Map key: `String`
+- Map value: `Optional<Integer[]>[]`
+- Inside array: `Optional<Integer[]>`
+- Inside Optional: `Integer[]`
 
-SimpleContainer ::= 'ARRAY' | 'LIST' | 'OPTIONAL'
+**Tree representation:**
 ```
+LIST(
+  MAP(
+    STRING,
+    ARRAY(
+      OPTIONAL(
+        ARRAY(INTEGER)
+      )
+    )
+  )
+)
+```
+
+## Algorithm for AST Construction
+
+```
+function parseType(type):
+    if type is primitive:
+        return type.toUpperCase()
+    else if type is array (T[]):
+        return "ARRAY(" + parseType(T) + ")"
+    else if type is List<T>:
+        return "LIST(" + parseType(T) + ")"
+    else if type is Optional<T>:
+        return "OPTIONAL(" + parseType(T) + ")"
+    else if type is Map<K,V>:
+        return "MAP(" + parseType(K) + "," + parseType(V) + ")"
+```
+
+## Test Case Generation
+
+With this grammar, you can systematically generate test cases:
+
+### Depth 1 (Primitives only)
+- `BOOLEAN`, `BYTE`, `SHORT`, `CHARACTER`, `INTEGER`, `LONG`, `FLOAT`, `DOUBLE`, `STRING`, `UUID`
+
+### Depth 2 (Single container)
+- `ARRAY(P)` for each primitive P
+- `LIST(P)` for each primitive P
+- `OPTIONAL(P)` for each primitive P
+- `MAP(P1, P2)` for each pair of primitives
+
+### Depth 3 (Nested containers)
+- `ARRAY(LIST(P))` → `List<P>[]`
+- `LIST(ARRAY(P))` → `List<P[]>`
+- `OPTIONAL(MAP(P1, P2))` → `Optional<Map<P1, P2>>`
+- `MAP(P, LIST(P))` → `Map<P, List<P>>`
+- etc.
+
+## Benefits of This Notation
+
+1. **Clear nesting**: Parentheses show exactly what contains what
+2. **Explicit arity**: MAP always has exactly 2 arguments
+3. **Easy to parse**: Both humans and machines can easily understand the structure
+4. **Direct mapping**: Each expression maps directly to Java generic syntax
+5. **Test generation**: Can systematically enumerate all possible type combinations up to a given depth
 
 #### AST Construction Algorithm
 
@@ -76,35 +143,142 @@ The **recursive descent parser** implements the following algorithm:
 4. **Termination**: Reaches leaf nodes at primitive/user-defined types
 
 **Example Analysis**: `List<Map<String, Optional<Integer[]>[]>>`
+# AST Construction Algorithm - Detailed Example
+
+## Example Analysis: `List<Map<String, Optional<Integer[]>[]>>`
+
+### Step-by-Step Parse Tree Construction
 
 ```
-Parse Tree Construction:
-1. List<T> → T = Map<String, Optional<Integer[]>[]>
-   AST: [TagWithType(LIST, List.class), ...]
+Input: List<Map<String, Optional<Integer[]>[]>>
 
-2. Map<K,V> → K = String, V = Optional<Integer[]>[]  
-   AST: [TagWithType(LIST, List.class), TagWithType(MAP, Map.class), ...]
-   
-3. Key analysis: String → STRING
-   AST: [LIST, MAP, STRING, MAP_SEPARATOR, ...]
-   
-4. Value analysis: Optional<Integer[]>[]
-   4a. Array: T[] → T = Optional<Integer[]>
-       AST: [LIST, MAP, STRING, MAP_SEPARATOR, ARRAY, ...]
-   4b. Optional<T> → T = Integer[]  
-       AST: [LIST, MAP, STRING, MAP_SEPARATOR, ARRAY, OPTIONAL, ...]
-   4c. Array: T[] → T = Integer
-       AST: [LIST, MAP, STRING, MAP_SEPARATOR, ARRAY, OPTIONAL, ARRAY, ...]
-   4d. Primitive: Integer
-       AST: [LIST, MAP, STRING, MAP_SEPARATOR, ARRAY, OPTIONAL, ARRAY, INTEGER]
+Step 1: Recognize outer container
+- Type: List<T> where T = Map<String, Optional<Integer[]>[]>
+- Action: Extract LIST container, recurse on T
+- AST so far: LIST(...)
 
-Final TypeStructureAST:
-tagTypes: [TagWithType(LIST, List.class), TagWithType(MAP, Map.class), 
-          TagWithType(STRING, String.class), TagWithType(MAP_SEPARATOR, null),
-          TagWithType(ARRAY, Arrays.class), TagWithType(OPTIONAL, Optional.class), 
-          TagWithType(ARRAY, Arrays.class), TagWithType(INTEGER, Integer.class)]
+Step 2: Parse T = Map<String, Optional<Integer[]>[]>
+- Type: Map<K,V> where K = String, V = Optional<Integer[]>[]
+- Action: Extract MAP container, recurse on K and V
+- AST so far: LIST(MAP(..., ...))
+
+Step 3a: Parse K = String
+- Type: String (primitive)
+- Action: Terminal node, add STRING
+- AST so far: LIST(MAP(STRING, ...))
+
+Step 3b: Parse V = Optional<Integer[]>[]
+- Type: Array of Optional<Integer[]>
+- Action: Extract ARRAY container, recurse on element type
+- AST so far: LIST(MAP(STRING, ARRAY(...)))
+
+Step 4: Parse element = Optional<Integer[]>
+- Type: Optional<T> where T = Integer[]
+- Action: Extract OPTIONAL container, recurse on T
+- AST so far: LIST(MAP(STRING, ARRAY(OPTIONAL(...))))
+
+Step 5: Parse T = Integer[]
+- Type: Array of Integer
+- Action: Extract ARRAY container, recurse on element type
+- AST so far: LIST(MAP(STRING, ARRAY(OPTIONAL(ARRAY(...)))))
+
+Step 6: Parse element = Integer
+- Type: Integer (primitive)
+- Action: Terminal node, add INTEGER
+- AST so far: LIST(MAP(STRING, ARRAY(OPTIONAL(ARRAY(INTEGER)))))
+
+Final AST: LIST(MAP(STRING, ARRAY(OPTIONAL(ARRAY(INTEGER)))))
 ```
 
+### Detailed Trace with Type Environment
+
+```
+parseType("List<Map<String, Optional<Integer[]>[]>>")
+├─ recognize: List<...>
+├─ extract type parameter: Map<String, Optional<Integer[]>[]>
+└─ return: LIST(parseType("Map<String, Optional<Integer[]>[]>"))
+   │
+   └─ parseType("Map<String, Optional<Integer[]>[]>")
+      ├─ recognize: Map<...,...>
+      ├─ extract key type: String
+      ├─ extract value type: Optional<Integer[]>[]
+      └─ return: MAP(parseType("String"), parseType("Optional<Integer[]>[]"))
+         │
+         ├─ parseType("String")
+         │  └─ return: STRING (primitive)
+         │
+         └─ parseType("Optional<Integer[]>[]")
+            ├─ recognize: ...[] (array)
+            ├─ extract element type: Optional<Integer[]>
+            └─ return: ARRAY(parseType("Optional<Integer[]>"))
+               │
+               └─ parseType("Optional<Integer[]>")
+                  ├─ recognize: Optional<...>
+                  ├─ extract type parameter: Integer[]
+                  └─ return: OPTIONAL(parseType("Integer[]"))
+                     │
+                     └─ parseType("Integer[]")
+                        ├─ recognize: ...[] (array)
+                        ├─ extract element type: Integer
+                        └─ return: ARRAY(parseType("Integer"))
+                           │
+                           └─ parseType("Integer")
+                              └─ return: INTEGER (primitive)
+```
+
+### Type Environment (Γ) at Each Step
+
+```
+Γ₀: { current: "List<Map<String, Optional<Integer[]>[]>>" }
+Γ₁: { current: "Map<String, Optional<Integer[]>[]>", parent: List }
+Γ₂: { current: "String", parent: Map.key }
+Γ₃: { current: "Optional<Integer[]>[]", parent: Map.value }
+Γ₄: { current: "Optional<Integer[]>", parent: Array }
+Γ₅: { current: "Integer[]", parent: Optional }
+Γ₆: { current: "Integer", parent: Array }
+```
+
+### Parallel Sequences (Original Format)
+
+```
+Tags:     LIST MAP STRING ARRAY OPTIONAL ARRAY INTEGER
+Types:    List.class Map.class String.class Arrays.class Optional.class Arrays.class int.class
+```
+
+### Tree Visualization
+
+Here is the simple text: 
+
+```text
+                    LIST
+                     |
+                    MAP
+                   /   \
+              STRING   ARRAY
+                        |
+                    OPTIONAL
+                        |
+                      ARRAY
+                        |
+                    INTEGER
+```
+
+Here is it with labels: 
+
+```mermaid
+graph TD
+    A["LIST<...>"] --> B["MAP<K,V>"]
+    B -->|key| C["STRING"]
+    B -->|value| D["ARRAY[...]"]
+    D -->|element| E["OPTIONAL<...>"]
+    E -->|wrapped| F["ARRAY[...]"]
+    F -->|element| G["INTEGER"]
+    
+    classDef container fill:#f96,stroke:#333,stroke-width:2px
+    classDef primitive fill:#9f6,stroke:#333,stroke-width:2px
+    
+    class A,B,D,E,F container
+    cl
 ### No-Reflection Principle
 
 *Core Design Philosophy:* The library avoids reflection on the Object-stage (Runtime) "hot path"  for performance.
@@ -189,37 +363,6 @@ In the older generation architecture we wrote class names and enum names so that
     - Buffer overflow exceptions from undersized allocations
 
 3. **Performance Consideration**: When maxSizeOf is used, it's called for EVERY message before serialization. Therefore, any HashMap lookups in maxSizeOf must be hoisted into the pre-computed structures just like serialize/deserialize paths through **AST-guided optimization**.
-
-### Critical Design Principle: Runtime Type Only
-
-**The unified pickler has no special "root type" logic.** During serialization/deserialization:
-- Always use `object.getClass()` to get the concrete runtime type
-- Look up the concrete type's ordinal in the discovery arrays built during **meta-stage analysis**
-- Never use the "root class" passed to the constructor for serialization logic
-- Abstract sealed interfaces never appear as concrete instances on the hot path
-
-**Design vs Implementation Errors:**
-- **Design Error (Omission)**: Missing specification in documentation
-- **Implementation Error (Commission)**: Adding code not specified by design (e.g., unnecessary `rootOrdinal` field)
-- **When design and implementation match**: Code will be minimal and fast
-
-### Array Type Casting Solution
-
-**Design Insight**: The unified pickler has global lookup tables indexed by ordinal built through **AST construction** - use them!
-
-**Problem**: Array deserialization needs component type but was trying to peek at elements or read class names.
-
-**Performance Issue**: It is crazy to loop over an array of bytes and write out each byte one at a time with a byte marker. We write out the marker for the byte once when writing the array then do `buffer.put(bytes)` to write the whole byte array in one go. We pack a `boolean[]` as a BitSet that we convert to a `byte[]` for writing. This means that 8 booleans are packed into one byte. The only thing that we just delegate the writing are the user types of RECORD and ENUM.
-
-**Solution**
-
-1. The **AST construction** for types will give us a tag list for `Optional<List<byte[]>>>` resulting in a `TypeStructureAST` with `TagWithType` nodes: `[TagWithType(OPTIONAL, Optional.class), TagWithType(LIST, List.class), TagWithType(ARRAY, Arrays.class), TagWithType(BYTE, byte.class)]`.
-2. The write chain is built right to left which is inner leaf node to outer container types. In the above example the ordering is `byte[]`, `Arrays.class`, `List.class`, `Optional.class`. The leaf node is the `byte[]` which is written as a byte array. The next outer node is the `Arrays.class` which is written as an ARRAY marker. The next outer node is the `List.class` which is written as a LIST marker. The final outer node is the `Optional.class` which is written as an OPTIONAL marker.
-
-3. **Typed Array Creation**: `Array.newInstance(componentType, length)` using the resolved class from the **type environment**
-4. **Element Deserialization**: The ARRAY_WRITER has logic to explicitly optimise how an array is written. If it is a `byte[]` we just `buffer.put(bytes)` - it would be insane to loop over every byte to write out the byte marker and the byte. Clearly to read it back we need to know the number elements to allocate a `byte[]`. The `boolean[]` is converted to a bitset which is converted to `byte[]`. With `int[]` and `long[]` at write time we check the first part of the array to see if it compresses well. If so we write it as INTEGER_ARRAY or LONG_ARRAY. If not we write it as INTEGER or LONG.
-
-**Key Insight**: No need to peek at elements or extend wire protocol - all type information is already available in the global lookup tables by design through **AST-guided type resolution**.
 
 ## Recursive Metaprogramming Pattern
 
