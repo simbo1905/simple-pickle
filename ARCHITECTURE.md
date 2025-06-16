@@ -247,22 +247,6 @@ Types:    List.class Map.class String.class Arrays.class Optional.class Arrays.c
 
 ### Tree Visualization
 
-Here is the simple text: 
-
-```text
-                    LIST
-                     |
-                    MAP
-                   /   \
-              STRING   ARRAY
-                        |
-                    OPTIONAL
-                        |
-                      ARRAY
-                        |
-                    INTEGER
-```
-
 Here is it with labels: 
 
 ```mermaid
@@ -278,7 +262,9 @@ graph TD
     classDef primitive fill:#9f6,stroke:#333,stroke-width:2px
     
     class A,B,D,E,F container
-    cl
+    class C,G primitive
+```
+    
 ### No-Reflection Principle
 
 *Core Design Philosophy:* The library avoids reflection on the Object-stage (Runtime) "hot path"  for performance.
