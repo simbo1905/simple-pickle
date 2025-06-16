@@ -257,10 +257,10 @@ graph TD
     D -->|element| E["OPTIONAL<...>"]
     E -->|wrapped| F["ARRAY[...]"]
     F -->|element| G["INTEGER"]
-    
-    classDef container fill:#f96,stroke:#333,stroke-width:2px
-    classDef primitive fill:#9f6,stroke:#333,stroke-width:2px
-    
+
+    classDef container fill:#4a5568,stroke:#2d3748,stroke-width:2px,color:#e2e8f0
+    classDef primitive fill:#718096,stroke:#4a5568,stroke-width:2px,color:#e2e8f0
+
     class A,B,D,E,F container
     class C,G primitive
 ```
