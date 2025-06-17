@@ -6,6 +6,7 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.*;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Type;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -51,7 +52,7 @@ class MetaProgrammingTests {
       TypeExpr node = TypeExpr.analyze(type);
       TypeExpr.PrimitiveValueNode primitiveValueNode = (TypeExpr.PrimitiveValueNode) node;
       TypeExpr.PrimitiveValueType typeExpr = primitiveValueNode.type();
-    
+
       // Use MethodHandles.lookup() to get the method handle
       MethodHandle methodHandle = MethodHandles.lookup().unreflect(
           MetaProgrammingTests.class.getMethod("anIntNotZero", EMPTY_PARAMETER_TYPES)
@@ -61,9 +62,9 @@ class MetaProgrammingTests {
       // We can write the record to a ByteBuffer
       final var byteBuffer = java.nio.ByteBuffer.allocate(1024);
       try {
-          writerChain.accept(byteBuffer, primitiveValueRecord);
+        writerChain.accept(byteBuffer, primitiveValueRecord);
       } catch (Throwable e) {
-          throw new RuntimeException(e);
+        throw new RuntimeException(e);
       }
       byteBuffer.flip();
     }
