@@ -49,12 +49,12 @@ class CompatibilityInternals {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         
         // Original order
-        String input1 = "Point!int!x!int!y";
+        String input1 = "Point!int!bool!int!y";
         byte[] hash1 = digest.digest(input1.getBytes(StandardCharsets.UTF_8));
         long sig1 = bytesToLong(hash1);
         
         // Reordered
-        String input2 = "Point!int!y!int!x";
+        String input2 = "Point!int!y!int!bool";
         byte[] hash2 = digest.digest(input2.getBytes(StandardCharsets.UTF_8));
         long sig2 = bytesToLong(hash2);
         
@@ -120,7 +120,7 @@ class CompatibilityInternals {
         List<String> parts = List.of(
             "Point",      // class simple name
             "INTEGER",    // first component type tag
-            "x",          // first component name
+            "bool",          // first component name
             "INTEGER",    // second component type tag  
             "y"           // second component name
         );

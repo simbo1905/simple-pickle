@@ -82,7 +82,7 @@ public class NestedMapTest {
         // List<Map<String, Integer>>
         List<Map<String, Integer>> data = List.of(
             Map.of("a", 1, "b", 2),
-            Map.of("x", 10, "y", 20)
+            Map.of("bool", 10, "y", 20)
         );
         
         MapInList original = new MapInList(data);

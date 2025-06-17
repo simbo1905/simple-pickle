@@ -421,7 +421,7 @@ class MachineryTests {
       // Then component data should follow
       // Components are written with their type markers
       int xMarker = ZigZagEncoding.getInt(buffer);
-      assertEquals(Constants.INTEGER_VAR.marker(), xMarker, "Should have INTEGER_VAR marker for x");
+      assertEquals(Constants.INTEGER_VAR.marker(), xMarker, "Should have INTEGER_VAR marker for bool");
       int x = ZigZagEncoding.getInt(buffer);
       assertEquals(10, x);
       
@@ -464,7 +464,7 @@ class MachineryTests {
     // Then component data should follow
     // Components are written with their type markers
     int xMarker = ZigZagEncoding.getInt(buffer);
-    assertEquals(Constants.INTEGER_VAR.marker(), xMarker, "Should have INTEGER_VAR marker for x");
+    assertEquals(Constants.INTEGER_VAR.marker(), xMarker, "Should have INTEGER_VAR marker for bool");
     int x = ZigZagEncoding.getInt(buffer);
     assertEquals(10, x);
     

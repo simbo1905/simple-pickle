@@ -301,7 +301,7 @@ public class ArrayComprehensiveTests {
         List.of("a", "b", "c"),
         Collections.emptyList(),
         null,
-        Arrays.asList("x", null, "z")
+        Arrays.asList("bool", null, "z")
     };
 
     List<Optional<Integer>>[] optionalIntLists = new List[]{
@@ -346,7 +346,7 @@ public class ArrayComprehensiveTests {
         Map.of(1L, List.of("a", "b"), 2L, Collections.emptyList()),
         null,
         new HashMap<>() {{ 
-            put(3L, Arrays.asList("x", null, "z")); 
+            put(3L, Arrays.asList("bool", null, "z"));
             put(null, null);
         }}
     };

@@ -181,15 +181,26 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
   }
 
   ToIntFunction<Object> buildSizerChain(TypeExpr typeExpr, MethodHandle methodHandle) {
-    throw new AssertionError("not implemented yet - this should build a chain of ToIntFunction<Object> for sizing");
+    return (Object record) -> 0;
   }
 
   Function<ByteBuffer, Object> buildReaderChain(TypeExpr typeExpr) {
-    throw new AssertionError("not implemented yet - this should build a chain of Function<ByteBuffer, Object> for reading");
+    return (ByteBuffer buffer) -> null;
   }
 
   BiConsumer<ByteBuffer, Object> buildWriterChain(TypeExpr typeExpr, MethodHandle methodHandle) {
-    throw new AssertionError("not implemented yet - this should build a chain of BiConsumer<ByteBuffer, Object> for writing");
+    if( typeExpr.isPrimitive() ) {
+      // For primitive types, we can directly write the value
+      return (ByteBuffer buffer, Object record) -> {
+        try {
+          methodHandle.invokeExact(record, buffer);
+        } catch (Throwable e) {
+          throw new RuntimeException("Failed to write primitive value", e);
+        }
+      };
+    }
+    return (ByteBuffer buffer, Object record) -> {
+    };
   }
 
   /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
