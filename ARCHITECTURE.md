@@ -2,12 +2,16 @@
 
 ## Project Overview
 
-**No Framework Pickler** is a lightweight, zero-dependency Java 21+ serialization library that generates type-safe, compact and fast, serializers for records containing value-like types as well as container-like types. This includes value-like types such as `UUID`, `String`, `enum` was well as container-like such as optionals, arrays, lists, and maps of value-like types. This is done by constructing type specific serializers using:
+**No Framework Pickler** is a lightweight, zero-dependency Java 21+ serialization library that generates type-safe, compact and fast, serializers for records containing value-like types as well as container-like types. This includes value-like types such as `UUID`, `String`, `enum` was well as container-like such as optionals, arrays, lists, and maps of value-like types. 
+
+The library avoids reflection on the Object-stage (Runtime) "hot path"  for performance.
+All reflective operations are done during Meta-stage (Construction Time) in `Pickler.forClass(Class<?>)`.
+This construction resolves method handles and creates delegation chains that are used at runtime without further reflection. This is done by constructing type specific serializers using:
 - **Abstract Syntax Tree construction** for the parameterized types of `record` components
 - **Multi-stage programming** with a meta-stage during `Pickler.forClass(Class<?>)` construction that performs **static semantic analysis** to build an **Abstract Syntax Tree (AST)** representation of the type structure
 - **Static semantic analysis** preserving type safety guarantees
 
-### Recursive Type Analysis Algorithm
+## Recursive Type Analysis Algorithm
 
 The analysis performs **recursive descent parsing** of Java's `Type` hierarchy:
 
@@ -16,11 +20,19 @@ The analysis performs **recursive descent parsing** of Java's `Type` hierarchy:
 3. **AST Construction**: Builds parallel sequences of structural tags and concrete types
 4. **Termination**: Reaches leaf nodes at primitive/user-defined types
 
-### Abstract Syntax Tree (AST) Construction and Formal Grammar
+## Abstract Syntax Tree (AST) Construction and Formal Grammar
 
-The **static semantic analysis** implements **recursive descent parsing** of Java's Type hierarchy to construct **Abstract Syntax Trees** that represent the nested container structure of parameterized types. This AST construction enables **compile-time specialization** through **multi-stage programming**.
+The **static semantic analysis** implements **recursive descent parsing** of Java's Type hierarchy to construct **Abstract Syntax Trees** (AST) that represent the nested container structure of parameterized types. This AST construction enables **compile-time specialization** through **multi-stage programming**.
 
-#### Formal EBNF Grammar
+The AST distinguishes between value and container types at the implementation level:
+- **ValueNode**: Represents logical values rather than containers (array, list, map, optional, ...)
+  - **PrimitiveValueNode**: Represents Java primitive types (`int.class`, `boolean.class`, etc.)
+  - **RefValueNode**: Represents reference types including boxed primitives (`Integer.class`, `Boolean.class`), `String`, `UUID`, enums, records, and interfaces
+- **Containers**: Represents arrays, list, optionals, and maps
+  - **ArrayNode**: Represents arrays (e.g., `int[]`, `Integer[]`)
+  - **ListNode**: Represents lists (e.g., `List<String>`)
+  - **OptionalNode**: Represents optionals (e.g., `Optional<Double>`)
+  - **MapNode**: Represents maps (e.g., `Map<String, Integer>`)
 
 # Readable AST Grammar with Parenthesized Notation
 
@@ -29,7 +41,7 @@ The **static semantic analysis** implements **recursive descent parsing** of Jav
 ```ebnf
 TypeStructure ::= TypeExpression
 
-TypeExpression ::= PrimitiveType | ContainerExpression
+TypeExpression ::= ValueType | ContainerExpression
 
 ContainerExpression ::= ArrayExpression 
                      | ListExpression 
@@ -44,25 +56,37 @@ OptionalExpression ::= 'OPTIONAL(' TypeExpression ')'
 
 MapExpression ::= 'MAP(' TypeExpression ',' TypeExpression ')'
 
+ValueType ::= PrimitiveType | ReferenceType
+
 PrimitiveType ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
-                | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE' 
+                | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE'
+
+ReferenceType ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
+                | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE'
                 | 'STRING' | 'UUID' | 'ENUM' | 'RECORD' | 'INTERFACE'
+
+Note: PrimitiveType and ReferenceType share some names but represent different runtime types
 ```
+
+Note that we capture the actual concrete type into the AST. This means that at runtime we can understand that whether the INTEGER is a primitive or a reference type. This is important for null-safety and default value handling. When we run `toTreeString` we output the class getSimpleName() as we will see in the following examples. 
 
 ## Examples with Tree Structure
 
 ### Simple Examples
-- `boolean` → `BOOLEAN`
-- `int[]` → `ARRAY(INTEGER)`
-- `List<String>` → `LIST(STRING)`
-- `Optional<Double>` → `OPTIONAL(DOUBLE)`
-- `Map<String, Integer>` → `MAP(STRING, INTEGER)`
+- `boolean` → `boolean` (primitive)
+- `Boolean` → `Boolean` (reference)
+- `int[]` → `ARRAY(int)` (primitive array)
+- `Integer[]` → `ARRAY(Integer)` (reference array)
+- `List<String>` → `LIST(String)`
+- `Optional<Double>` → `OPTIONAL(Double)` (reference type)
+- `Map<String, Integer>` → `MAP(String, Integer)` (Java maps use reference types and auto-boxing)
 
 ### Nested Examples
-- `List<Double>[]` → `ARRAY(LIST(DOUBLE))`
-- `Optional<String[]>` → `OPTIONAL(ARRAY(STRING))`
-- `Map<String, List<Integer>>` → `MAP(STRING, LIST(INTEGER))`
-- `List<Optional<Boolean>>` → `LIST(OPTIONAL(BOOLEAN))`
+- `List<Double>[]` → `ARRAY(LIST(Double))`
+- `Optional<String[]>` → `OPTIONAL(ARRAY(String))`
+- `Map<String, List<Integer>>` → `MAP(String, LIST(Integer))`
+- `List<Optional<Boolean>>` → `LIST(OPTIONAL(Boolean))`
+- `List<double[]>` → `LIST(ARRAY(double))`
 
 ### Complex Nested Example
 `List<Map<String, Optional<Integer[]>[]>>`
@@ -79,44 +103,38 @@ Breaking it down:
 ```
 LIST(
   MAP(
-    STRING,
+    String,
     ARRAY(
       OPTIONAL(
-        ARRAY(INTEGER)
+        ARRAY(Integer)
       )
     )
   )
 )
 ```
 
-## Algorithm for AST Construction
-
-```
-function parseType(type):
-    if type is primitive:
-        return type.toUpperCase()
-    else if type is array (T[]):
-        return "ARRAY(" + parseType(T) + ")"
-    else if type is List<T>:
-        return "LIST(" + parseType(T) + ")"
-    else if type is Optional<T>:
-        return "OPTIONAL(" + parseType(T) + ")"
-    else if type is Map<K,V>:
-        return "MAP(" + parseType(K) + "," + parseType(V) + ")"
-```
-
 ## Test Case Generation
 
 With this grammar, you can systematically generate test cases:
 
-### Depth 1 (Primitives only)
-- `BOOLEAN`, `BYTE`, `SHORT`, `CHARACTER`, `INTEGER`, `LONG`, `FLOAT`, `DOUBLE`, `STRING`, `UUID`
+### Depth 1 (Primitives only for those that have them)
+- `TypeExpr.PrimitiveValueType.BOOLEAN`
+- `TypeExpr.PrimitiveValueType.BYTE`
+- `TypeExpr.PrimitiveValueType.SHORT`
+- `TypeExpr.PrimitiveValueType.CHARACTER`
+- `TypeExpr.PrimitiveValueType.INTEGER`
+- `TypeExpr.PrimitiveValueType.LONG`
+- `TypeExpr.PrimitiveValueType.FLOAT`
+- `TypeExpr.PrimitiveValueType.DOUBLE`
+- .. repeat for boxed referenced types ..
+- `TypeExpr.RefValueType.STRING`
+- `TypeExpr.RefValueType.UUID`
 
 ### Depth 2 (Single container)
-- `ARRAY(P)` for each primitive P
-- `LIST(P)` for each primitive P
-- `OPTIONAL(P)` for each primitive P
-- `MAP(P1, P2)` for each pair of primitives
+- `ARRAY(P)` for each value type P
+- `LIST(P)` for each value type P
+- `OPTIONAL(P)` for each value type P
+- `MAP(P1, P2)` for each pair of value types P1, P2
 
 ### Depth 3 (Nested containers)
 - `ARRAY(LIST(P))` → `List<P>[]`
@@ -132,6 +150,9 @@ With this grammar, you can systematically generate test cases:
 3. **Easy to parse**: Both humans and machines can easily understand the structure
 4. **Direct mapping**: Each expression maps directly to Java generic syntax
 5. **Test generation**: Can systematically enumerate all possible type combinations up to a given depth
+6. **Primitive vs Reference**: Distinguishes between primitive and reference types, allowing for null-safety optimizations. 
+
+In the future the JDK with future Valhalla features may generalize forcing a variable to be a value type then the compiler will not allow you to do certain things with it such as use it as a object monitor. This is proposed as a new `value` type and also the ability for user types to pass deconstruction pattern. This will mean that a user type may, or map not, be used as a value type. Then to speed up and inline records onto the stack the users of Java will be able to "opt into" value types semantics for the user types that by default will have reference types semantics. No Framework Pickler is humbly attempting to understand how this dualism will work and to be arranged a way that in the future may be able to take advantage of the future Java features.
 
 #### AST Construction Algorithm
 
@@ -140,109 +161,101 @@ The **recursive descent parser** implements the following algorithm:
 1. **Container Recognition**: Identifies parameterized types (List<T>, Map<K,V>, Optional<T>) and arrays (T[])
 2. **Recursive Decomposition**: Recursively analyzes type arguments to arbitrary depth using **typing context** preservation
 3. **AST Construction**: Builds parallel sequences of structural tags and concrete types maintaining **type environment** (Γ)
-4. **Termination**: Reaches leaf nodes at primitive/user-defined types
+4. **Termination**: Reaches leaf nodes at value types (primitive, boxed, user enum, user record, value-like UUID, String)
 
-**Example Analysis**: `List<Map<String, Optional<Integer[]>[]>>`
-# AST Construction Algorithm - Detailed Example
 
-## Example Analysis: `List<Map<String, Optional<Integer[]>[]>>`
+## Step-by-Step Parse Tree Construction
 
-### Step-by-Step Parse Tree Construction
+### Example Analysis: `List<Map<String, Optional<int[]>[]>>`
+
 
 ```
-Input: List<Map<String, Optional<Integer[]>[]>>
+Input: List<Map<String, Optional<int[]>[]>>
 
 Step 1: Recognize outer container
-- Type: List<T> where T = Map<String, Optional<Integer[]>[]>
+- Type: List<T> where T = Map<String, Optional<int[]>[]>
 - Action: Extract LIST container, recurse on T
 - AST so far: LIST(...)
 
 Step 2: Parse T = Map<String, Optional<Integer[]>[]>
-- Type: Map<K,V> where K = String, V = Optional<Integer[]>[]
+- Type: Map<K,V> where K = String, V = Optional<int[]>[]
 - Action: Extract MAP container, recurse on K and V
 - AST so far: LIST(MAP(..., ...))
 
 Step 3a: Parse K = String
 - Type: String (primitive)
 - Action: Terminal node, add STRING
-- AST so far: LIST(MAP(STRING, ...))
+- AST so far: LIST(MAP(String, ...))
 
-Step 3b: Parse V = Optional<Integer[]>[]
-- Type: Array of Optional<Integer[]>
+Step 3b: Parse V = Optional<int[]>[]
+- Type: Array of Optional<int[]>
 - Action: Extract ARRAY container, recurse on element type
-- AST so far: LIST(MAP(STRING, ARRAY(...)))
+- AST so far: LIST(MAP(String, ARRAY(...)))
 
-Step 4: Parse element = Optional<Integer[]>
-- Type: Optional<T> where T = Integer[]
+Step 4: Parse element = Optional<int[]>
+- Type: Optional<T> where T = int[]
 - Action: Extract OPTIONAL container, recurse on T
-- AST so far: LIST(MAP(STRING, ARRAY(OPTIONAL(...))))
+- AST so far: LIST(MAP(String, ARRAY(OPTIONAL(...))))
 
-Step 5: Parse T = Integer[]
-- Type: Array of Integer
+Step 5: Parse T = int[]
+- Type: Array of primative int
 - Action: Extract ARRAY container, recurse on element type
-- AST so far: LIST(MAP(STRING, ARRAY(OPTIONAL(ARRAY(...)))))
+- AST so far: LIST(MAP(String, ARRAY(OPTIONAL(ARRAY(...)))))
 
-Step 6: Parse element = Integer
-- Type: Integer (primitive)
-- Action: Terminal node, add INTEGER
-- AST so far: LIST(MAP(STRING, ARRAY(OPTIONAL(ARRAY(INTEGER)))))
+Step 6: Parse element = int
+- Type: int (primitive)
+- Action: Terminal node, add int
+- AST so far: LIST(MAP(STRING, ARRAY(OPTIONAL(ARRAY(int)))))
 
-Final AST: LIST(MAP(STRING, ARRAY(OPTIONAL(ARRAY(INTEGER)))))
+Final AST: LIST(MAP(String, ARRAY(OPTIONAL(ARRAY(int)))))
 ```
 
 ### Detailed Trace with Type Environment
 
 ```
-parseType("List<Map<String, Optional<Integer[]>[]>>")
+parseType("List<Map<String, Optional<int[]>[]>>")
 ├─ recognize: List<...>
-├─ extract type parameter: Map<String, Optional<Integer[]>[]>
-└─ return: LIST(parseType("Map<String, Optional<Integer[]>[]>"))
+├─ extract type parameter: Map<String, Optional<int[]>[]>
+└─ return: LIST(parseType("Map<String, Optional<int[]>[]>"))
    │
-   └─ parseType("Map<String, Optional<Integer[]>[]>")
+   └─ parseType("Map<String, Optional<int[]>[]>")
       ├─ recognize: Map<...,...>
       ├─ extract key type: String
-      ├─ extract value type: Optional<Integer[]>[]
-      └─ return: MAP(parseType("String"), parseType("Optional<Integer[]>[]"))
+      ├─ extract value type: Optional<int[]>[]
+      └─ return: MAP(parseType("String"), parseType("Optional<int[]>[]"))
          │
          ├─ parseType("String")
          │  └─ return: STRING (primitive)
          │
-         └─ parseType("Optional<Integer[]>[]")
+         └─ parseType("Optional<int[]>[]")
             ├─ recognize: ...[] (array)
-            ├─ extract element type: Optional<Integer[]>
-            └─ return: ARRAY(parseType("Optional<Integer[]>"))
+            ├─ extract element type: Optional<int[]>
+            └─ return: ARRAY(parseType("Optional<int[]>"))
                │
-               └─ parseType("Optional<Integer[]>")
+               └─ parseType("Optional<int[]>")
                   ├─ recognize: Optional<...>
-                  ├─ extract type parameter: Integer[]
-                  └─ return: OPTIONAL(parseType("Integer[]"))
+                  ├─ extract type parameter: int[]
+                  └─ return: OPTIONAL(parseType("int[]"))
                      │
-                     └─ parseType("Integer[]")
+                     └─ parseType("int[]")
                         ├─ recognize: ...[] (array)
-                        ├─ extract element type: Integer
-                        └─ return: ARRAY(parseType("Integer"))
+                        ├─ extract element type: int
+                        └─ return: ARRAY(parseType("int"))
                            │
-                           └─ parseType("Integer")
-                              └─ return: INTEGER (primitive)
+                           └─ parseType("int")
+                              └─ return: INTEGER (int)
 ```
 
 ### Type Environment (Γ) at Each Step
 
 ```
-Γ₀: { current: "List<Map<String, Optional<Integer[]>[]>>" }
-Γ₁: { current: "Map<String, Optional<Integer[]>[]>", parent: List }
+Γ₀: { current: "List<Map<String, Optional<int[]>[]>>" }
+Γ₁: { current: "Map<String, Optional<in[]>[]>", parent: List }
 Γ₂: { current: "String", parent: Map.key }
-Γ₃: { current: "Optional<Integer[]>[]", parent: Map.value }
-Γ₄: { current: "Optional<Integer[]>", parent: Array }
-Γ₅: { current: "Integer[]", parent: Optional }
-Γ₆: { current: "Integer", parent: Array }
-```
-
-### Parallel Sequences (Original Format)
-
-```
-Tags:     LIST MAP STRING ARRAY OPTIONAL ARRAY INTEGER
-Types:    List.class Map.class String.class Arrays.class Optional.class Arrays.class int.class
+Γ₃: { current: "Optional<int[]>[]", parent: Map.value }
+Γ₄: { current: "Optional<int[]>", parent: Array }
+Γ₅: { current: "int[]", parent: Optional }
+Γ₆: { current: "int", parent: Array }
 ```
 
 ### Tree Visualization
@@ -252,11 +265,11 @@ Here is it with labels:
 ```mermaid
 graph TD
     A["LIST<...>"] --> B["MAP<K,V>"]
-    B -->|key| C["STRING"]
+    B -->|key| C["String"]
     B -->|value| D["ARRAY[...]"]
     D -->|element| E["OPTIONAL<...>"]
     E -->|wrapped| F["ARRAY[...]"]
-    F -->|element| G["INTEGER"]
+    F -->|element| G["int"]
 
     classDef container fill:#4a5568,stroke:#2d3748,stroke-width:2px,color:#e2e8f0
     classDef primitive fill:#718096,stroke:#4a5568,stroke-width:2px,color:#e2e8f0
@@ -265,11 +278,7 @@ graph TD
     class C,G primitive
 ```
     
-### No-Reflection Principle
-
-*Core Design Philosophy:* The library avoids reflection on the Object-stage (Runtime) "hot path"  for performance.
-All reflective operations are done during Meta-stage (Construction Time) in `Pickler.forClass(Class<?>)`. 
-This construction resolves method handles and creates delegation chains that are used at runtime without further reflection.
+### No-Reflection Principle Applied
 
 **Meta-Stage (Construction Time)**:
 - **Type Discovery**: Exhaustively discover ALL reachable types from root class using **recursive descent parsing**

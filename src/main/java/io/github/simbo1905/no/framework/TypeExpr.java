@@ -251,7 +251,7 @@ sealed interface TypeExpr permits
     /// Override to only show the type name, not the Java type
     @Override
     public String toTreeString() {
-      return type.name();
+      return ((Class<?>)javaType()).getSimpleName();
     }
 
     @Override
@@ -275,7 +275,7 @@ sealed interface TypeExpr permits
 
     @Override
     public String toTreeString() {
-      return type.name();
+      return ((Class<?>)javaType()).getSimpleName();
     }
 
     @Override
