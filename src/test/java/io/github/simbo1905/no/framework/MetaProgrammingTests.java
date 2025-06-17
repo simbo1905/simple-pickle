@@ -81,7 +81,7 @@ class MetaProgrammingTests {
         // We can write the record to a ByteBuffer
         final var byteBuffer = ByteBuffer.allocate(1024);
         try {
-          writerChain.accept(byteBuffer, this);
+          writerChain.accept(byteBuffer, primitiveValueRecord);
         } catch (Throwable e2) {
           throw new RuntimeException(e2);
         }

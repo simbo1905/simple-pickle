@@ -236,7 +236,8 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for boolean.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            buffer.put((byte) ((boolean) methodHandle.invokeExact(record) ? 1 : 0));
+            final var result = methodHandle.invokeExact(record);
+            buffer.put((byte) ((boolean) result ? 1 : 0));
           } catch (Throwable e) {
             throw new RuntimeException("Failed to write boolean value", e);
           }
