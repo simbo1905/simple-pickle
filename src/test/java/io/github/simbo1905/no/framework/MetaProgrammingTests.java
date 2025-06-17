@@ -41,10 +41,11 @@ public class MetaProgrammingTests {
 
   @Nested
   @DisplayName("Writer Chain Tests")
-  class PrimitiveRoundTripTests {
+  class PrimitiveRoundTripTest {
 
     @Test
     @DisplayName("Test writer chain discovery")
+    void testWriterChainDiscovery() throws Exception {
     void testWriterChainDiscovery() throws Exception {
       // Get the method handle for anIntNotZero()
       final @NotNull RecordComponent[] components = PrimitiveValueRecord.class.getRecordComponents();
