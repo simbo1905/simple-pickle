@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /// Package-private tests for core machinery components
 /// Tests the internal implementation details that are not part of the public API
-class MetaProgrammingTests {
+public class MetaProgrammingTests {
 
   public static final Class<?>[] EMPTY_PARAMETER_TYPES = {};
   static PrimitiveValueRecord primitiveValueRecord =
