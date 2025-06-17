@@ -51,12 +51,20 @@ class MetaProgrammingTests {
       TypeExpr node = TypeExpr.analyze(type);
       TypeExpr.PrimitiveValueNode primitiveValueNode = (TypeExpr.PrimitiveValueNode) node;
       TypeExpr.PrimitiveValueType typeExpr = primitiveValueNode.type();
-      MethodHandle methodHandle = MetaProgrammingTests.class.getMethod("anIntNotZero", EMPTY_PARAMETER_TYPES);
+    
+      // Use MethodHandles.lookup() to get the method handle
+      MethodHandle methodHandle = MethodHandles.lookup().unreflect(
+          MetaProgrammingTests.class.getMethod("anIntNotZero", EMPTY_PARAMETER_TYPES)
+      );
       final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(typeExpr, methodHandle);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = java.nio.ByteBuffer.allocate(1024);
-      writerChain.accept(byteBuffer, primitiveValueRecord);
+      try {
+          writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e) {
+          throw new RuntimeException(e);
+      }
       byteBuffer.flip();
     }
 
