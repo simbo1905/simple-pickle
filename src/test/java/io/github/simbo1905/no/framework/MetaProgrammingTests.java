@@ -48,15 +48,15 @@ class MetaProgrammingTests {
     @DisplayName("Test writer chain discovery")
     void testWriterChainDiscovery() throws Exception {
 
-      Type type = MetaProgrammingTests.class.getDeclaredField("anIntNotZero").getGenericType();
-      TypeExpr node = TypeExpr.analyze(type);
+      // Get the method handle for anIntNotZero()
+      Method method = MetaProgrammingTests.class.getDeclaredMethod("anIntNotZero", EMPTY_PARAMETER_TYPES);
+      Type returnType = method.getReturnType();
+      TypeExpr node = TypeExpr.analyze(returnType);
       TypeExpr.PrimitiveValueNode primitiveValueNode = (TypeExpr.PrimitiveValueNode) node;
       TypeExpr.PrimitiveValueType typeExpr = primitiveValueNode.type();
-
+      
       // Use MethodHandles.lookup() to get the method handle
-      MethodHandle methodHandle = MethodHandles.lookup().unreflect(
-          MetaProgrammingTests.class.getMethod("anIntNotZero", EMPTY_PARAMETER_TYPES)
-      );
+      MethodHandle methodHandle = MethodHandles.lookup().unreflect(method);
       final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(typeExpr, methodHandle);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
