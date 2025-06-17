@@ -194,11 +194,30 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
   }
 
   Function<ByteBuffer, Object> buildReaderChain(TypeExpr typeExpr) {
-    return (ByteBuffer buffer) -> null;
+    if (typeExpr.isPrimitive()) {
+      LOGGER.fine(() -> "Building reader chain for primitive type: " + typeExpr.toTreeString());
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) typeExpr).type();
+      return buildPrimitiveValueReader(primitiveType);
+    } else {
+      return (ByteBuffer buffer) -> {
+        throw new AssertionError("not implemented: " + typeExpr.toTreeString() +
+            " for record with method handle: ");
+      };
+    }
   }
 
+
   ToIntFunction<Object> buildSizerChain(TypeExpr typeExpr, MethodHandle methodHandle) {
-    return (Object record) -> 0;
+    if (typeExpr.isPrimitive()) {
+      LOGGER.fine(() -> "Building sizer chain for primitive type: " + typeExpr.toTreeString());
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) typeExpr).type();
+      return buildPrimitiveValueSizer(primitiveType, methodHandle);
+    } else {
+      return (Object record) -> {
+        throw new AssertionError("not implemented: " + typeExpr.toTreeString() +
+            " for record with method handle: " + methodHandle);
+      };
+    }
   }
 
   /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
@@ -236,7 +255,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for boolean.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            final var result = methodHandle.invokeExact(record);
+            final var result = methodHandle.invokeWithArguments(record);
             buffer.put((byte) ((boolean) result ? 1 : 0));
           } catch (Throwable e) {
             throw new RuntimeException("Failed to write boolean value", e);
@@ -314,6 +333,31 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
           }
         };
       }
+    };
+  }
+
+  static @NotNull Function<ByteBuffer, Object> buildPrimitiveValueReader(TypeExpr.PrimitiveValueType primitiveType) {
+    return switch (primitiveType) {
+      case BOOLEAN -> (buffer) -> buffer.get() != 0;
+      case BYTE -> ByteBuffer::get;
+      case SHORT -> ByteBuffer::getShort;
+      case CHARACTER -> ByteBuffer::getChar;
+      case INTEGER -> ByteBuffer::getInt;
+      case LONG -> ByteBuffer::getLong;
+      case FLOAT -> ByteBuffer::getFloat;
+      case DOUBLE -> ByteBuffer::getDouble;
+    };
+  }
+
+  static @NotNull ToIntFunction<Object> buildPrimitiveValueSizer(TypeExpr.PrimitiveValueType primitiveType, MethodHandle ignored) {
+    return switch (primitiveType) {
+      case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
+      case SHORT -> (Object record) -> Short.BYTES;
+      case CHARACTER -> (Object record) -> Character.BYTES;
+      case INTEGER -> (Object record) -> Integer.BYTES;
+      case LONG -> (Object record) -> Long.BYTES;
+      case FLOAT -> (Object record) -> Float.BYTES;
+      case DOUBLE -> (Object record) -> Double.BYTES;
     };
   }
 

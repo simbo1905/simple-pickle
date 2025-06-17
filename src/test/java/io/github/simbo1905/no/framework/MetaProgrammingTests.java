@@ -44,9 +44,8 @@ public class MetaProgrammingTests {
   class PrimitiveRoundTripTest {
 
     @Test
-    @DisplayName("Test writer chain discovery")
-    void testWriterChainDiscovery() throws Exception {
-    void testWriterChainDiscovery() throws Exception {
+    @DisplayName("Test primitive chains")
+    void testPrimitives() {
       // Get the method handle for anIntNotZero()
       final @NotNull RecordComponent[] components = PrimitiveValueRecord.class.getRecordComponents();
       // make an array of the component accessor methods
@@ -59,11 +58,11 @@ public class MetaProgrammingTests {
         // Get accessor method handle
         try {
           MethodHandle accessor = MethodHandles.lookup().unreflect(component.getAccessor());
-          
+
           // Log the method handle details
           LOGGER.fine(() -> String.format("Accessor method handle %d: %s for component %s",
               i, accessor.type(), component.getName()));
-          
+
           accessors[i] = accessor;
         } catch (IllegalAccessException e) {
           throw new RuntimeException("Failed to un reflect accessor for " + component.getName(), e);
@@ -75,6 +74,10 @@ public class MetaProgrammingTests {
 
       final TypeExpr typeExpr0 = typeExprs[0];
       final MethodHandle typeExpr0Accessor = accessors[0];
+      testBooleanRoundTrip(typeExpr0, typeExpr0Accessor);
+    }
+
+    void testBooleanRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
       LOGGER.fine(() -> "Type of first component: " + typeExpr0);
       // We expect the first component to be a primitive type of boolean
       assertThat(typeExpr0.isPrimitive()).isTrue();
@@ -95,12 +98,23 @@ public class MetaProgrammingTests {
           throw new RuntimeException(e2);
         }
         byteBuffer.flip();
+        LOGGER.fine(() -> "Successfully wrote boolean value to buffer");
+        // Now we can read it back
+        final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+        final var readValue = readerChain.apply(byteBuffer);
+        LOGGER.fine(() -> "Read boolean value: " + readValue);
+        // Check the value is as expected
+        assertThat(readValue).isEqualTo(primitiveValueRecord.booleanValue());
+        // check how much was written
+        final int bytesWritten = byteBuffer.position();
+        // check that the sizer will return the something greater than or equal to the bytes written
+        final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), typeExpr0Accessor);
+        final int size = sizer.applyAsInt(primitiveValueRecord);
+        LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
+        assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
       } else {
         throw new IllegalStateException("Unexpected value: " + typeExpr0);
       }
-
-
     }
-
   }
 }
