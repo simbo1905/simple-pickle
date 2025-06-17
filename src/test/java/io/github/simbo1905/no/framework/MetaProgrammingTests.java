@@ -57,7 +57,13 @@ public class MetaProgrammingTests {
 
         // Get accessor method handle
         try {
-          accessors[i] = MethodHandles.lookup().unreflect(component.getAccessor());
+          MethodHandle accessor = MethodHandles.lookup().unreflect(component.getAccessor());
+          
+          // Log the method handle details
+          LOGGER.fine(() -> String.format("Accessor method handle %d: %s for component %s",
+              i, accessor.type(), component.getName()));
+          
+          accessors[i] = accessor;
         } catch (IllegalAccessException e) {
           throw new RuntimeException("Failed to un reflect accessor for " + component.getName(), e);
         }
@@ -80,9 +86,11 @@ public class MetaProgrammingTests {
         assertThat(writerChain).isNotNull();
         // We can write the record to a ByteBuffer
         final var byteBuffer = ByteBuffer.allocate(1024);
+        LOGGER.fine(() -> "Attempting to write boolean value to buffer");
         try {
           writerChain.accept(byteBuffer, primitiveValueRecord);
         } catch (Throwable e2) {
+          LOGGER.severe(() -> "Failed to write boolean value: " + e2.getMessage());
           throw new RuntimeException(e2);
         }
         byteBuffer.flip();
