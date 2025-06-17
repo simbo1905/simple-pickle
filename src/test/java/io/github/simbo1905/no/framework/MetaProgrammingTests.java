@@ -3,11 +3,15 @@
 //
 package io.github.simbo1905.no.framework;
 
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.*;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
+import java.nio.ByteBuffer;
+import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,10 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /// Tests the internal implementation details that are not part of the public API
 class MetaProgrammingTests {
 
-  public static final Class[] EMPTY_PARAMETER_TYPES = {};
+  public static final Class<?>[] EMPTY_PARAMETER_TYPES = {};
   static PrimitiveValueRecord primitiveValueRecord =
       new PrimitiveValueRecord(true, (byte) 1, 'a', (short) 2, 3, 4L, 5.0f, 6.0);
-  int[] anIntNotZero = new int[]{42};
 
   @BeforeAll
   static void setupLogging() {
@@ -36,10 +39,6 @@ class MetaProgrammingTests {
     LOGGER.fine(() -> "Finished MetaProgrammingTests test");
   }
 
-  public int anIntNotZero() {
-    return anIntNotZero[0];
-  }
-
   @Nested
   @DisplayName("Writer Chain Tests")
   class PrimitiveRoundTripTests {
@@ -47,26 +46,51 @@ class MetaProgrammingTests {
     @Test
     @DisplayName("Test writer chain discovery")
     void testWriterChainDiscovery() throws Exception {
-
       // Get the method handle for anIntNotZero()
-      Method method = MetaProgrammingTests.class.getDeclaredMethod("anIntNotZero", EMPTY_PARAMETER_TYPES);
-      Type returnType = method.getReturnType();
-      TypeExpr node = TypeExpr.analyze(returnType);
-      TypeExpr.PrimitiveValueNode primitiveValueNode = (TypeExpr.PrimitiveValueNode) node;
-      TypeExpr.PrimitiveValueType typeExpr = primitiveValueNode.type();
-      
-      // Use MethodHandles.lookup() to get the method handle
-      MethodHandle methodHandle = MethodHandles.lookup().unreflect(method);
-      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(typeExpr, methodHandle);
-      assertThat(writerChain).isNotNull();
-      // We can write the record to a ByteBuffer
-      final var byteBuffer = java.nio.ByteBuffer.allocate(1024);
-      try {
-        writerChain.accept(byteBuffer, primitiveValueRecord);
-      } catch (Throwable e) {
-        throw new RuntimeException(e);
+      final @NotNull RecordComponent[] components = PrimitiveValueRecord.class.getRecordComponents();
+      // make an array of the component accessor methods
+      final @NotNull MethodHandle[] accessors = new MethodHandle[components.length];
+      final @NotNull TypeExpr[] typeExprs = new TypeExpr[components.length];
+
+      IntStream.range(0, components.length).forEach(i -> {
+        RecordComponent component = components[i];
+
+        // Get accessor method handle
+        try {
+          accessors[i] = MethodHandles.lookup().unreflect(component.getAccessor());
+        } catch (IllegalAccessException e) {
+          throw new RuntimeException("Failed to un reflect accessor for " + component.getName(), e);
+        }
+        // Analyze the type of the component
+        Type type = component.getGenericType();
+        typeExprs[i] = TypeExpr.analyze(type);
+      });
+
+      final TypeExpr typeExpr0 = typeExprs[0];
+      final MethodHandle typeExpr0Accessor = accessors[0];
+      LOGGER.fine(() -> "Type of first component: " + typeExpr0);
+      // We expect the first component to be a primitive type of boolean
+      assertThat(typeExpr0.isPrimitive()).isTrue();
+      // switch on it being boolean
+      if (typeExpr0 instanceof TypeExpr.PrimitiveValueNode e) {
+        LOGGER.fine(() -> "First component is boolean");
+        assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.BOOLEAN);
+        // boolean.class
+        final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), typeExpr0Accessor);
+        assertThat(writerChain).isNotNull();
+        // We can write the record to a ByteBuffer
+        final var byteBuffer = ByteBuffer.allocate(1024);
+        try {
+          writerChain.accept(byteBuffer, this);
+        } catch (Throwable e2) {
+          throw new RuntimeException(e2);
+        }
+        byteBuffer.flip();
+      } else {
+        throw new IllegalStateException("Unexpected value: " + typeExpr0);
       }
-      byteBuffer.flip();
+
+
     }
 
   }

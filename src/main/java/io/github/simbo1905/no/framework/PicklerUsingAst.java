@@ -1,4 +1,9 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905.no.framework;
+
+import org.jetbrains.annotations.NotNull;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -20,21 +25,15 @@ import static io.github.simbo1905.no.framework.PicklerImpl.recordClassHierarchy;
 
 final public class PicklerUsingAst<T> implements Pickler<T> {
 
-  final Class<?> rootClass; // Root class for this pickler, used for discovery and serialization
-
-  static final int SAMPLE_SIZE = 32;
   public static final String SHA_256 = "SHA-256";
-
+  static final int SAMPLE_SIZE = 32;
   static final int CLASS_SIG_BYTES = Long.BYTES;
-
   static final CompatibilityMode COMPATIBILITY_MODE =
       CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
-
+  final Class<?> rootClass; // Root class for this pickler, used for discovery and serialization
   // Global lookup tables indexed by ordinal - the core of the unified architecture
   final Class<?>[] userTypes;     // Lexicographically sorted user types which are subclasses of Record or Enum
-  Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo;  // Fast user type to ordinal lookup for the write path
   final long[] typeSignatures;    // CLASS_SIG_BYTES SHA256 signatures for backwards compatibility checking
-
   // Pre-built component metadata arrays for all discovered record types - the core performance optimization:
   final MethodHandle[] recordConstructors;      // Constructor method handles indexed by ordinal
   final MethodHandle[][] componentAccessors;    // [recordOrdinal][componentIndex] -> accessor method handle
@@ -42,6 +41,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
   final BiConsumer<ByteBuffer, Object>[][] componentWriters;  // [recordOrdinal][componentIndex] -> writer chain of delegating lambda eliminating use of `switch` on write the hot path
   final Function<ByteBuffer, Object>[][] componentReaders;    // [recordOrdinal][componentIndex] -> reader chain of delegating lambda eliminating use of `switch` on read the hot path
   final ToIntFunction<Object>[][] componentSizers; // [recordOrdinal][componentIndex] -> sizer lambda
+  Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo;  // Fast user type to ordinal lookup for the write path
 
 
   @SuppressWarnings("unchecked")
@@ -117,7 +117,6 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
 
   }
 
-
   /// Build component metadata for a record type using meta-programming
   /// This is done for Records only as we do not encounter a sealed interface at runtime we will only encounter either
   /// records or enums. With enums we only record the type signature so that we can detect recording of enum constants.
@@ -160,17 +159,17 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       }
 
       final TypeExpr typeExpr = TypeExpr.analyzeType(component.getGenericType());
-      LOGGER.finer(()->"Analyzed component " + i + " of " + recordClass.getSimpleName() +
+      LOGGER.finer(() -> "Analyzed component " + i + " of " + recordClass.getSimpleName() +
           ": " + component.getName() + " -> " + typeExpr.toTreeString());
 
       // Static analysis of component type structure of the component to understand if it has nested containers
       // like array, list, map, optional,  etc
       componentTypeExpressions[ordinal][i] = typeExpr;
 
-        // Build writer, reader, and sizer chains
-        componentWriters[ordinal][i] = buildWriterChain(typeExpr, componentAccessors[ordinal][i]);
-        componentReaders[ordinal][i] = buildReaderChain(typeExpr);
-        componentSizers[ordinal][i] = buildSizerChain(typeExpr, componentAccessors[ordinal][i]);
+      // Build writer, reader, and sizer chains
+      componentWriters[ordinal][i] = buildWriterChain(typeExpr, componentAccessors[ordinal][i]);
+      componentReaders[ordinal][i] = buildReaderChain(typeExpr);
+      componentSizers[ordinal][i] = buildSizerChain(typeExpr, componentAccessors[ordinal][i]);
 
     });
 
@@ -180,27 +179,26 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     return hashClassSignature(recordClass, components, componentTypeExpressions[ordinal]);
   }
 
-  ToIntFunction<Object> buildSizerChain(TypeExpr typeExpr, MethodHandle methodHandle) {
-    return (Object record) -> 0;
+  BiConsumer<ByteBuffer, Object> buildWriterChain(TypeExpr typeExpr, MethodHandle methodHandle) {
+    if (typeExpr.isPrimitive()) {
+      // For primitive types, we can directly write the value using the method handle
+      LOGGER.fine(() -> "Building writer chain for primitive type: " + typeExpr.toTreeString());
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) typeExpr).type();
+      return buildPrimitiveValueWriter(primitiveType, methodHandle);
+    } else {
+      return (ByteBuffer buffer, Object record) -> {
+        throw new AssertionError("not implemented: " + typeExpr.toTreeString() +
+            " for record: " + record.getClass().getSimpleName() + " with method handle: " + methodHandle);
+      };
+    }
   }
 
   Function<ByteBuffer, Object> buildReaderChain(TypeExpr typeExpr) {
     return (ByteBuffer buffer) -> null;
   }
 
-  BiConsumer<ByteBuffer, Object> buildWriterChain(TypeExpr typeExpr, MethodHandle methodHandle) {
-    if( typeExpr.isPrimitive() ) {
-      // For primitive types, we can directly write the value
-      return (ByteBuffer buffer, Object record) -> {
-        try {
-          methodHandle.invokeExact(record, buffer);
-        } catch (Throwable e) {
-          throw new RuntimeException("Failed to write primitive value", e);
-        }
-      };
-    }
-    return (ByteBuffer buffer, Object record) -> {
-    };
+  ToIntFunction<Object> buildSizerChain(TypeExpr typeExpr, MethodHandle methodHandle) {
+    return (Object record) -> 0;
   }
 
   /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
@@ -232,6 +230,91 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     }
   }
 
+  static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle methodHandle) {
+    return switch (primitiveType) {
+      case BOOLEAN -> {
+        LOGGER.fine(() -> "Building writer chain for boolean.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.put((byte) ((boolean) methodHandle.invokeExact(record) ? 1 : 0));
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write boolean value", e);
+          }
+        };
+      }
+      case BYTE -> {
+        LOGGER.fine(() -> "Building writer chain for byte.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.put((byte) methodHandle.invokeExact(record));
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write byte value", e);
+          }
+        };
+      }
+      case SHORT -> {
+        LOGGER.fine(() -> "Building writer chain for short.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putShort((short) methodHandle.invokeExact(record));
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write short value", e);
+          }
+        };
+      }
+      case CHARACTER -> {
+        LOGGER.fine(() -> "Building writer chain for char.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putChar((char) methodHandle.invokeExact(record));
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write char value", e);
+          }
+        };
+      }
+      case INTEGER -> {
+        LOGGER.fine(() -> "Building writer chain for int.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            Object result = methodHandle.invokeExact(record);
+            buffer.putInt((int) result);
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write int value", e);
+          }
+        };
+      }
+      case LONG -> {
+        LOGGER.fine(() -> "Building writer chain for long.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putLong((long) methodHandle.invokeExact(record));
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write long value", e);
+          }
+        };
+      }
+      case FLOAT -> {
+        LOGGER.fine(() -> "Building writer chain for float.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putFloat((float) methodHandle.invokeExact(record));
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write float value", e);
+          }
+        };
+      }
+      case DOUBLE -> {
+        LOGGER.fine(() -> "Building writer chain for double.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putDouble((double) methodHandle.invokeExact(record));
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write double value", e);
+          }
+        };
+      }
+    };
+  }
 
   @Override
   public int serialize(ByteBuffer buffer, T record) {
