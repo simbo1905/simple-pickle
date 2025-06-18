@@ -106,13 +106,6 @@ public class BoxedPrimitivesTests {
     final MethodHandle typeExpr7Accessor = accessors[7];
     testDoubleRoundTrip(typeExpr7, typeExpr7Accessor);
   }
-    LOGGER.fine(() -> "Type of first component: " + typeExpr0);
-    // We expect the first component to be a reference type of boolean
-    assertThat(typeExpr0.isPrimitive()).isFalse();
-    // switch on it being boolean
-    if (typeExpr0 instanceof TypeExpr.RefValueNode e) {
-      LOGGER.fine(() -> "First component is boolean");
-      assertThat(e.type()).isEqualTo(TypeExpr.RefValueType.BOOLEAN);
       // Boolean.class
       final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), typeExpr0Accessor);
       assertThat(writerChain).isNotNull();
@@ -156,7 +149,7 @@ public class BoxedPrimitivesTests {
       Double doubleValue
   ) {
   }
-}
+
   void testBooleanRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
     LOGGER.fine(() -> "Type of first component: " + typeExpr0);
     // We expect the first component to be a reference type of boolean
