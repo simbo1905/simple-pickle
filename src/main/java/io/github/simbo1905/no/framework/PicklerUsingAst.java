@@ -511,27 +511,6 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
           throw new IllegalArgumentException("Unsupported interface type: " + userType.getClass().getSimpleName());
         }
       };
-      case ENUM ->
-          (Object record) -> Integer.BYTES + Long.BYTES; // Enum is stored as an ordinal (int) and a type signature (long)
-      case STRING -> (Object record) -> {
-        ;
-        if (record instanceof String str) {
-          return Integer.BYTES + str.getBytes(StandardCharsets.UTF_8).length;
-        } else {
-          throw new IllegalArgumentException("Expected String, got: " + record.getClass().getSimpleName());
-        }
-      };
-      case RECORD -> (Object record) -> 0;
-      case INTERFACE -> (Object userType) -> {
-        if (userType instanceof Enum<?> ignored) {
-          // For enums, we store the ordinal and type signature
-          return Integer.BYTES + Long.BYTES;
-        } else if (userType instanceof Record record) {
-          return 0;
-        } else {
-          throw new IllegalArgumentException("Unsupported interface type: " + userType.getClass().getSimpleName());
-        }
-      };
     };
   }
 
