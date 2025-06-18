@@ -262,6 +262,19 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
           }
         };
       }
+      case STRING -> {
+        LOGGER.fine(() -> "Building writer chain for String");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            String str = (String) methodHandle.invokeWithArguments(record);
+            byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
+            ZigZagEncoding.putInt(buffer, bytes.length);
+            buffer.put(bytes);
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write String: " + e.getMessage(), e);
+          }
+        };
+      }
       case BYTE -> {
         LOGGER.fine(() -> "Building writer chain for byte.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
@@ -339,6 +352,12 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
   static @NotNull Function<ByteBuffer, Object> buildPrimitiveValueReader(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (buffer) -> buffer.get() != 0;
+      case STRING -> (buffer) -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+      };
       case BYTE -> ByteBuffer::get;
       case SHORT -> ByteBuffer::getShort;
       case CHARACTER -> ByteBuffer::getChar;
@@ -352,6 +371,15 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
   static @NotNull ToIntFunction<Object> buildPrimitiveValueSizer(TypeExpr.PrimitiveValueType primitiveType, MethodHandle ignored) {
     return switch (primitiveType) {
       case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
+      case STRING -> (Object record) -> {
+        try {
+          String str = (String) accessor.invokeWithArguments(record);
+          // Worst case calculation: 5 bytes for varint length + (str.length() * 4)
+          return 5 + (str.length() * 4);
+        } catch (Throwable e) {
+          throw new RuntimeException("Failed to size String", e);
+        }
+      };
       case SHORT -> (Object record) -> Short.BYTES;
       case CHARACTER -> (Object record) -> Character.BYTES;
       case INTEGER -> (Object record) -> Integer.BYTES;
