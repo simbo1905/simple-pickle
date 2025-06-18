@@ -81,6 +81,36 @@ public class MetaProgrammingTests {
       final TypeExpr typeExpr1 = typeExprs[1];
       final MethodHandle typeExpr1Accessor = accessors[1];
       testByteRoundTrip(typeExpr1, typeExpr1Accessor);
+
+      // Test char component
+      final TypeExpr typeExpr2 = typeExprs[2];
+      final MethodHandle typeExpr2Accessor = accessors[2];
+      testCharRoundTrip(typeExpr2, typeExpr2Accessor);
+
+      // Test short component
+      final TypeExpr typeExpr3 = typeExprs[3];
+      final MethodHandle typeExpr3Accessor = accessors[3];
+      testShortRoundTrip(typeExpr3, typeExpr3Accessor);
+
+      // Test int component
+      final TypeExpr typeExpr4 = typeExprs[4];
+      final MethodHandle typeExpr4Accessor = accessors[4];
+      testIntRoundTrip(typeExpr4, typeExpr4Accessor);
+
+      // Test long component
+      final TypeExpr typeExpr5 = typeExprs[5];
+      final MethodHandle typeExpr5Accessor = accessors[5];
+      testLongRoundTrip(typeExpr5, typeExpr5Accessor);
+
+      // Test float component
+      final TypeExpr typeExpr6 = typeExprs[6];
+      final MethodHandle typeExpr6Accessor = accessors[6];
+      testFloatRoundTrip(typeExpr6, typeExpr6Accessor);
+
+      // Test double component
+      final TypeExpr typeExpr7 = typeExprs[7];
+      final MethodHandle typeExpr7Accessor = accessors[7];
+      testDoubleRoundTrip(typeExpr7, typeExpr7Accessor);
     }
 
     void testBooleanRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
@@ -124,7 +154,245 @@ public class MetaProgrammingTests {
     }
   }
 
-  void testByteRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
+  void testCharRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
+    LOGGER.fine(() -> "Type of char component: " + typeExpr);
+    // We expect the component to be a primitive type of char
+    assertThat(typeExpr.isPrimitive()).isTrue();
+    // switch on it being char
+    if (typeExpr instanceof TypeExpr.PrimitiveValueNode e) {
+      LOGGER.fine(() -> "Char component is char");
+      assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.CHAR);
+      // char.class
+      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      LOGGER.fine(() -> "Attempting to write char value to buffer");
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        LOGGER.severe(() -> "Failed to write char value: " + e2.getMessage());
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      LOGGER.fine(() -> "Successfully wrote char value to buffer");
+      // Now we can read it back
+      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readValue = readerChain.apply(byteBuffer);
+      LOGGER.fine(() -> "Read char value: " + readValue);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.charValue());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr);
+    }
+  }
+
+  void testShortRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
+    LOGGER.fine(() -> "Type of short component: " + typeExpr);
+    // We expect the component to be a primitive type of short
+    assertThat(typeExpr.isPrimitive()).isTrue();
+    // switch on it being short
+    if (typeExpr instanceof TypeExpr.PrimitiveValueNode e) {
+      LOGGER.fine(() -> "Short component is short");
+      assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.SHORT);
+      // short.class
+      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      LOGGER.fine(() -> "Attempting to write short value to buffer");
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        LOGGER.severe(() -> "Failed to write short value: " + e2.getMessage());
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      LOGGER.fine(() -> "Successfully wrote short value to buffer");
+      // Now we can read it back
+      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readValue = readerChain.apply(byteBuffer);
+      LOGGER.fine(() -> "Read short value: " + readValue);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.shortValue());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr);
+    }
+  }
+
+  void testIntRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
+    LOGGER.fine(() -> "Type of int component: " + typeExpr);
+    // We expect the component to be a primitive type of int
+    assertThat(typeExpr.isPrimitive()).isTrue();
+    // switch on it being int
+    if (typeExpr instanceof TypeExpr.PrimitiveValueNode e) {
+      LOGGER.fine(() -> "Int component is int");
+      assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.INT);
+      // int.class
+      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      LOGGER.fine(() -> "Attempting to write int value to buffer");
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        LOGGER.severe(() -> "Failed to write int value: " + e2.getMessage());
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      LOGGER.fine(() -> "Successfully wrote int value to buffer");
+      // Now we can read it back
+      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readValue = readerChain.apply(byteBuffer);
+      LOGGER.fine(() -> "Read int value: " + readValue);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.intValue());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr);
+    }
+  }
+
+  void testLongRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
+    LOGGER.fine(() -> "Type of long component: " + typeExpr);
+    // We expect the component to be a primitive type of long
+    assertThat(typeExpr.isPrimitive()).isTrue();
+    // switch on it being long
+    if (typeExpr instanceof TypeExpr.PrimitiveValueNode e) {
+      LOGGER.fine(() -> "Long component is long");
+      assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.LONG);
+      // long.class
+      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      LOGGER.fine(() -> "Attempting to write long value to buffer");
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        LOGGER.severe(() -> "Failed to write long value: " + e2.getMessage());
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      LOGGER.fine(() -> "Successfully wrote long value to buffer");
+      // Now we can read it back
+      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readValue = readerChain.apply(byteBuffer);
+      LOGGER.fine(() -> "Read long value: " + readValue);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.longValue());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr);
+    }
+  }
+
+  void testFloatRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
+    LOGGER.fine(() -> "Type of float component: " + typeExpr);
+    // We expect the component to be a primitive type of float
+    assertThat(typeExpr.isPrimitive()).isTrue();
+    // switch on it being float
+    if (typeExpr instanceof TypeExpr.PrimitiveValueNode e) {
+      LOGGER.fine(() -> "Float component is float");
+      assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.FLOAT);
+      // float.class
+      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      LOGGER.fine(() -> "Attempting to write float value to buffer");
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        LOGGER.severe(() -> "Failed to write float value: " + e2.getMessage());
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      LOGGER.fine(() -> "Successfully wrote float value to buffer");
+      // Now we can read it back
+      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readValue = readerChain.apply(byteBuffer);
+      LOGGER.fine(() -> "Read float value: " + readValue);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.floatValue());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr);
+    }
+  }
+
+  void testDoubleRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
+    LOGGER.fine(() -> "Type of double component: " + typeExpr);
+    // We expect the component to be a primitive type of double
+    assertThat(typeExpr.isPrimitive()).isTrue();
+    // switch on it being double
+    if (typeExpr instanceof TypeExpr.PrimitiveValueNode e) {
+      LOGGER.fine(() -> "Double component is double");
+      assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.DOUBLE);
+      // double.class
+      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      LOGGER.fine(() -> "Attempting to write double value to buffer");
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        LOGGER.severe(() -> "Failed to write double value: " + e2.getMessage());
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      LOGGER.fine(() -> "Successfully wrote double value to buffer");
+      // Now we can read it back
+      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readValue = readerChain.apply(byteBuffer);
+      LOGGER.fine(() -> "Read double value: " + readValue);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.doubleValue());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr);
+    }
+  }
     LOGGER.fine(() -> "Type of byte component: " + typeExpr);
     // We expect the component to be a primitive type of byte
     assertThat(typeExpr.isPrimitive()).isTrue();
