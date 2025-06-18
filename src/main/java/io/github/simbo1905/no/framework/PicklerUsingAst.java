@@ -388,12 +388,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for UUID");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            UUID uuid = SwitchExpressions.switchOn(record)
-                .when(UUID.class, r -> (UUID) r)
-                .when(TestValuesRecord.class, r -> ((TestValuesRecord) r).uuidValue())
-                .defaultThrow(new IllegalArgumentException(
-                    "Expected UUID or TestValuesRecord, got: " + record.getClass().getSimpleName()));
-            
+            UUID uuid = (UUID) methodHandle.invokeWithArguments(record);
             buffer.putLong(uuid.getMostSignificantBits());
             buffer.putLong(uuid.getLeastSignificantBits());
           } catch (Throwable e) {
