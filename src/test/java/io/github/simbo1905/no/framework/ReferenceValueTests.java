@@ -7,14 +7,19 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.*;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
+import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.UUID;
-import java.util.logging.Logger;
+import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class ReferenceValueTests {
+  @SuppressWarnings("unused")
   public enum TestEnum {
     VALUE1, VALUE2, VALUE3
   }
@@ -25,6 +30,11 @@ public class ReferenceValueTests {
       TestEnum enumValue
   ) {
   }
+
+  static Map<Class<?>, PicklerImpl.TypeInfo> classTypeInfoMap = Map.of(
+      TestEnum.class, new PicklerImpl.TypeInfo(1, 1L, TestEnum.values()),
+      TestValuesRecord.class, new PicklerImpl.TypeInfo(2, 2L, null)
+  );
 
   static TestValuesRecord referenceValueRecord =
       new TestValuesRecord(
@@ -164,7 +174,7 @@ public class ReferenceValueTests {
       LOGGER.fine("Component is Enum");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.ENUM);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = PicklerUsingAst.buildEnumWriter(classTypeInfoMap, accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -174,13 +184,13 @@ public class ReferenceValueTests {
         writer.accept(buffer, referenceValueRecord);
       } catch (Throwable e) {
         LOGGER.severe("Failed to write Enum: " + e.getMessage());
-        throw new RuntimeException(e);
+        throw new RuntimeException(e.getMessage(), e);
       }
 
       buffer.flip();
       LOGGER.fine("Successfully wrote Enum to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = PicklerUsingAst.buildEnumReader(classTypeInfoMap);
       final TestEnum result = (TestEnum) reader.apply(buffer);
 
       LOGGER.fine("Read Enum: " + result);

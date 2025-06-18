@@ -122,37 +122,37 @@ public class BoxedPrimitivesTests {
   void testByteRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Type of component: " + typeExpr);
     assertThat(typeExpr.isPrimitive()).isFalse();
-    
+
     if (typeExpr instanceof TypeExpr.RefValueNode node) {
       LOGGER.fine(() -> "Component is byte");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.BYTE);
-      
+
       final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
-      
+
       final var buffer = ByteBuffer.allocate(1024);
       LOGGER.fine(() -> "Attempting to write byte value to buffer");
-      
+
       try {
         writer.accept(buffer, boxedValueRecord);
       } catch (Throwable e) {
         LOGGER.severe(() -> "Failed to write byte value: " + e.getMessage());
         throw new RuntimeException(e);
       }
-      
+
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote byte value to buffer");
-      
+
       final var reader = PicklerUsingAst.buildValueReader(node.type());
       final var result = reader.apply(buffer);
-      
+
       LOGGER.fine(() -> "Read byte value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.byteValue());
-      
+
       final int bytesWritten = buffer.position();
       final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
-      
+
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -163,37 +163,37 @@ public class BoxedPrimitivesTests {
   void testCharRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Type of component: " + typeExpr);
     assertThat(typeExpr.isPrimitive()).isFalse();
-    
+
     if (typeExpr instanceof TypeExpr.RefValueNode node) {
       LOGGER.fine(() -> "Component is char");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.CHARACTER);
-      
+
       final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
-      
+
       final var buffer = ByteBuffer.allocate(1024);
       LOGGER.fine(() -> "Attempting to write char value to buffer");
-      
+
       try {
         writer.accept(buffer, boxedValueRecord);
       } catch (Throwable e) {
         LOGGER.severe(() -> "Failed to write char value: " + e.getMessage());
         throw new RuntimeException(e);
       }
-      
+
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote char value to buffer");
-      
+
       final var reader = PicklerUsingAst.buildValueReader(node.type());
       final var result = reader.apply(buffer);
-      
+
       LOGGER.fine(() -> "Read char value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.charValue());
-      
+
       final int bytesWritten = buffer.position();
       final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
-      
+
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -204,37 +204,37 @@ public class BoxedPrimitivesTests {
   void testShortRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Type of component: " + typeExpr);
     assertThat(typeExpr.isPrimitive()).isFalse();
-    
+
     if (typeExpr instanceof TypeExpr.RefValueNode node) {
       LOGGER.fine(() -> "Component is short");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.SHORT);
-      
+
       final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
-      
+
       final var buffer = ByteBuffer.allocate(1024);
       LOGGER.fine(() -> "Attempting to write short value to buffer");
-      
+
       try {
         writer.accept(buffer, boxedValueRecord);
       } catch (Throwable e) {
         LOGGER.severe(() -> "Failed to write short value: " + e.getMessage());
         throw new RuntimeException(e);
       }
-      
+
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote short value to buffer");
-      
+
       final var reader = PicklerUsingAst.buildValueReader(node.type());
       final var result = reader.apply(buffer);
-      
+
       LOGGER.fine(() -> "Read short value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.shortValue());
-      
+
       final int bytesWritten = buffer.position();
       final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
-      
+
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -245,37 +245,37 @@ public class BoxedPrimitivesTests {
   void testIntRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Type of component: " + typeExpr);
     assertThat(typeExpr.isPrimitive()).isFalse();
-    
+
     if (typeExpr instanceof TypeExpr.RefValueNode node) {
       LOGGER.fine(() -> "Component is int");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.INTEGER);
-      
+
       final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
-      
+
       final var buffer = ByteBuffer.allocate(1024);
       LOGGER.fine(() -> "Attempting to write int value to buffer");
-      
+
       try {
         writer.accept(buffer, boxedValueRecord);
       } catch (Throwable e) {
         LOGGER.severe(() -> "Failed to write int value: " + e.getMessage());
         throw new RuntimeException(e);
       }
-      
+
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote int value to buffer");
-      
+
       final var reader = PicklerUsingAst.buildValueReader(node.type());
       final var result = reader.apply(buffer);
-      
+
       LOGGER.fine(() -> "Read int value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.intValue());
-      
+
       final int bytesWritten = buffer.position();
       final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
-      
+
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -286,37 +286,37 @@ public class BoxedPrimitivesTests {
   void testLongRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Type of component: " + typeExpr);
     assertThat(typeExpr.isPrimitive()).isFalse();
-    
+
     if (typeExpr instanceof TypeExpr.RefValueNode node) {
       LOGGER.fine(() -> "Component is long");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.LONG);
-      
+
       final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
-      
+
       final var buffer = ByteBuffer.allocate(1024);
       LOGGER.fine(() -> "Attempting to write long value to buffer");
-      
+
       try {
         writer.accept(buffer, boxedValueRecord);
       } catch (Throwable e) {
         LOGGER.severe(() -> "Failed to write long value: " + e.getMessage());
         throw new RuntimeException(e);
       }
-      
+
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote long value to buffer");
-      
+
       final var reader = PicklerUsingAst.buildValueReader(node.type());
       final var result = reader.apply(buffer);
-      
+
       LOGGER.fine(() -> "Read long value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.longValue());
-      
+
       final int bytesWritten = buffer.position();
       final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
-      
+
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -327,37 +327,37 @@ public class BoxedPrimitivesTests {
   void testFloatRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Type of component: " + typeExpr);
     assertThat(typeExpr.isPrimitive()).isFalse();
-    
+
     if (typeExpr instanceof TypeExpr.RefValueNode node) {
       LOGGER.fine(() -> "Component is float");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.FLOAT);
-      
+
       final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
-      
+
       final var buffer = ByteBuffer.allocate(1024);
       LOGGER.fine(() -> "Attempting to write float value to buffer");
-      
+
       try {
         writer.accept(buffer, boxedValueRecord);
       } catch (Throwable e) {
         LOGGER.severe(() -> "Failed to write float value: " + e.getMessage());
         throw new RuntimeException(e);
       }
-      
+
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote float value to buffer");
-      
+
       final var reader = PicklerUsingAst.buildValueReader(node.type());
       final var result = reader.apply(buffer);
-      
+
       LOGGER.fine(() -> "Read float value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.floatValue());
-      
+
       final int bytesWritten = buffer.position();
       final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
-      
+
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -368,37 +368,37 @@ public class BoxedPrimitivesTests {
   void testDoubleRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Type of component: " + typeExpr);
     assertThat(typeExpr.isPrimitive()).isFalse();
-    
+
     if (typeExpr instanceof TypeExpr.RefValueNode node) {
       LOGGER.fine(() -> "Component is double");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.DOUBLE);
-      
+
       final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
-      
+
       final var buffer = ByteBuffer.allocate(1024);
       LOGGER.fine(() -> "Attempting to write double value to buffer");
-      
+
       try {
         writer.accept(buffer, boxedValueRecord);
       } catch (Throwable e) {
         LOGGER.severe(() -> "Failed to write double value: " + e.getMessage());
         throw new RuntimeException(e);
       }
-      
+
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote double value to buffer");
-      
+
       final var reader = PicklerUsingAst.buildValueReader(node.type());
       final var result = reader.apply(buffer);
-      
+
       LOGGER.fine(() -> "Read double value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.doubleValue());
-      
+
       final int bytesWritten = buffer.position();
       final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
-      
+
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
