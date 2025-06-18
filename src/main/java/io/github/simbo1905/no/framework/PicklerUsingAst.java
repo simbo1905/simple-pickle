@@ -266,9 +266,9 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for byte.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            buffer.put((byte) methodHandle.invokeExact(record));
+            buffer.put((byte) methodHandle.invokeWithArguments(record));
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to write byte value", e);
+            throw new RuntimeException(e.getMessage(), e);
           }
         };
       }
@@ -276,9 +276,9 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for short.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            buffer.putShort((short) methodHandle.invokeExact(record));
+            buffer.putShort((short) methodHandle.invokeWithArguments(record));
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to write short value", e);
+            throw new RuntimeException(e.getMessage(), e);
           }
         };
       }
@@ -286,9 +286,9 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for char.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            buffer.putChar((char) methodHandle.invokeExact(record));
+            buffer.putChar((char) methodHandle.invokeWithArguments(record));
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to write char value", e);
+            throw new RuntimeException(e.getMessage(), e);
           }
         };
       }
@@ -296,10 +296,10 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for int.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            Object result = methodHandle.invokeExact(record);
+            Object result = methodHandle.invokeWithArguments(record);
             buffer.putInt((int) result);
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to write int value", e);
+            throw new RuntimeException(e.getMessage(), e);
           }
         };
       }
@@ -307,9 +307,9 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for long.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            buffer.putLong((long) methodHandle.invokeExact(record));
+            buffer.putLong((long) methodHandle.invokeWithArguments(record));
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to write long value", e);
+            throw new RuntimeException(e.getMessage(), e);
           }
         };
       }
@@ -317,9 +317,9 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for float.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            buffer.putFloat((float) methodHandle.invokeExact(record));
+            buffer.putFloat((float) methodHandle.invokeWithArguments(record));
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to write float value", e);
+            throw new RuntimeException(e.getMessage(), e);
           }
         };
       }
@@ -327,9 +327,9 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for double.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            buffer.putDouble((double) methodHandle.invokeExact(record));
+            buffer.putDouble((double) methodHandle.invokeWithArguments(record));
           } catch (Throwable e) {
-            throw new RuntimeException("Failed to write double value", e);
+            throw new RuntimeException(e.getMessage(), e);
           }
         };
       }
