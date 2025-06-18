@@ -384,6 +384,21 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
           }
         };
       }
+      case UUID -> {
+        LOGGER.fine(() -> "Building writer chain for UUID");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            if (record instanceof UUID uuid) {
+              buffer.putLong(uuid.getMostSignificantBits());
+              buffer.putLong(uuid.getLeastSignificantBits());
+            } else {
+              throw new IllegalArgumentException("Expected UUID, got: " + record.getClass().getSimpleName());
+            }
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write UUID: " + e.getMessage(), e);
+          }
+        };
+      }
       case SHORT -> {
         LOGGER.fine(() -> "Building writer chain for short.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
@@ -459,6 +474,11 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       case LONG -> ByteBuffer::getLong;
       case FLOAT -> ByteBuffer::getFloat;
       case DOUBLE -> ByteBuffer::getDouble;
+      case UUID -> (buffer) -> {
+        long most = buffer.getLong();
+        long least = buffer.getLong();
+        return new UUID(most, least);
+      };
       default -> throw new AssertionError("not implemented yet ref value type: " + valueType);
     };
   }
@@ -473,6 +493,27 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       case FLOAT -> (Object record) -> Float.BYTES;
       case DOUBLE -> (Object record) -> Double.BYTES;
       case UUID -> (Object record) -> 2 * Long.BYTES; // UUID is two longs
+      case ENUM ->
+          (Object record) -> Integer.BYTES + Long.BYTES; // Enum is stored as an ordinal (int) and a type signature (long)
+      case STRING -> (Object record) -> {
+        ;
+        if (record instanceof String str) {
+          return Integer.BYTES + str.getBytes(StandardCharsets.UTF_8).length;
+        } else {
+          throw new IllegalArgumentException("Expected String, got: " + record.getClass().getSimpleName());
+        }
+      };
+      case RECORD -> (Object record) -> 0;
+      case INTERFACE -> (Object userType) -> {
+        if (userType instanceof Enum<?> ignored) {
+          // For enums, we store the ordinal and type signature
+          return Integer.BYTES + Long.BYTES;
+        } else if (userType instanceof Record record) {
+          return 0;
+        } else {
+          throw new IllegalArgumentException("Unsupported interface type: " + userType.getClass().getSimpleName());
+        }
+      };
       case ENUM ->
           (Object record) -> Integer.BYTES + Long.BYTES; // Enum is stored as an ordinal (int) and a type signature (long)
       case STRING -> (Object record) -> {
