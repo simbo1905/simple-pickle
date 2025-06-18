@@ -7,6 +7,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -120,6 +121,35 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     LOGGER.info(() -> "PicklerUsingAst construction complete - ready for high-performance serialization");
   }
 
+  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(
+      TypeExpr.PrimitiveValueType primativeType, MethodHandle typeExpr0Accessor) {
+    return switch (primativeType) {
+      case BOOLEAN -> (buffer, record) -> {
+        LOGGER.finer(() -> "Delegating ARRAY for tag BOOLEAN at position " + buffer.position());
+        final Object value;
+        try {
+          value = typeExpr0Accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        final var booleans = (boolean[]) value;
+        ZigZagEncoding.putInt(buffer, Constants.BOOLEAN.marker());
+        int length = booleans.length;
+        ZigZagEncoding.putInt(buffer, length);
+        BitSet bitSet = new BitSet(length);
+        // Create a BitSet and flip bits to try where necessary
+        IntStream.range(0, length)
+            .filter(i -> booleans[i])
+            .forEach(bitSet::set);
+        byte[] bytes = bitSet.toByteArray();
+        ZigZagEncoding.putInt(buffer, bytes.length);
+        buffer.put(bytes);
+      };
+      default -> throw
+          new AssertionError("not implemented yet primitive array type: " + primativeType);
+    };
+  }
+
   long hashRecordSignature(int ordinal, Class<?> recordClass) {
     LOGGER.fine(() -> "hashRecordSignature for ordinal " + ordinal + ": " + recordClass.getSimpleName());
     // Get component accessors and analyze types
@@ -135,8 +165,6 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     return hashClassSignature(recordClass, components, componentTypeExpressions[ordinal]);
   }
 
-
-  @SuppressWarnings({"unchecked"})
   void resolveMethodHandles(int ordinal, Class<?> recordClass) throws Exception {
     LOGGER.fine(() -> "Building metadata for ordinal " + ordinal + ": " + recordClass.getSimpleName());
     // Get component accessors and analyze types
@@ -159,7 +187,6 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       }
     });
   }
-
 
   @SuppressWarnings({"unchecked"})
   void metaprogramming(int ordinal, Class<?> recordClass) throws Exception {
@@ -366,6 +393,73 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
+
+  static @NotNull Function<ByteBuffer, Object> buildPrimitiveArrayReader(TypeExpr.PrimitiveValueType primitiveType) {
+    return switch (primitiveType) {
+      case BOOLEAN -> (buffer) -> {
+        int marker = ZigZagEncoding.getInt(buffer);
+        assert marker == Constants.BOOLEAN.marker() : "Expected BOOLEAN marker but got: " + marker;
+        int boolLength = ZigZagEncoding.getInt(buffer);
+        boolean[] booleans = new boolean[boolLength];
+        int bytesLength = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[bytesLength];
+        buffer.get(bytes);
+        BitSet bitSet = BitSet.valueOf(bytes);
+        IntStream.range(0, boolLength).forEach(i -> booleans[i] = bitSet.get(i));
+        return booleans;
+      };
+      case BYTE -> (buffer) -> {
+        List<Byte> list = new ArrayList<>();
+        while (buffer.hasRemaining()) {
+          list.add(buffer.get());
+        }
+        return list.toArray(new Byte[0]);
+      };
+      case SHORT -> (buffer) -> {
+        List<Short> list = new ArrayList<>();
+        while (buffer.hasRemaining()) {
+          list.add(buffer.getShort());
+        }
+        return list.toArray(new Short[0]);
+      };
+      case CHARACTER -> (buffer) -> {
+        List<Character> list = new ArrayList<>();
+        while (buffer.hasRemaining()) {
+          list.add(buffer.getChar());
+        }
+        return list.toArray(new Character[0]);
+      };
+      case INTEGER -> (buffer) -> {
+        List<Integer> list = new ArrayList<>();
+        while (buffer.hasRemaining()) {
+          list.add(buffer.getInt());
+        }
+        return list.toArray(new Integer[0]);
+      };
+      case LONG -> (buffer) -> {
+        List<Long> list = new ArrayList<>();
+        while (buffer.hasRemaining()) {
+          list.add(buffer.getLong());
+        }
+        return list.toArray(new Long[0]);
+      };
+      case FLOAT -> (buffer) -> {
+        List<Float> list = new ArrayList<>();
+        while (buffer.hasRemaining()) {
+          list.add(buffer.getFloat());
+        }
+        return list.toArray(new Float[0]);
+      };
+      case DOUBLE -> (buffer) -> {
+        List<Double> list = new ArrayList<>();
+        while (buffer.hasRemaining()) {
+          list.add(buffer.getDouble());
+        }
+        return list.toArray(new Double[0]);
+      };
+    };
+  }
+
   static @NotNull ToIntFunction<Object> buildPrimitiveValueSizer(TypeExpr.PrimitiveValueType primitiveType, MethodHandle ignored) {
     return switch (primitiveType) {
       case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
@@ -375,6 +469,28 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       case LONG -> (Object record) -> Long.BYTES;
       case FLOAT -> (Object record) -> Float.BYTES;
       case DOUBLE -> (Object record) -> Double.BYTES;
+    };
+  }
+
+  static @NotNull ToIntFunction<Object> buildPrimitiveArraySizer(TypeExpr.PrimitiveValueType primitiveType, MethodHandle accessor) {
+    final int bytesPerElement = switch (primitiveType) {
+      case BOOLEAN, BYTE -> Byte.BYTES;
+      case SHORT -> Short.BYTES;
+      case CHARACTER -> Character.BYTES;
+      case INTEGER -> Integer.BYTES;
+      case LONG -> Long.BYTES;
+      case FLOAT -> Float.BYTES;
+      case DOUBLE -> Double.BYTES;
+    };
+    return (Object record) -> {
+      final Object value;
+      try {
+        value = accessor.invokeWithArguments(record);
+      } catch (Throwable e) {
+        throw new RuntimeException(e.getMessage(), e);
+      }
+      // type maker, length, element * size
+      return 2 * Integer.BYTES + Array.getLength(value) * bytesPerElement;
     };
   }
 

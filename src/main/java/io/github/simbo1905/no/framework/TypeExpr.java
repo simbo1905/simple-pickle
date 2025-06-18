@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905.no.framework;
 
 import java.lang.reflect.*;
@@ -13,16 +16,15 @@ sealed interface TypeExpr permits
   static TypeExpr analyzeType(Type type) {
 
     // Handle arrays first (both primitive arrays and object arrays)
-    if (type instanceof Class<?> clazz ) {
-      if( clazz.isArray()){
+    if (type instanceof Class<?> clazz) {
+      if (clazz.isArray()) {
         TypeExpr elementTypeExpr = analyzeType(clazz.getComponentType());
         return new ArrayNode(elementTypeExpr);
       } else {
-        if( clazz.isPrimitive()){
+        if (clazz.isPrimitive()) {
           PrimitiveValueType primType = classifyPrimitiveClass(clazz);
           return new PrimitiveValueNode(primType, clazz);
-        }
-        else {
+        } else {
           RefValueType primType = classifyReferenceClass(clazz);
           return new RefValueNode(primType, clazz);
         }
@@ -74,7 +76,7 @@ sealed interface TypeExpr permits
         }
       }
     }
-    
+
     // end of supported types
     if (type instanceof TypeVariable<?>) {
       throw new IllegalArgumentException("Type variables are not supported in serialization: " + type);
@@ -90,28 +92,28 @@ sealed interface TypeExpr permits
   /// Classifies a Java Class into the appropriate PrimitiveType
   static PrimitiveValueType classifyPrimitiveClass(Class<?> clazz) {
     // Handle primitive types and their boxed equivalents
-    if (clazz == boolean.class ) {
+    if (clazz == boolean.class) {
       return PrimitiveValueType.BOOLEAN;
     }
-    if (clazz == byte.class ) {
+    if (clazz == byte.class) {
       return PrimitiveValueType.BYTE;
     }
-    if (clazz == short.class ) {
+    if (clazz == short.class) {
       return PrimitiveValueType.SHORT;
     }
-    if (clazz == char.class ) {
+    if (clazz == char.class) {
       return PrimitiveValueType.CHARACTER;
     }
-    if (clazz == int.class ) {
+    if (clazz == int.class) {
       return PrimitiveValueType.INTEGER;
     }
-    if (clazz == long.class ) {
+    if (clazz == long.class) {
       return PrimitiveValueType.LONG;
     }
     if (clazz == float.class) {
       return PrimitiveValueType.FLOAT;
     }
-    if (clazz == double.class ) {
+    if (clazz == double.class) {
       return PrimitiveValueType.DOUBLE;
     }
 
@@ -122,7 +124,7 @@ sealed interface TypeExpr permits
   /// Classifies a Java Class into the appropriate PrimitiveType
   static RefValueType classifyReferenceClass(Class<?> clazz) {
     // Handle primitive types and their boxed equivalents
-    if ( clazz == Boolean.class) {
+    if (clazz == Boolean.class) {
       return RefValueType.BOOLEAN;
     }
     if (clazz == Byte.class) {
@@ -191,6 +193,8 @@ sealed interface TypeExpr permits
 
   boolean isPrimitive();
 
+  boolean isContainer();
+
   /// Container node for arrays - has one child (element type)
   record ArrayNode(TypeExpr element) implements TypeExpr {
     public ArrayNode {
@@ -200,6 +204,11 @@ sealed interface TypeExpr permits
     @Override
     public boolean isPrimitive() {
       return false;
+    }
+
+    @Override
+    public boolean isContainer() {
+      return true;
     }
   }
 
@@ -213,6 +222,11 @@ sealed interface TypeExpr permits
     public boolean isPrimitive() {
       return false;
     }
+
+    @Override
+    public boolean isContainer() {
+      return true;
+    }
   }
 
   /// Container node for optionals - has one child (wrapped type)
@@ -224,6 +238,11 @@ sealed interface TypeExpr permits
     @Override
     public boolean isPrimitive() {
       return false;
+    }
+
+    @Override
+    public boolean isContainer() {
+      return true;
     }
   }
 
@@ -238,6 +257,11 @@ sealed interface TypeExpr permits
     public boolean isPrimitive() {
       return false;
     }
+
+    @Override
+    public boolean isContainer() {
+      return true;
+    }
   }
 
   /// Leaf node for all primitive/value types
@@ -251,11 +275,16 @@ sealed interface TypeExpr permits
     /// Override to only show the type name, not the Java type
     @Override
     public String toTreeString() {
-      return ((Class<?>)javaType()).getSimpleName();
+      return ((Class<?>) javaType()).getSimpleName();
     }
 
     @Override
     public boolean isPrimitive() {
+      return false;
+    }
+
+    @Override
+    public boolean isContainer() {
       return false;
     }
   }
@@ -275,12 +304,17 @@ sealed interface TypeExpr permits
 
     @Override
     public String toTreeString() {
-      return ((Class<?>)javaType()).getSimpleName();
+      return ((Class<?>) javaType()).getSimpleName();
     }
 
     @Override
     public boolean isPrimitive() {
       return true;
+    }
+
+    @Override
+    public boolean isContainer() {
+      return false;
     }
   }
 

@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /// Package-private tests for core machinery components
 /// Tests the internal implementation details that are not part of the public API
-public class PrimitiveTests {
+public class PrimitiveValueTests {
 
   static PrimitiveValueRecord primitiveValueRecord =
       new PrimitiveValueRecord(true, (byte) 1, 'a', (short) 2, 3, 4L, 5.0f, 6.0);
