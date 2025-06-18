@@ -29,8 +29,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
   public static final String SHA_256 = "SHA-256";
   static final int SAMPLE_SIZE = 32;
   static final int CLASS_SIG_BYTES = Long.BYTES;
-  static final CompatibilityMode COMPATIBILITY_MODE =
-      CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
+  static final CompatibilityMode COMPATIBILITY_MODE = CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
   final Class<?> rootClass; // Root class for this pickler, used for discovery and serialization
   // Global lookup tables indexed by ordinal - the core of the unified architecture
   final Class<?>[] userTypes;     // Lexicographically sorted user types which are subclasses of Record or Enum
@@ -50,22 +49,14 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     LOGGER.info(() -> "Creating AST pickler for root class: " + clazz.getName());
     this.rootClass = clazz;
 
-    Set<Class<?>> allReachableClasses = recordClassHierarchy(rootClass, new HashSet<>())
-        .filter(cls -> cls.isRecord() || cls.isEnum() || cls.isSealed())
-        .collect(Collectors.toSet());
+    Set<Class<?>> allReachableClasses = recordClassHierarchy(rootClass, new HashSet<>()).filter(cls -> cls.isRecord() || cls.isEnum() || cls.isSealed()).collect(Collectors.toSet());
 
-    LOGGER.info(() -> "Discovered " + allReachableClasses.size() + " reachable user types: " +
-        allReachableClasses.stream().map(Class::getSimpleName).toList());
+    LOGGER.info(() -> "Discovered " + allReachableClasses.size() + " reachable user types: " + allReachableClasses.stream().map(Class::getSimpleName).toList());
 
-    this.userTypes = allReachableClasses.stream()
-        .filter(cls -> !cls.isSealed()) // Remove sealed interfaces - they're only for discovery
-        .sorted(Comparator.comparing(Class::getName))
-        .toArray(Class<?>[]::new);
+    this.userTypes = allReachableClasses.stream().filter(cls -> !cls.isSealed()) // Remove sealed interfaces - they're only for discovery
+        .sorted(Comparator.comparing(Class::getName)).toArray(Class<?>[]::new);
 
-    LOGGER.fine(() -> "Discovered types with typeOrdinal: " +
-        IntStream.range(0, userTypes.length)
-            .mapToObj(i -> "[" + i + "]=" + userTypes[i].getName())
-            .collect(Collectors.joining(", ")));
+    LOGGER.fine(() -> "Discovered types with typeOrdinal: " + IntStream.range(0, userTypes.length).mapToObj(i -> "[" + i + "]=" + userTypes[i].getName()).collect(Collectors.joining(", ")));
 
     // Pre-allocate metadata arrays for all discovered record types (array-based for O(1) access)
     int numRecordTypes = userTypes.length;
@@ -90,23 +81,18 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       } else if (userClass.isEnum()) {
         // Compute enum signature
         typeSignatures[ordinal] = hashEnumSignature(userClass);
-        LOGGER.fine(() -> "Computed enum signature for " + userClass.getSimpleName() +
-            ": 0x" + Long.toHexString(typeSignatures[ordinal]));
+        LOGGER.fine(() -> "Computed enum signature for " + userClass.getSimpleName() + ": 0x" + Long.toHexString(typeSignatures[ordinal]));
       }
     });
     // Build the ONE HashMap for class->ordinal lookup (O(1) for hot path)
-    this.classToTypeInfo = IntStream.range(0, userTypes.length)
-        .boxed()
-        .collect(Collectors.toMap(i
-                -> userTypes[i],
-            i -> {
-              Class<?> userClass = userTypes[i];
-              if (userClass.isEnum()) {
-                return new PicklerImpl.TypeInfo(i, typeSignatures[i], userClass.getEnumConstants());
-              } else {
-                return new PicklerImpl.TypeInfo(i, typeSignatures[i], null);
-              }
-            }));
+    this.classToTypeInfo = IntStream.range(0, userTypes.length).boxed().collect(Collectors.toMap(i -> userTypes[i], i -> {
+      Class<?> userClass = userTypes[i];
+      if (userClass.isEnum()) {
+        return new PicklerImpl.TypeInfo(i, typeSignatures[i], userClass.getEnumConstants());
+      } else {
+        return new PicklerImpl.TypeInfo(i, typeSignatures[i], null);
+      }
+    }));
     // Finally do the metaprogramming for all record types
     IntStream.range(0, numRecordTypes).forEach(ordinal -> {
       Class<?> userClass = userTypes[ordinal];
@@ -121,8 +107,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     LOGGER.info(() -> "PicklerUsingAst construction complete - ready for high-performance serialization");
   }
 
-  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(
-      TypeExpr.PrimitiveValueType primativeType, MethodHandle typeExpr0Accessor) {
+  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType primativeType, MethodHandle typeExpr0Accessor) {
     return switch (primativeType) {
       case BOOLEAN -> (buffer, record) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag BOOLEAN at position " + buffer.position());
@@ -138,15 +123,81 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         ZigZagEncoding.putInt(buffer, length);
         BitSet bitSet = new BitSet(length);
         // Create a BitSet and flip bits to try where necessary
-        IntStream.range(0, length)
-            .filter(i -> booleans[i])
-            .forEach(bitSet::set);
+        IntStream.range(0, length).filter(i -> booleans[i]).forEach(bitSet::set);
         byte[] bytes = bitSet.toByteArray();
         ZigZagEncoding.putInt(buffer, bytes.length);
         buffer.put(bytes);
       };
-      default -> throw
-          new AssertionError("not implemented yet primitive array type: " + primativeType);
+      case BYTE -> (buffer, record) -> {
+        LOGGER.finer(() -> "Delegating ARRAY for tag BYTE at position " + buffer.position());
+        final Object value;
+        try {
+          value = typeExpr0Accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        final var bytes = (byte[]) value;
+        ZigZagEncoding.putInt(buffer, Constants.BYTE.marker());
+        ZigZagEncoding.putInt(buffer, bytes.length);
+        buffer.put(bytes);
+      };
+      case SHORT -> (buffer, record) -> {
+        LOGGER.finer(() -> "Delegating ARRAY for tag SHORT at position " + buffer.position());
+        final Object value;
+        try {
+          value = typeExpr0Accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        final var shorts = (short[]) value;
+        ZigZagEncoding.putInt(buffer, Constants.SHORT.marker());
+        for (short s : shorts) {
+          buffer.putShort(s);
+        }
+      };
+      case CHARACTER -> (buffer, record) -> {
+        LOGGER.finer(() -> "Delegating ARRAY for tag CHARACTER at position " + buffer.position());
+        final Object value;
+        try {
+          value = typeExpr0Accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        final var chars = (char[]) value;
+        ZigZagEncoding.putInt(buffer, Constants.CHARACTER.marker());
+        for (char c : chars) {
+          buffer.putChar(c);
+        }
+      };
+      case FLOAT -> (buffer, record) -> {
+        LOGGER.finer(() -> "Delegating ARRAY for tag FLOAT at position " + buffer.position());
+        final Object value;
+        try {
+          value = typeExpr0Accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        final var floats = (float[]) value;
+        ZigZagEncoding.putInt(buffer, Constants.FLOAT.marker());
+        for (float f : floats) {
+          buffer.putFloat(f);
+        }
+      };
+      case DOUBLE -> (buffer, record) -> {
+        LOGGER.finer(() -> "Delegating ARRAY for tag DOUBLE at position " + buffer.position());
+        final Object value;
+        try {
+          value = typeExpr0Accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        final var doubles = (double[]) value;
+        ZigZagEncoding.putInt(buffer, Constants.DOUBLE.marker());
+        for (double d : doubles) {
+          buffer.putDouble(d);
+        }
+      };
+      default -> throw new AssertionError("not implemented yet primitive array type: " + primativeType);
     };
   }
 
@@ -170,9 +221,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     // Get component accessors and analyze types
     RecordComponent[] components = recordClass.getRecordComponents();
     int numComponents = components.length;
-    Class<?>[] parameterTypes = Arrays.stream(components)
-        .map(RecordComponent::getType)
-        .toArray(Class<?>[]::new);
+    Class<?>[] parameterTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
 
     var constructor = recordClass.getDeclaredConstructor(parameterTypes);
     recordConstructors[ordinal] = MethodHandles.lookup().unreflectConstructor(constructor);
@@ -195,9 +244,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     RecordComponent[] components = recordClass.getRecordComponents();
     int numComponents = components.length;
 
-    Class<?>[] parameterTypes = Arrays.stream(components)
-        .map(RecordComponent::getType)
-        .toArray(Class<?>[]::new);
+    Class<?>[] parameterTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
     var constructor = recordClass.getDeclaredConstructor(parameterTypes);
     recordConstructors[ordinal] = MethodHandles.lookup().unreflectConstructor(constructor);
     componentAccessors[ordinal] = new MethodHandle[numComponents];
@@ -231,8 +278,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       return buildPrimitiveValueWriter(primitiveType, methodHandle);
     } else {
       return (ByteBuffer buffer, Object record) -> {
-        throw new AssertionError("not implemented: " + typeExpr.toTreeString() +
-            " for record: " + record.getClass().getSimpleName() + " with method handle: " + methodHandle);
+        throw new AssertionError("not implemented: " + typeExpr.toTreeString() + " for record: " + record.getClass().getSimpleName() + " with method handle: " + methodHandle);
       };
     }
   }
@@ -244,8 +290,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       return buildPrimitiveValueReader(primitiveType);
     } else {
       return (ByteBuffer buffer) -> {
-        throw new AssertionError("not implemented: " + typeExpr.toTreeString() +
-            " for record with method handle: ");
+        throw new AssertionError("not implemented: " + typeExpr.toTreeString() + " for record with method handle: ");
       };
     }
   }
@@ -258,8 +303,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       return buildPrimitiveValueSizer(primitiveType, methodHandle);
     } else {
       return (Object record) -> {
-        throw new AssertionError("not implemented: " + typeExpr.toTreeString() +
-            " for record with method handle: " + methodHandle);
+        throw new AssertionError("not implemented: " + typeExpr.toTreeString() + " for record with method handle: " + methodHandle);
       };
     }
   }
@@ -269,15 +313,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     try {
       MessageDigest digest = MessageDigest.getInstance(SHA_256);
 
-      String input = Stream.concat(
-          Stream.of(clazz.getSimpleName()),
-          IntStream.range(0, components.length)
-              .boxed()
-              .flatMap(i -> Stream.concat(
-                  Stream.of(componentTypes[i].toTreeString()),
-                  Stream.of(components[i].getName())
-              ))
-      ).collect(Collectors.joining("!"));
+      String input = Stream.concat(Stream.of(clazz.getSimpleName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
 
       byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
 
@@ -285,9 +321,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       //      Byte Index:   0       1       2        3        4        5        6        7
       //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
       //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
-      return IntStream.range(0, CLASS_SIG_BYTES)
-          .mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8))
-          .reduce(0L, (a, b) -> a | b);
+      return IntStream.range(0, CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
     } catch (NoSuchAlgorithmException e) {
       throw new RuntimeException(SHA_256 + " not available", e);
     }
@@ -409,54 +443,47 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         return booleans;
       };
       case BYTE -> (buffer) -> {
-        List<Byte> list = new ArrayList<>();
-        while (buffer.hasRemaining()) {
-          list.add(buffer.get());
-        }
-        return list.toArray(new Byte[0]);
+        int marker = ZigZagEncoding.getInt(buffer);
+        assert marker == Constants.BYTE.marker() : "Expected BYTE marker but got: " + marker;
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        return bytes;
       };
       case SHORT -> (buffer) -> {
-        List<Short> list = new ArrayList<>();
-        while (buffer.hasRemaining()) {
-          list.add(buffer.getShort());
-        }
-        return list.toArray(new Short[0]);
+        int marker = ZigZagEncoding.getInt(buffer);
+        assert marker == Constants.SHORT.marker() : "Expected SHORT marker but got: " + marker;
+        int length = ZigZagEncoding.getInt(buffer);
+        short[] shorts = new short[length];
+        IntStream.range(0, length).forEach(i -> shorts[i] = buffer.getShort());
+        return shorts;
       };
       case CHARACTER -> (buffer) -> {
-        List<Character> list = new ArrayList<>();
-        while (buffer.hasRemaining()) {
-          list.add(buffer.getChar());
-        }
-        return list.toArray(new Character[0]);
-      };
-      case INTEGER -> (buffer) -> {
-        List<Integer> list = new ArrayList<>();
-        while (buffer.hasRemaining()) {
-          list.add(buffer.getInt());
-        }
-        return list.toArray(new Integer[0]);
-      };
-      case LONG -> (buffer) -> {
-        List<Long> list = new ArrayList<>();
-        while (buffer.hasRemaining()) {
-          list.add(buffer.getLong());
-        }
-        return list.toArray(new Long[0]);
+        int marker = ZigZagEncoding.getInt(buffer);
+        assert marker == Constants.CHARACTER.marker() : "Expected CHARACTER marker but got: " + marker;
+        int length = ZigZagEncoding.getInt(buffer);
+        char[] chars = new char[length];
+        IntStream.range(0, length).forEach(i -> chars[i] = buffer.getChar());
+        return chars;
       };
       case FLOAT -> (buffer) -> {
-        List<Float> list = new ArrayList<>();
-        while (buffer.hasRemaining()) {
-          list.add(buffer.getFloat());
-        }
-        return list.toArray(new Float[0]);
+        int marker = ZigZagEncoding.getInt(buffer);
+        assert marker == Constants.FLOAT.marker() : "Expected FLOAT marker but got: " + marker;
+        int length = ZigZagEncoding.getInt(buffer);
+        float[] floats = new float[length];
+        IntStream.range(0, length).forEach(i -> floats[i] = buffer.getFloat());
+        return floats;
       };
       case DOUBLE -> (buffer) -> {
-        List<Double> list = new ArrayList<>();
-        while (buffer.hasRemaining()) {
-          list.add(buffer.getDouble());
-        }
-        return list.toArray(new Double[0]);
+        int marker = ZigZagEncoding.getInt(buffer);
+        assert marker == Constants.DOUBLE.marker() : "Expected DOUBLE marker but got: " + marker;
+        int length = ZigZagEncoding.getInt(buffer);
+        double[] doubles = new double[length];
+        IntStream.range(0, length).forEach(i -> doubles[i] = buffer.getDouble());
+        return doubles;
       };
+
+      default -> throw new AssertionError("not implemented yet primitive array type: " + primitiveType);
     };
   }
 
@@ -498,9 +525,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
   /// This has to write out the typeOrdinal first as they would be more than one enum type in the system
   /// Then it writes out the typeSignature for the enum class
   /// Finally, it writes out the ordinal of the enum constant
-  static @NotNull BiConsumer<ByteBuffer, Object> buildEnumWriter(
-      final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo,
-      final MethodHandle methodHandle) {
+  static @NotNull BiConsumer<ByteBuffer, Object> buildEnumWriter(final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo, final MethodHandle methodHandle) {
     LOGGER.fine(() -> "Building writer chain for Enum");
     return (ByteBuffer buffer, Object record) -> {
       try {
@@ -516,9 +541,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
-  static @NotNull BiConsumer<ByteBuffer, Object> buildValueWriter(
-      final TypeExpr.RefValueType refValueType,
-      final MethodHandle methodHandle) {
+  static @NotNull BiConsumer<ByteBuffer, Object> buildValueWriter(final TypeExpr.RefValueType refValueType, final MethodHandle methodHandle) {
     return switch (refValueType) {
       case BOOLEAN -> {
         LOGGER.fine(() -> "Building writer chain for boolean.class primitive type");
@@ -631,19 +654,13 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
-  static @NotNull Function<ByteBuffer, Object> buildEnumReader(
-      final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo) {
+  static @NotNull Function<ByteBuffer, Object> buildEnumReader(final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo) {
     LOGGER.fine(() -> "Building reader chain for Enum");
     return (ByteBuffer buffer) -> {
       try {
         int typeOrdinal = ZigZagEncoding.getInt(buffer);
         long typeSignature = ZigZagEncoding.getLong(buffer);
-        Class<?> enumClass = classToTypeInfo.entrySet().stream()
-            .filter(e -> e.getValue().typeOrdinal() == typeOrdinal && e.getValue().typeSignature() == typeSignature)
-            .map(Map.Entry::getKey)
-            .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("Unknown enum type ordinal: " + typeOrdinal +
-                " with signature: " + Long.toHexString(typeSignature)));
+        Class<?> enumClass = classToTypeInfo.entrySet().stream().filter(e -> e.getValue().typeOrdinal() == typeOrdinal && e.getValue().typeSignature() == typeSignature).map(Map.Entry::getKey).findFirst().orElseThrow(() -> new IllegalArgumentException("Unknown enum type ordinal: " + typeOrdinal + " with signature: " + Long.toHexString(typeSignature)));
 
         int ordinal = ZigZagEncoding.getInt(buffer);
         return enumClass.getEnumConstants()[ordinal];

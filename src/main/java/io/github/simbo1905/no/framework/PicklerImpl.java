@@ -1099,6 +1099,7 @@ final class PicklerImpl<T> implements Pickler<T> {
         IntStream.range(0, length).forEach(i -> floats[i] = buffer.getFloat());
         return floats;
       };
+
       case DOUBLE -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
         assert marker == Constants.DOUBLE.marker() : "Expected DOUBLE marker but got: " + marker;

@@ -157,43 +157,92 @@ public class PrimitiveArrayTests {
     }
   }
 
-  void testByteArrayRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
-    LOGGER.fine(() -> "Type of byte component: " + typeExpr);
-    assertThat(typeExpr.isContainer()).isTrue();
+  void testByteArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    LOGGER.fine(() -> "Type of byte component: " + typeExpr0);
+    if (typeExpr0 instanceof TypeExpr.ArrayNode(TypeExpr element)) {
+      // boolean.class
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+      final var writerChain = PicklerUsingAst.buildPrimitiveArrayWriter(primitiveType, typeExpr0Accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      final var readerChain = PicklerUsingAst.buildPrimitiveArrayReader(primitiveType);
+      final var readValue = readerChain.apply(byteBuffer);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.byteArray());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr0);
+    }
+  }
+
+  void testCharArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    LOGGER.fine(() -> "Type of char component: " + typeExpr0);
+    assertThat(typeExpr0.isContainer()).isTrue();
+    if (typeExpr0 instanceof TypeExpr.ArrayNode(TypeExpr element)) {
+      // boolean.class
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+      final var writerChain = PicklerUsingAst.buildPrimitiveArrayWriter(primitiveType, typeExpr0Accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      final var readerChain = PicklerUsingAst.buildPrimitiveArrayReader(primitiveType);
+      final var readValue = readerChain.apply(byteBuffer);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.charArray());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr0);
+    }
+  }
+
+  void testShortArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    LOGGER.fine(() -> "Type of short component: " + typeExpr0);
+    assertThat(typeExpr0.isContainer()).isTrue();
     throw new AssertionError("not implemented yet");
   }
 
-  void testCharArrayRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
-    LOGGER.fine(() -> "Type of char component: " + typeExpr);
-    assertThat(typeExpr.isContainer()).isTrue();
+  void testIntArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    LOGGER.fine(() -> "Type of int component: " + typeExpr0);
+    assertThat(typeExpr0.isContainer()).isTrue();
     throw new AssertionError("not implemented yet");
   }
 
-  void testShortArrayRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
-    LOGGER.fine(() -> "Type of short component: " + typeExpr);
-    assertThat(typeExpr.isContainer()).isTrue();
+  void testLongArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    LOGGER.fine(() -> "Type of long component: " + typeExpr0);
+    assertThat(typeExpr0.isContainer()).isTrue();
     throw new AssertionError("not implemented yet");
   }
 
-  void testIntArrayRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
-    LOGGER.fine(() -> "Type of int component: " + typeExpr);
-    assertThat(typeExpr.isContainer()).isTrue();
+  void testFloatArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    assertThat(typeExpr0.isContainer()).isTrue();
     throw new AssertionError("not implemented yet");
   }
 
-  void testLongArrayRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
-    LOGGER.fine(() -> "Type of long component: " + typeExpr);
-    assertThat(typeExpr.isContainer()).isTrue();
-    throw new AssertionError("not implemented yet");
-  }
-
-  void testFloatArrayRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
-    assertThat(typeExpr.isContainer()).isTrue();
-    throw new AssertionError("not implemented yet");
-  }
-
-  void testDoubleArrayRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
-    assertThat(typeExpr.isContainer()).isTrue();
+  void testDoubleArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    assertThat(typeExpr0.isContainer()).isTrue();
     throw new AssertionError("not implemented yet");
   }
 
