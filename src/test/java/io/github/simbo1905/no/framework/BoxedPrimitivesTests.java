@@ -107,6 +107,46 @@ public class BoxedPrimitivesTests {
     testDoubleRoundTrip(typeExpr7, typeExpr7Accessor);
   }
 
+  void testBooleanRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    LOGGER.fine(() -> "Type of first component: " + typeExpr0);
+    // We expect the first component to be a reference type of boolean
+    assertThat(typeExpr0.isPrimitive()).isFalse();
+    // switch on it being boolean
+    if (typeExpr0 instanceof TypeExpr.RefValueNode e) {
+      LOGGER.fine(() -> "First component is boolean");
+      assertThat(e.type()).isEqualTo(TypeExpr.RefValueType.BOOLEAN);
+      // Boolean.class
+      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), typeExpr0Accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      LOGGER.fine(() -> "Attempting to write boolean value to buffer");
+      try {
+        writerChain.accept(byteBuffer, boxedValueRecord);
+      } catch (Throwable e2) {
+        LOGGER.severe(() -> "Failed to write boolean value: " + e2.getMessage());
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      LOGGER.fine(() -> "Successfully wrote boolean value to buffer");
+      // Now we can read it back
+      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readValue = readerChain.apply(byteBuffer);
+      LOGGER.fine(() -> "Read boolean value: " + readValue);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(boxedValueRecord.booleanValue());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), typeExpr0Accessor);
+      final int size = sizer.applyAsInt(boxedValueRecord);
+      LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr0);
+    }
+  }
+
   public record PrimitiveValueRecord(
       Boolean booleanValue,
       Byte byteValue,
