@@ -18,9 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /// Package-private tests for core machinery components
 /// Tests the internal implementation details that are not part of the public API
-public class MetaProgrammingTests {
+public class PrimitiveTests {
 
-  public static final Class<?>[] EMPTY_PARAMETER_TYPES = {};
   static PrimitiveValueRecord primitiveValueRecord =
       new PrimitiveValueRecord(true, (byte) 1, 'a', (short) 2, 3, 4L, 5.0f, 6.0);
 
@@ -31,12 +30,82 @@ public class MetaProgrammingTests {
 
   @BeforeEach
   void setUp() {
-    LOGGER.fine(() -> "Starting MetaProgrammingTests test");
+    LOGGER.fine(() -> "Starting PrimitiveTests test");
   }
 
   @AfterEach
   void tearDown() {
-    LOGGER.fine(() -> "Finished MetaProgrammingTests test");
+    LOGGER.fine(() -> "Finished PrimitiveTests test");
+  }
+
+  @Test
+  @DisplayName("Test primitive chains")
+  void testPrimitives() {
+    // Get the method handle for anIntNotZero()
+    final @NotNull RecordComponent[] components = PrimitiveValueRecord.class.getRecordComponents();
+    // make an array of the component accessor methods
+    final @NotNull MethodHandle[] accessors = new MethodHandle[components.length];
+    final @NotNull TypeExpr[] typeExprs = new TypeExpr[components.length];
+
+    IntStream.range(0, components.length).forEach(i -> {
+      RecordComponent component = components[i];
+
+      // Get accessor method handle
+      try {
+        MethodHandle accessor = MethodHandles.lookup().unreflect(component.getAccessor());
+
+        // Log the method handle details
+        LOGGER.fine(() -> String.format("Accessor method handle %d: %s for component %s",
+            i, accessor.type(), component.getName()));
+
+        accessors[i] = accessor;
+      } catch (IllegalAccessException e) {
+        throw new RuntimeException("Failed to un reflect accessor for " + component.getName(), e);
+      }
+      // Analyze the type of the component
+      Type type = component.getGenericType();
+      typeExprs[i] = TypeExpr.analyze(type);
+    });
+
+    // Test boolean component
+    final TypeExpr typeExpr0 = typeExprs[0];
+    final MethodHandle typeExpr0Accessor = accessors[0];
+    testBooleanRoundTrip(typeExpr0, typeExpr0Accessor);
+
+    // Test byte component
+    final TypeExpr typeExpr1 = typeExprs[1];
+    final MethodHandle typeExpr1Accessor = accessors[1];
+    testByteRoundTrip(typeExpr1, typeExpr1Accessor);
+
+    // Test char component
+    final TypeExpr typeExpr2 = typeExprs[2];
+    final MethodHandle typeExpr2Accessor = accessors[2];
+    testCharRoundTrip(typeExpr2, typeExpr2Accessor);
+
+    // Test short component
+    final TypeExpr typeExpr3 = typeExprs[3];
+    final MethodHandle typeExpr3Accessor = accessors[3];
+    testShortRoundTrip(typeExpr3, typeExpr3Accessor);
+
+    // Test int component
+    final TypeExpr typeExpr4 = typeExprs[4];
+    final MethodHandle typeExpr4Accessor = accessors[4];
+    testIntRoundTrip(typeExpr4, typeExpr4Accessor);
+
+    // Test long component
+    final TypeExpr typeExpr5 = typeExprs[5];
+    final MethodHandle typeExpr5Accessor = accessors[5];
+    testLongRoundTrip(typeExpr5, typeExpr5Accessor);
+
+    // Test float component
+    final TypeExpr typeExpr6 = typeExprs[6];
+    final MethodHandle typeExpr6Accessor = accessors[6];
+    testFloatRoundTrip(typeExpr6, typeExpr6Accessor);
+
+    // Test double component
+    final TypeExpr typeExpr7 = typeExprs[7];
+    final MethodHandle typeExpr7Accessor = accessors[7];
+    testDoubleRoundTrip(typeExpr7, typeExpr7Accessor);
   }
 
   void testBooleanRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
@@ -359,78 +428,15 @@ public class MetaProgrammingTests {
     }
   }
 
-  @Nested
-  @DisplayName("Writer Chain Tests")
-  class PrimitiveRoundTripTest {
-
-    @Test
-    @DisplayName("Test primitive chains")
-    void testPrimitives() {
-      // Get the method handle for anIntNotZero()
-      final @NotNull RecordComponent[] components = PrimitiveValueRecord.class.getRecordComponents();
-      // make an array of the component accessor methods
-      final @NotNull MethodHandle[] accessors = new MethodHandle[components.length];
-      final @NotNull TypeExpr[] typeExprs = new TypeExpr[components.length];
-
-      IntStream.range(0, components.length).forEach(i -> {
-        RecordComponent component = components[i];
-
-        // Get accessor method handle
-        try {
-          MethodHandle accessor = MethodHandles.lookup().unreflect(component.getAccessor());
-
-          // Log the method handle details
-          LOGGER.fine(() -> String.format("Accessor method handle %d: %s for component %s",
-              i, accessor.type(), component.getName()));
-
-          accessors[i] = accessor;
-        } catch (IllegalAccessException e) {
-          throw new RuntimeException("Failed to un reflect accessor for " + component.getName(), e);
-        }
-        // Analyze the type of the component
-        Type type = component.getGenericType();
-        typeExprs[i] = TypeExpr.analyze(type);
-      });
-
-      // Test boolean component
-      final TypeExpr typeExpr0 = typeExprs[0];
-      final MethodHandle typeExpr0Accessor = accessors[0];
-      testBooleanRoundTrip(typeExpr0, typeExpr0Accessor);
-
-      // Test byte component
-      final TypeExpr typeExpr1 = typeExprs[1];
-      final MethodHandle typeExpr1Accessor = accessors[1];
-      testByteRoundTrip(typeExpr1, typeExpr1Accessor);
-
-      // Test char component
-      final TypeExpr typeExpr2 = typeExprs[2];
-      final MethodHandle typeExpr2Accessor = accessors[2];
-      testCharRoundTrip(typeExpr2, typeExpr2Accessor);
-
-      // Test short component
-      final TypeExpr typeExpr3 = typeExprs[3];
-      final MethodHandle typeExpr3Accessor = accessors[3];
-      testShortRoundTrip(typeExpr3, typeExpr3Accessor);
-
-      // Test int component
-      final TypeExpr typeExpr4 = typeExprs[4];
-      final MethodHandle typeExpr4Accessor = accessors[4];
-      testIntRoundTrip(typeExpr4, typeExpr4Accessor);
-
-      // Test long component
-      final TypeExpr typeExpr5 = typeExprs[5];
-      final MethodHandle typeExpr5Accessor = accessors[5];
-      testLongRoundTrip(typeExpr5, typeExpr5Accessor);
-
-      // Test float component
-      final TypeExpr typeExpr6 = typeExprs[6];
-      final MethodHandle typeExpr6Accessor = accessors[6];
-      testFloatRoundTrip(typeExpr6, typeExpr6Accessor);
-
-      // Test double component
-      final TypeExpr typeExpr7 = typeExprs[7];
-      final MethodHandle typeExpr7Accessor = accessors[7];
-      testDoubleRoundTrip(typeExpr7, typeExpr7Accessor);
-    }
+  public record PrimitiveValueRecord(
+      boolean booleanValue,
+      byte byteValue,
+      char charValue,
+      short shortValue,
+      int intValue,
+      long longValue,
+      float floatValue,
+      double doubleValue
+  ) {
   }
 }
