@@ -361,6 +361,142 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
+  static @NotNull BiConsumer<ByteBuffer, Object> buildValueWriter(TypeExpr.RefValueType refValueType, MethodHandle methodHandle) {
+    return switch (refValueType) {
+      case BOOLEAN -> {
+        LOGGER.fine(() -> "Building writer chain for boolean.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            final var result = methodHandle.invokeWithArguments(record);
+            buffer.put((byte) ((boolean) result ? 1 : 0));
+          } catch (Throwable e) {
+            throw new RuntimeException("Failed to write boolean value", e);
+          }
+        };
+      }
+      case BYTE -> {
+        LOGGER.fine(() -> "Building writer chain for byte.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.put((byte) methodHandle.invokeWithArguments(record));
+          } catch (Throwable e) {
+            throw new RuntimeException(e.getMessage(), e);
+          }
+        };
+      }
+      case SHORT -> {
+        LOGGER.fine(() -> "Building writer chain for short.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putShort((short) methodHandle.invokeWithArguments(record));
+          } catch (Throwable e) {
+            throw new RuntimeException(e.getMessage(), e);
+          }
+        };
+      }
+      case CHARACTER -> {
+        LOGGER.fine(() -> "Building writer chain for char.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putChar((char) methodHandle.invokeWithArguments(record));
+          } catch (Throwable e) {
+            throw new RuntimeException(e.getMessage(), e);
+          }
+        };
+      }
+      case INTEGER -> {
+        LOGGER.fine(() -> "Building writer chain for int.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            Object result = methodHandle.invokeWithArguments(record);
+            buffer.putInt((int) result);
+          } catch (Throwable e) {
+            throw new RuntimeException(e.getMessage(), e);
+          }
+        };
+      }
+      case LONG -> {
+        LOGGER.fine(() -> "Building writer chain for long.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putLong((long) methodHandle.invokeWithArguments(record));
+          } catch (Throwable e) {
+            throw new RuntimeException(e.getMessage(), e);
+          }
+        };
+      }
+      case FLOAT -> {
+        LOGGER.fine(() -> "Building writer chain for float.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putFloat((float) methodHandle.invokeWithArguments(record));
+          } catch (Throwable e) {
+            throw new RuntimeException(e.getMessage(), e);
+          }
+        };
+      }
+      case DOUBLE -> {
+        LOGGER.fine(() -> "Building writer chain for double.class primitive type");
+        yield (ByteBuffer buffer, Object record) -> {
+          try {
+            buffer.putDouble((double) methodHandle.invokeWithArguments(record));
+          } catch (Throwable e) {
+            throw new RuntimeException(e.getMessage(), e);
+          }
+        };
+      }
+      default -> throw new AssertionError("not implemented yet ref value type: " + refValueType);
+    };
+  }
+
+  static @NotNull Function<ByteBuffer, Object> buildValueReader(TypeExpr.RefValueType valueType) {
+    return switch (valueType) {
+      case BOOLEAN -> (buffer) -> buffer.get() != 0;
+      case BYTE -> ByteBuffer::get;
+      case SHORT -> ByteBuffer::getShort;
+      case CHARACTER -> ByteBuffer::getChar;
+      case INTEGER -> ByteBuffer::getInt;
+      case LONG -> ByteBuffer::getLong;
+      case FLOAT -> ByteBuffer::getFloat;
+      case DOUBLE -> ByteBuffer::getDouble;
+      default -> throw new AssertionError("not implemented yet ref value type: " + valueType);
+    };
+  }
+
+  static @NotNull ToIntFunction<Object> buildValueSizer(TypeExpr.RefValueType refValueType, MethodHandle accessor) {
+    return switch (refValueType) {
+      case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
+      case SHORT -> (Object record) -> Short.BYTES;
+      case CHARACTER -> (Object record) -> Character.BYTES;
+      case INTEGER -> (Object record) -> Integer.BYTES;
+      case LONG -> (Object record) -> Long.BYTES;
+      case FLOAT -> (Object record) -> Float.BYTES;
+      case DOUBLE -> (Object record) -> Double.BYTES;
+      case UUID -> (Object record) -> 2 * Long.BYTES; // UUID is two longs
+      case ENUM ->
+          (Object record) -> Integer.BYTES + Long.BYTES; // Enum is stored as an ordinal (int) and a type signature (long)
+      case STRING -> (Object record) -> {
+        ;
+        if (record instanceof String str) {
+          return Integer.BYTES + str.getBytes(StandardCharsets.UTF_8).length;
+        } else {
+          throw new IllegalArgumentException("Expected String, got: " + record.getClass().getSimpleName());
+        }
+      };
+      case RECORD -> (Object record) -> 0;
+      case INTERFACE -> (Object userType) -> {
+        if (userType instanceof Enum<?> ignored) {
+          // For enums, we store the ordinal and type signature
+          return Integer.BYTES + Long.BYTES;
+        } else if (userType instanceof Record record) {
+          return 0;
+        } else {
+          throw new IllegalArgumentException("Unsupported interface type: " + userType.getClass().getSimpleName());
+        }
+      };
+    };
+  }
+
   @Override
   public int serialize(ByteBuffer buffer, T record) {
     return 0;
