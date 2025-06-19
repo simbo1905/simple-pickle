@@ -21,8 +21,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.github.simbo1905.no.framework.PicklerImpl.hashEnumSignature;
-import static io.github.simbo1905.no.framework.PicklerImpl.recordClassHierarchy;
+import static io.github.simbo1905.no.framework.Constants.INTEGER_VAR;
+import static io.github.simbo1905.no.framework.PicklerImpl.*;
+import static io.github.simbo1905.no.framework.Tag.INTEGER;
 
 final public class PicklerUsingAst<T> implements Pickler<T> {
 
@@ -208,11 +209,24 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         } catch (Throwable e) {
           throw new RuntimeException(e.getMessage(), e);
         }
-        ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
-        final var ints = (int[]) value;
-        ZigZagEncoding.putInt(buffer, ints.length);
-        for (int d : ints) {
-          buffer.putInt(d);
+        final var integers = (int[]) value;
+        final var length = Array.getLength(value);
+        final var sampleAverageSize = length > 0 ? estimateAverageSizeInt(integers, length) : 1;
+        // Here we must be saving one byte per integer to justify the encoding cost
+        if (sampleAverageSize < Integer.BYTES - 1) {
+          LOGGER.finer(() -> "Delegating ARRAY for tag " + INTEGER_VAR + " with length=" + Array.getLength(value) + " at position " + buffer.position());
+          ZigZagEncoding.putInt(buffer, Constants.INTEGER_VAR.marker());
+          ZigZagEncoding.putInt(buffer, length);
+          for (int i : integers) {
+            ZigZagEncoding.putInt(buffer, i);
+          }
+        } else {
+          LOGGER.finer(() -> "Delegating ARRAY for tag " + INTEGER + " with length=" + Array.getLength(value) + " at position " + buffer.position());
+          ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
+          ZigZagEncoding.putInt(buffer, length);
+          for (int i : integers) {
+            buffer.putInt(i);
+          }
         }
       };
       case LONG -> (buffer, record) -> {
@@ -223,11 +237,25 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         } catch (Throwable e) {
           throw new RuntimeException(e.getMessage(), e);
         }
-        ZigZagEncoding.putInt(buffer, Constants.LONG.marker());
         final var longs = (long[]) value;
-        ZigZagEncoding.putInt(buffer, longs.length);
-        for (long d : longs) {
-          buffer.putLong(d);
+        final var length = Array.getLength(value);
+        final var sampleAverageSize = length > 0 ? estimateAverageSizeLong(longs, length) : 1;
+        // Require 1 byte saving if we sampled the whole array. Require 2 byte saving if we did not sample the whole array.
+        if ((length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) ||
+            (length > SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
+          LOGGER.fine(() -> "Writing LONG_VAR array - position=" + buffer.position() + " length=" + length);
+          ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.marker());
+          ZigZagEncoding.putInt(buffer, length);
+          for (long i : longs) {
+            ZigZagEncoding.putLong(buffer, i);
+          }
+        } else {
+          LOGGER.fine(() -> "Writing LONG array - position=" + buffer.position() + " length=" + length);
+          ZigZagEncoding.putInt(buffer, Constants.LONG.marker());
+          ZigZagEncoding.putInt(buffer, length);
+          for (long i : longs) {
+            buffer.putLong(i);
+          }
         }
       };
     };
@@ -516,19 +544,32 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       };
       case INTEGER -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.INTEGER.marker() : "Expected INTEGER marker but got: " + marker;
-        int length = ZigZagEncoding.getInt(buffer);
-        int[] ints = new int[length];
-        IntStream.range(0, length).forEach(i -> ints[i] = buffer.getInt());
-        return ints;
+        if (marker == Constants.INTEGER_VAR.marker()) {
+          int length = ZigZagEncoding.getInt(buffer);
+          int[] integers = new int[length];
+          IntStream.range(0, length).forEach(i -> integers[i] = ZigZagEncoding.getInt(buffer));
+          return integers;
+        } else if (marker == Constants.INTEGER.marker()) {
+          int length = ZigZagEncoding.getInt(buffer);
+          int[] integers = new int[length];
+          IntStream.range(0, length).forEach(i -> integers[i] = buffer.getInt());
+          return integers;
+        } else throw new IllegalStateException("Expected INTEGER or INTEGER_VAR marker but got: " + marker);
       };
       case LONG -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.LONG.marker() : "Expected LONG marker but got: " + marker;
-        int length = ZigZagEncoding.getInt(buffer);
-        long[] longs = new long[length];
-        IntStream.range(0, length).forEach(i -> longs[i] = buffer.getLong());
-        return longs;
+        if (marker == Constants.LONG_VAR.marker()) {
+          int length = ZigZagEncoding.getInt(buffer);
+          long[] longs = new long[length];
+          IntStream.range(0, length).forEach(i -> longs[i] = ZigZagEncoding.getLong(buffer));
+          return longs;
+        } else if (marker == Constants.LONG.marker()) {
+          int length = ZigZagEncoding.getInt(buffer);
+          long[] longs = new long[length];
+          IntStream.range(0, length).forEach(i -> longs[i] = buffer.getLong());
+          return longs;
+        } else throw new IllegalStateException("Expected LONG or LONG_VAR marker but got: " + marker);
+
       };
     };
   }
