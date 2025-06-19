@@ -240,7 +240,6 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         final var longs = (long[]) value;
         final var length = Array.getLength(value);
         final var sampleAverageSize = length > 0 ? estimateAverageSizeLong(longs, length) : 1;
-        // Require 1 byte saving if we sampled the whole array. Require 2 byte saving if we did not sample the whole array.
         if ((length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) ||
             (length > SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
           LOGGER.fine(() -> "Writing LONG_VAR array - position=" + buffer.position() + " length=" + length);
@@ -569,7 +568,6 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
           IntStream.range(0, length).forEach(i -> longs[i] = buffer.getLong());
           return longs;
         } else throw new IllegalStateException("Expected LONG or LONG_VAR marker but got: " + marker);
-
       };
     };
   }
