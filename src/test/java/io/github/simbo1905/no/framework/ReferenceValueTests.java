@@ -32,8 +32,8 @@ public class ReferenceValueTests {
   }
 
   static Map<Class<?>, PicklerImpl.TypeInfo> classTypeInfoMap = Map.of(
-      TestEnum.class, new PicklerImpl.TypeInfo(1, 1L, TestEnum.values()),
-      TestValuesRecord.class, new PicklerImpl.TypeInfo(2, 2L, null)
+      TestEnum.class, new PicklerImpl.TypeInfo(1, 1L, TestEnum.values(), null),
+      TestValuesRecord.class, new PicklerImpl.TypeInfo(2, 2L, null, null)
   );
 
   static TestValuesRecord referenceValueRecord =

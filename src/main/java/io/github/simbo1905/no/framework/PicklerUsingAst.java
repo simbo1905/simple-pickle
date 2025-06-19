@@ -86,9 +86,9 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     this.classToTypeInfo = IntStream.range(0, userTypes.length).boxed().collect(Collectors.toMap(i -> userTypes[i], i -> {
       Class<?> userClass = userTypes[i];
       if (userClass.isEnum()) {
-        return new PicklerImpl.TypeInfo(i, typeSignatures[i], userClass.getEnumConstants());
+        return new PicklerImpl.TypeInfo(i, typeSignatures[i], userClass.getEnumConstants(), null);
       } else {
-        return new PicklerImpl.TypeInfo(i, typeSignatures[i], null);
+        return new PicklerImpl.TypeInfo(i, typeSignatures[i], null, () -> componentWriters[i]);
       }
     }));
     // Finally do the metaprogramming for all record types
@@ -624,10 +624,29 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
-  static @NotNull BiConsumer<ByteBuffer, Object> buildRecordWriter(final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo, final MethodHandle methodHandle) {
-    LOGGER.fine(() -> "Building writer chain for Record");
-    return (ByteBuffer buffer, Object record) -> {
-      throw new AssertionError("not implemented: Record writer for record: " + record.getClass().getSimpleName() + " with method handle: " + methodHandle);
+  static @NotNull BiConsumer<ByteBuffer, Object> buildRecordWriter(
+      final TypeInfo typeInfo,
+      final MethodHandle methodHandle) {
+    final int ordinal = typeInfo.typeOrdinal();
+    final long typeSignature = typeInfo.typeSignature();
+    LOGGER.fine(() -> "Building writer chain for Record with typeOrdinal: " + ordinal + " and typeSignature: 0x" + Long.toHexString(typeSignature));
+    final var componentWriters = typeInfo.componentWriters().get();
+    return (ByteBuffer buffer, Object object) -> {
+      if (object instanceof Record record) {
+        // Write the type ordinal and signature first
+        ZigZagEncoding.putInt(buffer, ordinal);
+        ZigZagEncoding.putLong(buffer, typeSignature);
+        // Now write the record components using the pre-built writer chain
+        for (int i = 0; i < componentWriters.length; i++) {
+          BiConsumer<ByteBuffer, Object> writer = componentWriters[i];
+          if (writer != null) {
+            writer.accept(buffer, record);
+          } else {
+            throw new AssertionError("No writer found for component index: " + i + " in record: " + record.getClass().getSimpleName());
+          }
+        }
+      } else
+        throw new IllegalArgumentException("expected record type but got: " + object.getClass().getName() + " with method handle: " + methodHandle);
     };
   }
 
@@ -760,10 +779,10 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
-  static @NotNull Function<ByteBuffer, Object> buildRecordReader(final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo) {
-    LOGGER.fine(() -> "Building reader chain for Record");
+  static @NotNull Function<ByteBuffer, Object> buildRecordReader(TypeInfo typeInfo) {
+    LOGGER.fine(() -> "Building reader chain for Record with typeOrdinal " + typeInfo.typeOrdinal());
     return (ByteBuffer buffer) -> {
-      throw new AssertionError("not implemented: Record reader for record with classToTypeInfo: " + classToTypeInfo);
+      throw new AssertionError("not implemented: Record reader for record with classToTypeInfo: " + typeInfo);
     };
   }
 
@@ -826,7 +845,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
-  static @NotNull ToIntFunction<Object> buildRecordSizer(TypeExpr.RefValueType refValueType, MethodHandle accessor) {
+  static @NotNull ToIntFunction<Object> buildRecordSizer(TypeInfo typeInfo, TypeExpr.RefValueType refValueType, MethodHandle accessor) {
     throw new AssertionError("not implemented: Record sizer for ref value type: " + refValueType + " with accessor: " + accessor);
   }
 

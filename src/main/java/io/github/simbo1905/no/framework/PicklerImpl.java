@@ -15,6 +15,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -28,7 +29,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 /// Eliminates the need for separate RecordPickler and SealedPickler classes.
 final class PicklerImpl<T> implements Pickler<T> {
 
-  record TypeInfo(int typeOrdinal, long typeSignature, Object[] enumConstants) {
+  record TypeInfo(
+      int typeOrdinal,
+      long typeSignature,
+      Object[] enumConstants,
+      Supplier<BiConsumer<ByteBuffer, Object>[]> componentWriters
+  ) {
   }
 
   static final int SAMPLE_SIZE = 32;
@@ -95,9 +101,9 @@ final class PicklerImpl<T> implements Pickler<T> {
             i -> {
               Class<?> userClass = userTypes[i];
               if (userClass.isEnum()) {
-                return new TypeInfo(i, 0L, userClass.getEnumConstants());
+                return new TypeInfo(i, 0L, userClass.getEnumConstants(), null);
               } else {
-                return new TypeInfo(i, 0L, null);
+                return new TypeInfo(i, 0L, null, null);
               }
             }));
 
@@ -133,7 +139,8 @@ final class PicklerImpl<T> implements Pickler<T> {
     // Rebuild the map with actual signatures
     this.classToTypeInfo = IntStream.range(0, userTypes.length)
         .boxed()
-        .collect(Collectors.toMap(i -> userTypes[i], i -> new TypeInfo(i, typeSignatures[i], null)));
+        .collect(Collectors.toMap(i -> userTypes[i], i ->
+            new TypeInfo(i, typeSignatures[i], null, null)));
 
     LOGGER.finer(() -> "Final classToTypeInfo with signatures: " + classToTypeInfo.entrySet().stream()
         .map(e -> e.getKey().getSimpleName() + " -> " + e.getValue())
