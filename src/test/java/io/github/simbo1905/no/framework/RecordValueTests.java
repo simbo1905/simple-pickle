@@ -52,7 +52,7 @@ public class RecordValueTests {
   @Test
   @DisplayName("Test reference value round trips")
   void testRecordValues() {
-    final @NotNull RecordComponent[] components = Link.class.getRecordComponents();
+    final @NotNull RecordComponent[] components = LinkedRecord.class.getRecordComponents();
     final @NotNull MethodHandle[] accessors = new MethodHandle[components.length];
     final @NotNull TypeExpr[] typeExprs = new TypeExpr[components.length];
 
@@ -68,22 +68,23 @@ public class RecordValueTests {
       }
     });
 
-    testRecordRoundTrip(typeExprs[2], accessors[2]);
+    // we are ignoring the int and going for the interface type
+    testInterfaceRoundTrip(typeExprs[1], accessors[1]);
   }
 
-  void testRecordRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
-    LOGGER.fine(() -> "Type of Enum component: " + typeExpr);
-    assertThat(typeExpr.isPrimitive()).isFalse();
+  void testInterfaceRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
+    LOGGER.fine(() -> "Type of Record component: " + typeExpr);
+    assertThat(typeExpr.isUserType()).isTrue();
 
     if (typeExpr instanceof TypeExpr.RefValueNode node) {
-      LOGGER.fine("Component is Enum");
-      assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.RECORD);
+      LOGGER.fine("Component is Record");
+      assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.INTERFACE);
 
-      final var writer = PicklerUsingAst.buildEnumWriter(classTypeInfoMap, accessor);
+      final var writer = PicklerUsingAst.buildRecordWriter(classTypeInfoMap, accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
-      LOGGER.fine("Attempting to write Enum to buffer");
+      LOGGER.fine("Attempting to write Record to buffer");
 
       try {
         writer.accept(buffer, linkedListTwoNodes);
@@ -93,16 +94,16 @@ public class RecordValueTests {
       }
 
       buffer.flip();
-      LOGGER.fine("Successfully wrote Enum to buffer");
+      LOGGER.fine("Successfully wrote Record to buffer");
 
-      final var reader = PicklerUsingAst.buildEnumReader(classTypeInfoMap);
+      final var reader = PicklerUsingAst.buildRecordReader(classTypeInfoMap);
       final Link result = (Link) reader.apply(buffer);
 
       LOGGER.fine("Read Record: " + result);
       assertThat(result).isEqualTo(linkedListTwoNodes);
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = PicklerUsingAst.buildRecordSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(linkedListTwoNodes);
 
       LOGGER.fine("Bytes written: " + bytesWritten + ", Sizer returned: " + size);

@@ -67,14 +67,12 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     this.componentReaders = (Function<ByteBuffer, Object>[][]) new Function[numRecordTypes][];
     this.componentSizers = (ToIntFunction<Object>[][]) new ToIntFunction[numRecordTypes][];
     this.typeSignatures = new long[numRecordTypes];
-
     IntStream.range(0, numRecordTypes).forEach(ordinal -> {
       Class<?> userClass = userTypes[ordinal];
       if (userClass.isRecord()) {
         try {
           typeSignatures[ordinal] = hashRecordSignature(ordinal, userClass);
           resolveMethodHandles(ordinal, userClass);
-          //metaprogramming(ordinal, userClass);
         } catch (Exception e) {
           throw new RuntimeException(e);
         }
@@ -626,6 +624,13 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
+  static @NotNull BiConsumer<ByteBuffer, Object> buildRecordWriter(final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo, final MethodHandle methodHandle) {
+    LOGGER.fine(() -> "Building writer chain for Record");
+    return (ByteBuffer buffer, Object record) -> {
+      throw new AssertionError("not implemented: Record writer for record: " + record.getClass().getSimpleName() + " with method handle: " + methodHandle);
+    };
+  }
+
   static @NotNull BiConsumer<ByteBuffer, Object> buildValueWriter(final TypeExpr.RefValueType refValueType, final MethodHandle methodHandle) {
     return switch (refValueType) {
       case BOOLEAN -> {
@@ -755,6 +760,13 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
+  static @NotNull Function<ByteBuffer, Object> buildRecordReader(final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo) {
+    LOGGER.fine(() -> "Building reader chain for Record");
+    return (ByteBuffer buffer) -> {
+      throw new AssertionError("not implemented: Record reader for record with classToTypeInfo: " + classToTypeInfo);
+    };
+  }
+
   static @NotNull Function<ByteBuffer, Object> buildValueReader(TypeExpr.RefValueType valueType) {
     return switch (valueType) {
       case BOOLEAN -> (buffer) -> buffer.get() != 0;
@@ -812,6 +824,10 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         }
       };
     };
+  }
+
+  static @NotNull ToIntFunction<Object> buildRecordSizer(TypeExpr.RefValueType refValueType, MethodHandle accessor) {
+    throw new AssertionError("not implemented: Record sizer for ref value type: " + refValueType + " with accessor: " + accessor);
   }
 
   @Override

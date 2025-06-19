@@ -195,6 +195,8 @@ sealed interface TypeExpr permits
 
   boolean isContainer();
 
+  boolean isUserType();
+
   /// Container node for arrays - has one child (element type)
   record ArrayNode(TypeExpr element) implements TypeExpr {
     public ArrayNode {
@@ -209,6 +211,11 @@ sealed interface TypeExpr permits
     @Override
     public boolean isContainer() {
       return true;
+    }
+
+    @Override
+    public boolean isUserType() {
+      return false;
     }
   }
 
@@ -227,6 +234,11 @@ sealed interface TypeExpr permits
     public boolean isContainer() {
       return true;
     }
+
+    @Override
+    public boolean isUserType() {
+      return false;
+    }
   }
 
   /// Container node for optionals - has one child (wrapped type)
@@ -243,6 +255,11 @@ sealed interface TypeExpr permits
     @Override
     public boolean isContainer() {
       return true;
+    }
+
+    @Override
+    public boolean isUserType() {
+      return false;
     }
   }
 
@@ -261,6 +278,11 @@ sealed interface TypeExpr permits
     @Override
     public boolean isContainer() {
       return true;
+    }
+
+    @Override
+    public boolean isUserType() {
+      return false;
     }
   }
 
@@ -286,6 +308,11 @@ sealed interface TypeExpr permits
     @Override
     public boolean isContainer() {
       return false;
+    }
+
+    @Override
+    public boolean isUserType() {
+      return this.type == RefValueType.RECORD || this.type == RefValueType.INTERFACE;
     }
   }
 
@@ -314,6 +341,11 @@ sealed interface TypeExpr permits
 
     @Override
     public boolean isContainer() {
+      return false;
+    }
+
+    @Override
+    public boolean isUserType() {
       return false;
     }
   }
