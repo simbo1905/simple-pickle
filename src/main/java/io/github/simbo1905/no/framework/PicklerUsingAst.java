@@ -45,7 +45,6 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
 
   @SuppressWarnings("unchecked")
   public PicklerUsingAst(Class<T> clazz) {
-    Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo1;
     LOGGER.info(() -> "Creating AST pickler for root class: " + clazz.getName());
     this.rootClass = clazz;
 
@@ -107,8 +106,8 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     LOGGER.info(() -> "PicklerUsingAst construction complete - ready for high-performance serialization");
   }
 
-  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType primativeType, MethodHandle typeExpr0Accessor) {
-    return switch (primativeType) {
+  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle typeExpr0Accessor) {
+    return switch (primitiveType) {
       case BOOLEAN -> (buffer, record) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag BOOLEAN at position " + buffer.position());
         final Object value;
@@ -149,8 +148,9 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         } catch (Throwable e) {
           throw new RuntimeException(e.getMessage(), e);
         }
-        final var shorts = (short[]) value;
         ZigZagEncoding.putInt(buffer, Constants.SHORT.marker());
+        final var shorts = (short[]) value;
+        ZigZagEncoding.putInt(buffer, shorts.length);
         for (short s : shorts) {
           buffer.putShort(s);
         }
@@ -165,6 +165,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         }
         final var chars = (char[]) value;
         ZigZagEncoding.putInt(buffer, Constants.CHARACTER.marker());
+        ZigZagEncoding.putInt(buffer, chars.length);
         for (char c : chars) {
           buffer.putChar(c);
         }
@@ -179,6 +180,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         }
         final var floats = (float[]) value;
         ZigZagEncoding.putInt(buffer, Constants.FLOAT.marker());
+        ZigZagEncoding.putInt(buffer, floats.length);
         for (float f : floats) {
           buffer.putFloat(f);
         }
@@ -191,13 +193,43 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         } catch (Throwable e) {
           throw new RuntimeException(e.getMessage(), e);
         }
-        final var doubles = (double[]) value;
         ZigZagEncoding.putInt(buffer, Constants.DOUBLE.marker());
+        final var doubles = (double[]) value;
+        ZigZagEncoding.putInt(buffer, doubles.length);
         for (double d : doubles) {
           buffer.putDouble(d);
         }
       };
-      default -> throw new AssertionError("not implemented yet primitive array type: " + primativeType);
+      case INTEGER -> (buffer, record) -> {
+        LOGGER.finer(() -> "Delegating ARRAY for tag INTEGER at position " + buffer.position());
+        final Object value;
+        try {
+          value = typeExpr0Accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
+        final var ints = (int[]) value;
+        ZigZagEncoding.putInt(buffer, ints.length);
+        for (int d : ints) {
+          buffer.putInt(d);
+        }
+      };
+      case LONG -> (buffer, record) -> {
+        LOGGER.finer(() -> "Delegating ARRAY for tag LONG at position " + buffer.position());
+        final Object value;
+        try {
+          value = typeExpr0Accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        ZigZagEncoding.putInt(buffer, Constants.LONG.marker());
+        final var longs = (long[]) value;
+        ZigZagEncoding.putInt(buffer, longs.length);
+        for (long d : longs) {
+          buffer.putLong(d);
+        }
+      };
     };
   }
 
@@ -482,8 +514,22 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         IntStream.range(0, length).forEach(i -> doubles[i] = buffer.getDouble());
         return doubles;
       };
-
-      default -> throw new AssertionError("not implemented yet primitive array type: " + primitiveType);
+      case INTEGER -> (buffer) -> {
+        int marker = ZigZagEncoding.getInt(buffer);
+        assert marker == Constants.INTEGER.marker() : "Expected INTEGER marker but got: " + marker;
+        int length = ZigZagEncoding.getInt(buffer);
+        int[] ints = new int[length];
+        IntStream.range(0, length).forEach(i -> ints[i] = buffer.getInt());
+        return ints;
+      };
+      case LONG -> (buffer) -> {
+        int marker = ZigZagEncoding.getInt(buffer);
+        assert marker == Constants.LONG.marker() : "Expected LONG marker but got: " + marker;
+        int length = ZigZagEncoding.getInt(buffer);
+        long[] longs = new long[length];
+        IntStream.range(0, length).forEach(i -> longs[i] = buffer.getLong());
+        return longs;
+      };
     };
   }
 

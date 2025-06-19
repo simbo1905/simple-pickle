@@ -191,7 +191,6 @@ public class PrimitiveArrayTests {
     LOGGER.fine(() -> "Type of char component: " + typeExpr0);
     assertThat(typeExpr0.isContainer()).isTrue();
     if (typeExpr0 instanceof TypeExpr.ArrayNode(TypeExpr element)) {
-      // boolean.class
       final var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
       final var writerChain = PicklerUsingAst.buildPrimitiveArrayWriter(primitiveType, typeExpr0Accessor);
       assertThat(writerChain).isNotNull();
@@ -221,29 +220,151 @@ public class PrimitiveArrayTests {
   void testShortArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
     LOGGER.fine(() -> "Type of short component: " + typeExpr0);
     assertThat(typeExpr0.isContainer()).isTrue();
-    throw new AssertionError("not implemented yet");
+    if (typeExpr0 instanceof TypeExpr.ArrayNode(TypeExpr element)) {
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+      final var writerChain = PicklerUsingAst.buildPrimitiveArrayWriter(primitiveType, typeExpr0Accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      final var readerChain = PicklerUsingAst.buildPrimitiveArrayReader(primitiveType);
+      final var readValue = readerChain.apply(byteBuffer);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.shortArray());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr0);
+    }
   }
+
+
+  void testFloatArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    assertThat(typeExpr0.isContainer()).isTrue();
+    if (typeExpr0 instanceof TypeExpr.ArrayNode(TypeExpr element)) {
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+      final var writerChain = PicklerUsingAst.buildPrimitiveArrayWriter(primitiveType, typeExpr0Accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      final var readerChain = PicklerUsingAst.buildPrimitiveArrayReader(primitiveType);
+      final var readValue = readerChain.apply(byteBuffer);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.floatArray());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr0);
+    }
+  }
+
+  void testDoubleArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
+    assertThat(typeExpr0.isContainer()).isTrue();
+    if (typeExpr0 instanceof TypeExpr.ArrayNode(TypeExpr element)) {
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+      final var writerChain = PicklerUsingAst.buildPrimitiveArrayWriter(primitiveType, typeExpr0Accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      final var readerChain = PicklerUsingAst.buildPrimitiveArrayReader(primitiveType);
+      final var readValue = readerChain.apply(byteBuffer);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.doubleArray());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr0);
+    }
+  }
+
 
   void testIntArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
     LOGGER.fine(() -> "Type of int component: " + typeExpr0);
     assertThat(typeExpr0.isContainer()).isTrue();
-    throw new AssertionError("not implemented yet");
+    if (typeExpr0 instanceof TypeExpr.ArrayNode(TypeExpr element)) {
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+      final var writerChain = PicklerUsingAst.buildPrimitiveArrayWriter(primitiveType, typeExpr0Accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      final var readerChain = PicklerUsingAst.buildPrimitiveArrayReader(primitiveType);
+      final var readValue = readerChain.apply(byteBuffer);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.intArray());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr0);
+    }
   }
 
   void testLongArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
     LOGGER.fine(() -> "Type of long component: " + typeExpr0);
     assertThat(typeExpr0.isContainer()).isTrue();
-    throw new AssertionError("not implemented yet");
-  }
-
-  void testFloatArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
-    assertThat(typeExpr0.isContainer()).isTrue();
-    throw new AssertionError("not implemented yet");
-  }
-
-  void testDoubleArrayRoundTrip(TypeExpr typeExpr0, MethodHandle typeExpr0Accessor) {
-    assertThat(typeExpr0.isContainer()).isTrue();
-    throw new AssertionError("not implemented yet");
+    if (typeExpr0 instanceof TypeExpr.ArrayNode(TypeExpr element)) {
+      final var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+      final var writerChain = PicklerUsingAst.buildPrimitiveArrayWriter(primitiveType, typeExpr0Accessor);
+      assertThat(writerChain).isNotNull();
+      // We can write the record to a ByteBuffer
+      final var byteBuffer = ByteBuffer.allocate(1024);
+      try {
+        writerChain.accept(byteBuffer, primitiveValueRecord);
+      } catch (Throwable e2) {
+        throw new RuntimeException(e2);
+      }
+      byteBuffer.flip();
+      final var readerChain = PicklerUsingAst.buildPrimitiveArrayReader(primitiveType);
+      final var readValue = readerChain.apply(byteBuffer);
+      // Check the value is as expected
+      assertThat(readValue).isEqualTo(primitiveValueRecord.longArray());
+      // check how much was written
+      final int bytesWritten = byteBuffer.position();
+      // check that the sizer will return the something greater than or equal to the bytes written
+      final var sizer = PicklerUsingAst.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final int size = sizer.applyAsInt(primitiveValueRecord);
+      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
+    } else {
+      throw new IllegalStateException("Unexpected value: " + typeExpr0);
+    }
   }
 
   public record PrimitiveArrayRecord(
