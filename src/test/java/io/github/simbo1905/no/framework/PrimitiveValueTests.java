@@ -117,7 +117,7 @@ public class PrimitiveValueTests {
       LOGGER.fine(() -> "First component is boolean");
       assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.BOOLEAN);
       // boolean.class
-      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), typeExpr0Accessor);
+      final var writerChain = RecordPickler.buildPrimitiveValueWriter(e.type(), typeExpr0Accessor);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = ByteBuffer.allocate(1024);
@@ -131,7 +131,7 @@ public class PrimitiveValueTests {
       byteBuffer.flip();
       LOGGER.fine(() -> "Successfully wrote boolean value to buffer");
       // Now we can read it back
-      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readerChain = RecordPickler.buildPrimitiveValueReader(e.type());
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read boolean value: " + readValue);
       // Check the value is as expected
@@ -139,7 +139,7 @@ public class PrimitiveValueTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), typeExpr0Accessor);
+      final var sizer = RecordPickler.buildPrimitiveValueSizer(e.type(), typeExpr0Accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
@@ -157,7 +157,7 @@ public class PrimitiveValueTests {
       LOGGER.fine(() -> "Byte component is byte");
       assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.BYTE);
       // byte.class
-      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      final var writerChain = RecordPickler.buildPrimitiveValueWriter(e.type(), accessor);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = ByteBuffer.allocate(1024);
@@ -171,7 +171,7 @@ public class PrimitiveValueTests {
       byteBuffer.flip();
       LOGGER.fine(() -> "Successfully wrote byte value to buffer");
       // Now we can read it back
-      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readerChain = RecordPickler.buildPrimitiveValueReader(e.type());
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read byte value: " + readValue);
       // Check the value is as expected
@@ -179,7 +179,7 @@ public class PrimitiveValueTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final var sizer = RecordPickler.buildPrimitiveValueSizer(e.type(), accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
@@ -197,7 +197,7 @@ public class PrimitiveValueTests {
       LOGGER.fine(() -> "Char component is char");
       assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.CHARACTER);
       // char.class
-      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      final var writerChain = RecordPickler.buildPrimitiveValueWriter(e.type(), accessor);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = ByteBuffer.allocate(1024);
@@ -211,7 +211,7 @@ public class PrimitiveValueTests {
       byteBuffer.flip();
       LOGGER.fine(() -> "Successfully wrote char value to buffer");
       // Now we can read it back
-      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readerChain = RecordPickler.buildPrimitiveValueReader(e.type());
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read char value: " + readValue);
       // Check the value is as expected
@@ -219,7 +219,7 @@ public class PrimitiveValueTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final var sizer = RecordPickler.buildPrimitiveValueSizer(e.type(), accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
@@ -237,7 +237,7 @@ public class PrimitiveValueTests {
       LOGGER.fine(() -> "Short component is short");
       assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.SHORT);
       // short.class
-      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      final var writerChain = RecordPickler.buildPrimitiveValueWriter(e.type(), accessor);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = ByteBuffer.allocate(1024);
@@ -251,7 +251,7 @@ public class PrimitiveValueTests {
       byteBuffer.flip();
       LOGGER.fine(() -> "Successfully wrote short value to buffer");
       // Now we can read it back
-      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readerChain = RecordPickler.buildPrimitiveValueReader(e.type());
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read short value: " + readValue);
       // Check the value is as expected
@@ -259,7 +259,7 @@ public class PrimitiveValueTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final var sizer = RecordPickler.buildPrimitiveValueSizer(e.type(), accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
@@ -277,7 +277,7 @@ public class PrimitiveValueTests {
       LOGGER.fine(() -> "Int component is int");
       assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.INTEGER);
       // int.class
-      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      final var writerChain = RecordPickler.buildPrimitiveValueWriter(e.type(), accessor);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = ByteBuffer.allocate(1024);
@@ -291,7 +291,7 @@ public class PrimitiveValueTests {
       byteBuffer.flip();
       LOGGER.fine(() -> "Successfully wrote int value to buffer");
       // Now we can read it back
-      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readerChain = RecordPickler.buildPrimitiveValueReader(e.type());
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read int value: " + readValue);
       // Check the value is as expected
@@ -299,7 +299,7 @@ public class PrimitiveValueTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final var sizer = RecordPickler.buildPrimitiveValueSizer(e.type(), accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
@@ -317,7 +317,7 @@ public class PrimitiveValueTests {
       LOGGER.fine(() -> "Long component is long");
       assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.LONG);
       // long.class
-      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      final var writerChain = RecordPickler.buildPrimitiveValueWriter(e.type(), accessor);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = ByteBuffer.allocate(1024);
@@ -331,7 +331,7 @@ public class PrimitiveValueTests {
       byteBuffer.flip();
       LOGGER.fine(() -> "Successfully wrote long value to buffer");
       // Now we can read it back
-      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readerChain = RecordPickler.buildPrimitiveValueReader(e.type());
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read long value: " + readValue);
       // Check the value is as expected
@@ -339,7 +339,7 @@ public class PrimitiveValueTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final var sizer = RecordPickler.buildPrimitiveValueSizer(e.type(), accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
@@ -357,7 +357,7 @@ public class PrimitiveValueTests {
       LOGGER.fine(() -> "Float component is float");
       assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.FLOAT);
       // float.class
-      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      final var writerChain = RecordPickler.buildPrimitiveValueWriter(e.type(), accessor);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = ByteBuffer.allocate(1024);
@@ -371,7 +371,7 @@ public class PrimitiveValueTests {
       byteBuffer.flip();
       LOGGER.fine(() -> "Successfully wrote float value to buffer");
       // Now we can read it back
-      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readerChain = RecordPickler.buildPrimitiveValueReader(e.type());
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read float value: " + readValue);
       // Check the value is as expected
@@ -379,7 +379,7 @@ public class PrimitiveValueTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final var sizer = RecordPickler.buildPrimitiveValueSizer(e.type(), accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
@@ -397,7 +397,7 @@ public class PrimitiveValueTests {
       LOGGER.fine(() -> "Double component is double");
       assertThat(e.type()).isEqualTo(TypeExpr.PrimitiveValueType.DOUBLE);
       // double.class
-      final var writerChain = PicklerUsingAst.buildPrimitiveValueWriter(e.type(), accessor);
+      final var writerChain = RecordPickler.buildPrimitiveValueWriter(e.type(), accessor);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = ByteBuffer.allocate(1024);
@@ -411,7 +411,7 @@ public class PrimitiveValueTests {
       byteBuffer.flip();
       LOGGER.fine(() -> "Successfully wrote double value to buffer");
       // Now we can read it back
-      final var readerChain = PicklerUsingAst.buildPrimitiveValueReader(e.type());
+      final var readerChain = RecordPickler.buildPrimitiveValueReader(e.type());
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read double value: " + readValue);
       // Check the value is as expected
@@ -419,7 +419,7 @@ public class PrimitiveValueTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = PicklerUsingAst.buildPrimitiveValueSizer(e.type(), accessor);
+      final var sizer = RecordPickler.buildPrimitiveValueSizer(e.type(), accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);

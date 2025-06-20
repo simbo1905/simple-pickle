@@ -127,7 +127,7 @@ public class BoxedPrimitivesTests {
       LOGGER.fine(() -> "Component is byte");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.BYTE);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = RecordPickler.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -143,14 +143,14 @@ public class BoxedPrimitivesTests {
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote byte value to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = RecordPickler.buildValueReader(node.type());
       final var result = reader.apply(buffer);
 
       LOGGER.fine(() -> "Read byte value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.byteValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
 
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
@@ -168,7 +168,7 @@ public class BoxedPrimitivesTests {
       LOGGER.fine(() -> "Component is char");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.CHARACTER);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = RecordPickler.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -184,14 +184,14 @@ public class BoxedPrimitivesTests {
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote char value to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = RecordPickler.buildValueReader(node.type());
       final var result = reader.apply(buffer);
 
       LOGGER.fine(() -> "Read char value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.charValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
 
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
@@ -209,7 +209,7 @@ public class BoxedPrimitivesTests {
       LOGGER.fine(() -> "Component is short");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.SHORT);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = RecordPickler.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -225,14 +225,14 @@ public class BoxedPrimitivesTests {
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote short value to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = RecordPickler.buildValueReader(node.type());
       final var result = reader.apply(buffer);
 
       LOGGER.fine(() -> "Read short value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.shortValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
 
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
@@ -250,7 +250,7 @@ public class BoxedPrimitivesTests {
       LOGGER.fine(() -> "Component is int");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.INTEGER);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = RecordPickler.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -266,14 +266,14 @@ public class BoxedPrimitivesTests {
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote int value to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = RecordPickler.buildValueReader(node.type());
       final var result = reader.apply(buffer);
 
       LOGGER.fine(() -> "Read int value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.intValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
 
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
@@ -291,7 +291,7 @@ public class BoxedPrimitivesTests {
       LOGGER.fine(() -> "Component is long");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.LONG);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = RecordPickler.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -307,14 +307,14 @@ public class BoxedPrimitivesTests {
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote long value to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = RecordPickler.buildValueReader(node.type());
       final var result = reader.apply(buffer);
 
       LOGGER.fine(() -> "Read long value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.longValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
 
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
@@ -332,7 +332,7 @@ public class BoxedPrimitivesTests {
       LOGGER.fine(() -> "Component is float");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.FLOAT);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = RecordPickler.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -348,14 +348,14 @@ public class BoxedPrimitivesTests {
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote float value to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = RecordPickler.buildValueReader(node.type());
       final var result = reader.apply(buffer);
 
       LOGGER.fine(() -> "Read float value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.floatValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
 
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
@@ -373,7 +373,7 @@ public class BoxedPrimitivesTests {
       LOGGER.fine(() -> "Component is double");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.DOUBLE);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = RecordPickler.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -389,14 +389,14 @@ public class BoxedPrimitivesTests {
       buffer.flip();
       LOGGER.fine(() -> "Successfully wrote double value to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = RecordPickler.buildValueReader(node.type());
       final var result = reader.apply(buffer);
 
       LOGGER.fine(() -> "Read double value: " + result);
       assertThat(result).isEqualTo(boxedValueRecord.doubleValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
 
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
@@ -415,7 +415,7 @@ public class BoxedPrimitivesTests {
       LOGGER.fine(() -> "First component is boolean");
       assertThat(e.type()).isEqualTo(TypeExpr.RefValueType.BOOLEAN);
       // Boolean.class
-      final var writerChain = PicklerUsingAst.buildValueWriter(e.type(), typeExpr0Accessor);
+      final var writerChain = RecordPickler.buildValueWriter(e.type(), typeExpr0Accessor);
       assertThat(writerChain).isNotNull();
       // We can write the record to a ByteBuffer
       final var byteBuffer = ByteBuffer.allocate(1024);
@@ -429,7 +429,7 @@ public class BoxedPrimitivesTests {
       byteBuffer.flip();
       LOGGER.fine(() -> "Successfully wrote boolean value to buffer");
       // Now we can read it back
-      final var readerChain = PicklerUsingAst.buildValueReader(e.type());
+      final var readerChain = RecordPickler.buildValueReader(e.type());
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read boolean value: " + readValue);
       // Check the value is as expected
@@ -437,7 +437,7 @@ public class BoxedPrimitivesTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = PicklerUsingAst.buildValueSizer(e.type(), typeExpr0Accessor);
+      final var sizer = RecordPickler.buildValueSizer(e.type(), typeExpr0Accessor);
       final int size = sizer.applyAsInt(boxedValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);

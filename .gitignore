@@ -1,4 +1,5 @@
 .idea/
+.continue/
 target/
 .mvn/
 .aider*

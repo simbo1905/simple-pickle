@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Simon Massey
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.Objects;
+import java.util.*;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import static io.github.simbo1905.no.framework.PicklerImpl.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits PicklerImpl, PicklerUsingAst {
+public sealed interface Pickler<T> permits PicklerImpl, PicklerRoot, RecordPickler {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
 
@@ -34,17 +38,51 @@ public sealed interface Pickler<T> permits PicklerImpl, PicklerUsingAst {
   /// @return A pickler instance
   static <T> Pickler<T> forClass(Class<T> clazz) {
     Objects.requireNonNull(clazz, "Class must not be null");
-    if( !clazz.isRecord() && !clazz.isEnum() && !clazz.isSealed()) {
+
+    if (!clazz.isRecord() && !clazz.isEnum() && !clazz.isSealed()) {
       throw new IllegalArgumentException("Class must be a record, enum, or sealed interface: " + clazz);
     }
-    if(clazz.isInterface() && !clazz.isSealed()) {
-      return new PicklerImpl<>(clazz);
-    } else if (clazz.isRecord()){
-      return new PicklerUsingAst<>(clazz);
-    } else if (clazz.isEnum()) {
-      return new PicklerImpl<>(clazz);
+
+    // Partition the class hierarchy into legal and illegal classes
+    final Map<Boolean, List<Class<?>>> legalAndIllegalClasses =
+        recordClassHierarchy(clazz, new HashSet<>()).collect(Collectors.partitioningBy(
+            cls -> cls.isRecord() || cls.isEnum() || cls.isSealed()
+        ));
+
+    final var illegalClasses = legalAndIllegalClasses.get(Boolean.FALSE);
+    if (!illegalClasses.isEmpty()) {
+      throw new IllegalArgumentException("All reachable must be a record, enum, or sealed interface of only records " +
+          "and enum. Found illegal types: " +
+          legalAndIllegalClasses.get(Boolean.FALSE).stream()
+              .map(Class::getName).collect(Collectors.joining(", ")));
+    }
+
+    final var legalClasses = legalAndIllegalClasses.get(Boolean.TRUE);
+    if (legalClasses.isEmpty()) {
+      throw new IllegalArgumentException("No  classes of type record or enum found in hierarchy of: " + clazz);
+    }
+
+    // Partition the legal classes into records and enums
+    final var recordsAndEnums = legalClasses.stream()
+        .collect(Collectors.partitioningBy(Class::isRecord));
+
+    // if there are no records then we have no work to do
+    final var recordClasses = recordsAndEnums.get(Boolean.TRUE);
+    if (recordClasses.isEmpty()) {
+      throw new IllegalArgumentException("No record classes found in hierarchy of: " + clazz);
+    }
+
+    //noinspection rawtypes there is no common ancestry between records and enums so we need to use a raw type
+    final Class[] sortedUserTypes = legalClasses.stream()
+        .sorted(Comparator.comparing(Class::getName))
+        .toArray(Class[]::new);
+
+    if (recordClasses.size() == 1) {
+      // If there is only one record class, we can return a RecordPickler
+      return new RecordPickler<>(clazz, sortedUserTypes);
     } else {
-      throw new IllegalArgumentException("Unsupported class type as not a record or a sealed interface: " + clazz);
+      // If there are multiple record classes return a RecordPickler that will delegate to a RecordPickler
+      return new PicklerRoot<>(sortedUserTypes);
     }
   }
 }

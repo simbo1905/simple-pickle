@@ -8,8 +8,10 @@ import org.jetbrains.annotations.NotNull;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -25,84 +27,82 @@ import static io.github.simbo1905.no.framework.Constants.INTEGER_VAR;
 import static io.github.simbo1905.no.framework.PicklerImpl.*;
 import static io.github.simbo1905.no.framework.Tag.INTEGER;
 
-final public class PicklerUsingAst<T> implements Pickler<T> {
+final class RecordPickler<T> implements Pickler<T> {
 
   public static final String SHA_256 = "SHA-256";
   static final int SAMPLE_SIZE = 32;
   static final int CLASS_SIG_BYTES = Long.BYTES;
   static final CompatibilityMode COMPATIBILITY_MODE = CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
-  final Class<?> rootClass; // Root class for this pickler, used for discovery and serialization
   // Global lookup tables indexed by ordinal - the core of the unified architecture
-  final Class<?>[] userTypes;     // Lexicographically sorted user types which are subclasses of Record or Enum
-  final long[] typeSignatures;    // CLASS_SIG_BYTES SHA256 signatures for backwards compatibility checking
-  // Pre-built component metadata arrays for all discovered record types - the core performance optimization:
-  final MethodHandle[] recordConstructors;      // Constructor method handles indexed by ordinal
-  final MethodHandle[][] componentAccessors;    // [recordOrdinal][componentIndex] -> accessor method handle
-  final TypeExpr[][] componentTypeExpressions;       // [recordOrdinal][componentIndex] -> component type AST structure
-  final BiConsumer<ByteBuffer, Object>[][] componentWriters;  // [recordOrdinal][componentIndex] -> writer chain of delegating lambda eliminating use of `switch` on write the hot path
-  final Function<ByteBuffer, Object>[][] componentReaders;    // [recordOrdinal][componentIndex] -> reader chain of delegating lambda eliminating use of `switch` on read the hot path
-  final ToIntFunction<Object>[][] componentSizers; // [recordOrdinal][componentIndex] -> sizer lambda
-  final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo;  // Fast user type to ordinal lookup for the write path
+  final Class<?> userType;
+  final int ordinal; // Ordinal in the sorted user types array
+  final long typeSignature;    // CLASS_SIG_BYTES SHA256 signatures for backwards compatibility checking
+  final MethodHandle recordConstructor;      // Constructor direct method handle
+  final MethodHandle[] componentAccessors;    // Accessor direct method handle
+  final TypeExpr[] componentTypeExpressions;       // Component type AST structure
+  final BiConsumer<ByteBuffer, Object>[] componentWriters;  // writer chain of delegating lambda eliminating use of `switch` on write the hot path
+  final Function<ByteBuffer, Object>[] componentReaders;    // reader chain of delegating lambda eliminating use of `switch` on read the hot path
+  final ToIntFunction<Object>[] componentSizers; // Sizer lambda
 
-  @SuppressWarnings("unchecked")
-  public PicklerUsingAst(Class<T> clazz) {
-    LOGGER.info(() -> "Creating AST pickler for root class: " + clazz.getName());
-    this.rootClass = clazz;
+  public RecordPickler(@NotNull Class<?> userType, Class<?>[] sortedUserTypes) {
+    this.userType = userType;
+    this.ordinal = sortedUserTypes.length > 0
+        ? Arrays.asList(sortedUserTypes).indexOf(userType)
+        : 0; // Ordinal is the index in the sorted user types array
 
-    Set<Class<?>> allReachableClasses = recordClassHierarchy(rootClass, new HashSet<>()).filter(cls -> cls.isRecord() || cls.isEnum() || cls.isSealed()).collect(Collectors.toSet());
+    // Get component accessors and analyze types
+    RecordComponent[] components = userType.getRecordComponents();
+    int numComponents = components.length;
 
-    LOGGER.info(() -> "Discovered " + allReachableClasses.size() + " reachable user types: " + allReachableClasses.stream().map(Class::getSimpleName).toList());
+    componentTypeExpressions = new TypeExpr[numComponents];
+    //noinspection unchecked
+    componentWriters = new BiConsumer[numComponents];
+    //noinspection unchecked
+    componentReaders = new Function[numComponents];
+    //noinspection unchecked
+    componentSizers = new ToIntFunction[numComponents];
 
-    this.userTypes = allReachableClasses.stream().filter(cls -> !cls.isSealed()) // Remove sealed interfaces - they're only for discovery
-        .sorted(Comparator.comparing(Class::getName)).toArray(Class<?>[]::new);
+    IntStream.range(0, numComponents).forEach(i -> {
+      RecordComponent component = components[i];
+      final TypeExpr typeExpr = TypeExpr.analyzeType(component.getGenericType());
+      componentTypeExpressions[i] = typeExpr;
+    });
+    IntStream.range(0, numComponents).forEach(i -> {
+      RecordComponent component = components[i];
+      final TypeExpr typeExpr = TypeExpr.analyzeType(component.getGenericType());
+      componentTypeExpressions[i] = typeExpr;
+    });
+    // Compute and store the type signature for this record
+    typeSignature = hashClassSignature(userType, components, componentTypeExpressions);
+    final Constructor<?> constructor;
+    try {
+      Class<?>[] parameterTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
+      constructor = userType.getDeclaredConstructor(parameterTypes);
+      recordConstructor = MethodHandles.lookup().unreflectConstructor(constructor);
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      throw new RuntimeException("Records should be public such as a top level of static nested type: " + e.getMessage(), e);
+    }
 
-    LOGGER.fine(() -> "Discovered types with typeOrdinal: " + IntStream.range(0, userTypes.length).mapToObj(i -> "[" + i + "]=" + userTypes[i].getName()).collect(Collectors.joining(", ")));
-
-    // Pre-allocate metadata arrays for all discovered record types (array-based for O(1) access)
-    int numRecordTypes = userTypes.length;
-    this.recordConstructors = new MethodHandle[numRecordTypes];
-    this.componentAccessors = new MethodHandle[numRecordTypes][];
-    this.componentTypeExpressions = new TypeExpr[numRecordTypes][];
-    this.componentWriters = (BiConsumer<ByteBuffer, Object>[][]) new BiConsumer[numRecordTypes][];
-    this.componentReaders = (Function<ByteBuffer, Object>[][]) new Function[numRecordTypes][];
-    this.componentSizers = (ToIntFunction<Object>[][]) new ToIntFunction[numRecordTypes][];
-    this.typeSignatures = new long[numRecordTypes];
-    IntStream.range(0, numRecordTypes).forEach(ordinal -> {
-      Class<?> userClass = userTypes[ordinal];
-      if (userClass.isRecord()) {
-        try {
-          typeSignatures[ordinal] = hashRecordSignature(ordinal, userClass);
-          resolveMethodHandles(ordinal, userClass);
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
-      } else if (userClass.isEnum()) {
-        // Compute enum signature
-        typeSignatures[ordinal] = hashEnumSignature(userClass);
-        LOGGER.fine(() -> "Computed enum signature for " + userClass.getSimpleName() + ": 0x" + Long.toHexString(typeSignatures[ordinal]));
+    componentAccessors = new MethodHandle[numComponents];
+    IntStream.range(0, numComponents).forEach(i -> {
+      try {
+        componentAccessors[i] = MethodHandles.lookup().unreflect(components[i].getAccessor());
+      } catch (IllegalAccessException e) {
+        throw new RuntimeException("Failed to un reflect accessor for " + components[i].getName(), e);
       }
     });
-    // Build the ONE HashMap for class->ordinal lookup (O(1) for hot path)
-    this.classToTypeInfo = IntStream.range(0, userTypes.length).boxed().collect(Collectors.toMap(i -> userTypes[i], i -> {
-      Class<?> userClass = userTypes[i];
-      if (userClass.isEnum()) {
-        return new PicklerImpl.TypeInfo(i, typeSignatures[i], userClass.getEnumConstants(), null);
-      } else {
-        return new PicklerImpl.TypeInfo(i, typeSignatures[i], null, () -> componentWriters[i]);
-      }
-    }));
-    // Finally do the metaprogramming for all record types
-    IntStream.range(0, numRecordTypes).forEach(ordinal -> {
-      Class<?> userClass = userTypes[ordinal];
-      if (userClass.isRecord()) {
-        try {
-          metaprogramming(ordinal, userClass);
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
-      }
+
+    LOGGER.fine(() -> "Building code for : " + userType.getSimpleName());
+    IntStream.range(0, this.componentAccessors.length).forEach(i -> {
+      final var accessor = componentAccessors[i];
+      final var typeExpr = componentTypeExpressions[i];
+      // Build writer, reader, and sizer chains
+      componentWriters[i] = buildWriterChain(typeExpr, accessor);
+      componentReaders[i] = buildReaderChain(typeExpr);
+      componentSizers[i] = buildSizerChain(typeExpr, accessor);
     });
-    LOGGER.info(() -> "PicklerUsingAst construction complete - ready for high-performance serialization");
+
+    LOGGER.info(() -> "RecordPickler construction complete - ready for high-performance serialization");
   }
 
   public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle typeExpr0Accessor) {
@@ -258,75 +258,6 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
-  long hashRecordSignature(int ordinal, Class<?> recordClass) {
-    LOGGER.fine(() -> "hashRecordSignature for ordinal " + ordinal + ": " + recordClass.getSimpleName());
-    // Get component accessors and analyze types
-    RecordComponent[] components = recordClass.getRecordComponents();
-    int numComponents = components.length;
-    componentTypeExpressions[ordinal] = new TypeExpr[numComponents];
-    IntStream.range(0, numComponents).forEach(i -> {
-      RecordComponent component = components[i];
-      final TypeExpr typeExpr = TypeExpr.analyzeType(component.getGenericType());
-      componentTypeExpressions[ordinal][i] = typeExpr;
-    });
-    // Compute and store the type signature for this record
-    return hashClassSignature(recordClass, components, componentTypeExpressions[ordinal]);
-  }
-
-  void resolveMethodHandles(int ordinal, Class<?> recordClass) throws Exception {
-    LOGGER.fine(() -> "Building metadata for ordinal " + ordinal + ": " + recordClass.getSimpleName());
-    // Get component accessors and analyze types
-    RecordComponent[] components = recordClass.getRecordComponents();
-    int numComponents = components.length;
-    Class<?>[] parameterTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
-
-    var constructor = recordClass.getDeclaredConstructor(parameterTypes);
-    recordConstructors[ordinal] = MethodHandles.lookup().unreflectConstructor(constructor);
-    componentAccessors[ordinal] = new MethodHandle[numComponents];
-
-    IntStream.range(0, numComponents).forEach(i -> {
-      RecordComponent component = components[i];
-      try {
-        componentAccessors[ordinal][i] = MethodHandles.lookup().unreflect(component.getAccessor());
-      } catch (IllegalAccessException e) {
-        throw new RuntimeException("Failed to un reflect accessor for " + component.getName(), e);
-      }
-    });
-  }
-
-  @SuppressWarnings({"unchecked"})
-  void metaprogramming(int ordinal, Class<?> recordClass) throws Exception {
-    LOGGER.fine(() -> "Building metadata for ordinal " + ordinal + ": " + recordClass.getSimpleName());
-    // Get component accessors and analyze types
-    RecordComponent[] components = recordClass.getRecordComponents();
-    int numComponents = components.length;
-
-    Class<?>[] parameterTypes = Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
-    var constructor = recordClass.getDeclaredConstructor(parameterTypes);
-    recordConstructors[ordinal] = MethodHandles.lookup().unreflectConstructor(constructor);
-    componentAccessors[ordinal] = new MethodHandle[numComponents];
-    componentWriters[ordinal] = (BiConsumer<ByteBuffer, Object>[]) new BiConsumer[numComponents];
-    componentReaders[ordinal] = (Function<ByteBuffer, Object>[]) new Function[numComponents];
-    componentSizers[ordinal] = (ToIntFunction<Object>[]) new ToIntFunction[numComponents];
-
-    IntStream.range(0, numComponents).forEach(i -> {
-      RecordComponent component = components[i];
-      try {
-        componentAccessors[ordinal][i] = MethodHandles.lookup().unreflect(component.getAccessor());
-      } catch (IllegalAccessException e) {
-        throw new RuntimeException("Failed to un reflect accessor for " + component.getName(), e);
-      }
-      final var typeExpr = componentTypeExpressions[ordinal][i];
-      final var accessor = componentAccessors[ordinal][i];
-      // Build writer, reader, and sizer chains
-      componentWriters[ordinal][i] = buildWriterChain(typeExpr, accessor);
-      componentReaders[ordinal][i] = buildReaderChain(typeExpr);
-      componentSizers[ordinal][i] = buildSizerChain(typeExpr, accessor);
-    });
-
-    LOGGER.fine(() -> "Completed metaprogramming for " + recordClass.getSimpleName() + " with " + numComponents + " components");
-  }
-
   BiConsumer<ByteBuffer, Object> buildWriterChain(TypeExpr typeExpr, MethodHandle methodHandle) {
     if (typeExpr.isPrimitive()) {
       // For primitive types, we can directly write the value using the method handle
@@ -369,11 +300,13 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
   static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
     try {
       MessageDigest digest = MessageDigest.getInstance(SHA_256);
-
-      String input = Stream.concat(Stream.of(clazz.getSimpleName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
-
+      String input = Stream.concat(
+              Stream.of(clazz.getSimpleName()),
+              IntStream.range(0, components.length).boxed()
+                  .flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString())
+                      , Stream.of(components[i].getName()))))
+          .collect(Collectors.joining("!"));
       byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-
       // Convert first CLASS_SIG_BYTES to long
       //      Byte Index:   0       1       2        3        4        5        6        7
       //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
@@ -431,7 +364,16 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for int.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
           try {
-            Object result = methodHandle.invokeWithArguments(record);
+            int result = (int) methodHandle.invokeWithArguments(record);
+            if (ZigZagEncoding.sizeOf(result) < Integer.BYTES) {
+              LOGGER.fine(() -> "Writing INTEGER_VAR for value: " + result + " at position: " + buffer.position());
+              ZigZagEncoding.putInt(buffer, Constants.INTEGER_VAR.marker());
+              ZigZagEncoding.putInt(buffer, result);
+            } else {
+              LOGGER.fine(() -> "Writing INTEGER for value: " + result + " at position: " + buffer.position());
+              ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
+              buffer.putInt(result);
+            }
             buffer.putInt((int) result);
           } catch (Throwable e) {
             throw new RuntimeException(e.getMessage(), e);
@@ -477,13 +419,30 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
       case BYTE -> ByteBuffer::get;
       case SHORT -> ByteBuffer::getShort;
       case CHARACTER -> ByteBuffer::getChar;
-      case INTEGER -> ByteBuffer::getInt;
-      case LONG -> ByteBuffer::getLong;
       case FLOAT -> ByteBuffer::getFloat;
       case DOUBLE -> ByteBuffer::getDouble;
+      case INTEGER -> (buffer) -> {
+        final var position = buffer.position();
+        final int marker = ZigZagEncoding.getInt(buffer);
+        if (marker == Constants.INTEGER_VAR.marker()) {
+          return ZigZagEncoding.getInt(buffer);
+        } else if (marker == Constants.INTEGER.marker()) {
+          return buffer.getInt();
+        } else throw new IllegalStateException(
+            "Expected INTEGER or INTEGER_VAR marker but got: " + marker + " at position: " + position);
+      };
+      case LONG -> (buffer) -> {
+        final var position = buffer.position();
+        final int marker = ZigZagEncoding.getInt(buffer);
+        if (marker == Constants.LONG_VAR.marker()) {
+          return ZigZagEncoding.getLong(buffer);
+        } else if (marker == Constants.LONG.marker()) {
+          return buffer.getLong();
+        } else throw new IllegalStateException(
+            "Expected LONG or LONG_VAR marker but got: " + marker + " at position: " + position);
+      };
     };
   }
-
 
   static @NotNull Function<ByteBuffer, Object> buildPrimitiveArrayReader(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
@@ -608,7 +567,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
   /// This has to write out the typeOrdinal first as they would be more than one enum type in the system
   /// Then it writes out the typeSignature for the enum class
   /// Finally, it writes out the ordinal of the enum constant
-  static @NotNull BiConsumer<ByteBuffer, Object> buildEnumWriter(final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo, final MethodHandle methodHandle) {
+  static @NotNull BiConsumer<ByteBuffer, Object> buildEnumWriter(final Map<Class<?>, TypeInfo> classToTypeInfo, final MethodHandle methodHandle) {
     LOGGER.fine(() -> "Building writer chain for Enum");
     return (ByteBuffer buffer, Object record) -> {
       try {
@@ -763,7 +722,7 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
     };
   }
 
-  static @NotNull Function<ByteBuffer, Object> buildEnumReader(final Map<Class<?>, PicklerImpl.TypeInfo> classToTypeInfo) {
+  static @NotNull Function<ByteBuffer, Object> buildEnumReader(final Map<Class<?>, TypeInfo> classToTypeInfo) {
     LOGGER.fine(() -> "Building reader chain for Enum");
     return (ByteBuffer buffer) -> {
       try {
@@ -851,12 +810,59 @@ final public class PicklerUsingAst<T> implements Pickler<T> {
 
   @Override
   public int serialize(ByteBuffer buffer, T record) {
-    return 0;
+    Objects.requireNonNull(buffer, "buffer cannot be null");
+    Objects.requireNonNull(record, "record cannot be null");
+    if (!this.userType.isAssignableFrom(record.getClass())) {
+      throw new IllegalArgumentException("Expected a record type " + this.userType.getName() +
+          " but got: " + record.getClass().getName());
+    }
+    buffer.order(ByteOrder.BIG_ENDIAN);
+    final var startPosition = buffer.position();
+
+    // Write ordinal marker (1-indexed on wire)
+    ZigZagEncoding.putInt(buffer, ordinal + 1);
+
+    LOGGER.finer(() -> "Writing signature 0x" + Long.toHexString(typeSignature) + " for " + record.getClass().getSimpleName());
+    buffer.putLong(typeSignature);
+    serializeRecordComponents(buffer, record);
+
+    final var totalBytes = buffer.position() - startPosition;
+    LOGGER.finer(() -> "PicklerImpl.serialize: completed, totalBytes=" + totalBytes);
+    return totalBytes;
+  }
+
+  void serializeRecordComponents(ByteBuffer buffer, T record) {
+    LOGGER.finer(() -> "Serializing " + componentWriters.length + " components for " + record.getClass().getSimpleName() +
+        " at position " + buffer.position());
+    IntStream.range(0, componentWriters.length).forEach(i -> {
+      final int componentIndex = i; // final for lambda capture
+      LOGGER.finer(() -> "Writing component " + componentIndex + " at position " + buffer.position());
+      componentWriters[componentIndex].accept(buffer, record);
+      LOGGER.finer(() -> "Finished component " + componentIndex + " at position " + buffer.position());
+    });
   }
 
   @Override
   public T deserialize(ByteBuffer buffer) {
-    return null;
+    LOGGER.finer(() -> "Deserializing " + this.userType + " components at position " + buffer.position());
+
+    Object[] components = new Object[componentReaders.length];
+    IntStream.range(0, componentReaders.length).forEach(i -> {
+      final int componentIndex = i; // final for lambda capture
+      LOGGER.finer(() -> "Reading component " + componentIndex + " at position " + buffer.position());
+      components[i] = componentReaders[i].apply(buffer);
+      final Object componentValue = components[i]; // final for lambda capture
+      LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " at position " + buffer.position());
+    });
+
+    // Invoke constructor
+    try {
+      LOGGER.finer(() -> "Constructing record with components: " + Arrays.toString(components));
+      //noinspection unchecked we know by static inspection that this is safe
+      return (T) this.recordConstructor.invokeWithArguments(components);
+    } catch (Throwable e) {
+      throw new RuntimeException("Failed to construct record", e);
+    }
   }
 
   @Override

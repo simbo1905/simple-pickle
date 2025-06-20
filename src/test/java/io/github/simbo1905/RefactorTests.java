@@ -1,11 +1,10 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
-import io.github.simbo1905.no.framework.model.ArrayExample;
-import io.github.simbo1905.no.framework.model.NestedArrayExample;
-import io.github.simbo1905.no.framework.model.NullableFieldsExample;
-import io.github.simbo1905.no.framework.model.Person;
-import io.github.simbo1905.no.framework.model.TestEnum;
+import io.github.simbo1905.no.framework.model.*;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
@@ -26,7 +25,8 @@ public class RefactorTests {
   public record AllPrimitives(
       boolean boolVal, byte byteVal, short shortVal, char charVal,
       int intVal, long longVal, float floatVal, double doubleVal
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   @BeforeAll
   static void setupLogging() {
@@ -169,7 +169,6 @@ public class RefactorTests {
     assertTrue(TreeNode.areTreesEqual(originalRoot, deserializedRoot),
         "Deserialized tree should be equal to the original tree");
   }
-
 
   // Test record for byte
   public record ByteRecord(byte value) {
@@ -387,14 +386,14 @@ public class RefactorTests {
 
     // Create an instance
     int[] intArray = {10, 20, 30, Integer.MAX_VALUE, Integer.MIN_VALUE};
-    
+
     PrimitiveArraysRecord original = new PrimitiveArraysRecord(
-        byteArray, 
-        shortArray, 
-        charArray, 
+        byteArray,
+        shortArray,
+        charArray,
         intArray,
         longArray,
-        floatArray, 
+        floatArray,
         doubleArray);
 
     // Get a pickler for the record
@@ -538,7 +537,7 @@ public class RefactorTests {
     final var size = writeBuffer.position();
     bytes = new byte[size];
     writeBuffer.flip().get(bytes);
-    
+
     final Dog[] deserializedDogs;
     final var readBuffer = ByteBuffer.wrap(bytes);
     // Read the size of the array
@@ -611,7 +610,7 @@ public class RefactorTests {
     IntStream.range(0, size).forEach(i -> {
       final var animal = animalPickler.deserialize(writeBuffer);
       deserializedAnimals.add(animal);
-      });
+    });
 
     // Then all animals should match
     assertEquals(animals.size(), deserializedAnimals.size());
@@ -958,7 +957,7 @@ public class RefactorTests {
   }
 
   @Test
-  void testTreeNodeDemo()   {
+  void testTreeNodeDemo() {
     final var leaf1 = new LeafNode(42);
     final var leaf2 = new LeafNode(99);
     final var leaf3 = new LeafNode(123);
@@ -979,7 +978,7 @@ public class RefactorTests {
 
 // Serialize only the root node (which should include the entire graph)
     final var actualSize = pickler.serialize(buffer, originalRoot);
-    LOGGER.fine(() -> String.format("TreeNode actual wire size: %d, max size: %d, ratio: %.1f%%", 
+    LOGGER.fine(() -> String.format("TreeNode actual wire size: %d, max size: %d, ratio: %.1f%%",
         actualSize, maxSize, (actualSize * 100.0) / maxSize));
 
 // Prepare buffer for reading
@@ -1031,7 +1030,8 @@ public class RefactorTests {
         });
   }
 
-  public record DeepDouble(List<List<Optional<Double>>> deepDoubles){}
+  public record DeepDouble(List<List<Optional<Double>>> deepDoubles) {
+  }
 
   @Test
   void testDeepDoubleList() {
@@ -1113,7 +1113,8 @@ public class RefactorTests {
 
   /// Public record containing a UUID field for testing serialization.
   /// This record must be public as required by the Pickler framework.
-  public record UserSession(String sessionId, UUID userId, long timestamp) {}
+  public record UserSession(String sessionId, UUID userId, long timestamp) {
+  }
 
   @Test
   void testUuidRoundTripSerialization() {
@@ -1171,7 +1172,7 @@ public class RefactorTests {
     LOGGER.info("=== Testing AllPrimitives write performance issue ===");
 
     final var testData = new AllPrimitives(
-        true, (byte)42, (short)1000, 'A', 123456, 9876543210L, 3.14f, 2.71828
+        true, (byte) 42, (short) 1000, 'A', 123456, 9876543210L, 3.14f, 2.71828
     );
 
     LOGGER.info(() -> "Test data: " + testData);
@@ -1199,59 +1200,63 @@ public class RefactorTests {
   }
 
   // Map test records
-  public record SimpleMap(Map<Double, Double> value) {}
-  
-  public record VarIntMap(Map<Integer, String> value) {}
-  
-  public record VarLongMap(Map<Long, Optional<String>> value) {}
-  
+  public record SimpleMap(Map<Double, Double> value) {
+  }
+
+  public record VarIntMap(Map<Integer, String> value) {
+  }
+
+  public record VarLongMap(Map<Long, Optional<String>> value) {
+  }
+
   public record ManySimpleTypes(
-    Map<Boolean, String> boolMap,
-    Map<Byte, Integer> byteMap,
-    Map<Short, Long> shortMap,
-    Map<Character, Float> charMap,
-    Map<Integer, Double> intMap,
-    Map<Long, String> longMap,
-    Map<Float, List<String>> floatMap,
-    Map<Double, Optional<Integer>> doubleMap,
-    Map<String, String[]> stringMap,
-    Map<UUID, List<Optional<String>>> uuidMap
-  ) {}
+      Map<Boolean, String> boolMap,
+      Map<Byte, Integer> byteMap,
+      Map<Short, Long> shortMap,
+      Map<Character, Float> charMap,
+      Map<Integer, Double> intMap,
+      Map<Long, String> longMap,
+      Map<Float, List<String>> floatMap,
+      Map<Double, Optional<Integer>> doubleMap,
+      Map<String, String[]> stringMap,
+      Map<UUID, List<Optional<String>>> uuidMap
+  ) {
+  }
 
   @Test
   void testSimpleDoubleMap() {
     var pickler = Pickler.forClass(SimpleMap.class);
-    
+
     Map<Double, Double> map = new HashMap<>();
     map.put(1.1, 2.2);
     map.put(3.3, 4.4);
     map.put(5.5, 6.6);
-    
+
     SimpleMap original = new SimpleMap(map);
-    
+
     var buffer = ByteBuffer.allocate(1024);
     pickler.serialize(buffer, original);
     buffer.flip();
-    
+
     SimpleMap deserialized = pickler.deserialize(buffer);
     assertEquals(original, deserialized);
   }
 
-  @Test 
+  @Test
   void testVarIntMapSerialization() {
     var pickler = Pickler.forClass(VarIntMap.class);
-    
+
     Map<Integer, String> map = new HashMap<>();
     map.put(1, "one");
     map.put(100, "hundred");
     map.put(1000, "thousand");
-    
+
     VarIntMap original = new VarIntMap(map);
-    
+
     var buffer = ByteBuffer.allocate(1024);
     pickler.serialize(buffer, original);
     buffer.flip();
-    
+
     VarIntMap deserialized = pickler.deserialize(buffer);
     assertEquals(original, deserialized);
   }
@@ -1259,18 +1264,18 @@ public class RefactorTests {
   @Test
   void testVarLongMapWithOptionals() {
     var pickler = Pickler.forClass(VarLongMap.class);
-    
+
     Map<Long, Optional<String>> map = new HashMap<>();
     map.put(1L, Optional.of("first"));
     map.put(2L, Optional.empty());
     map.put(Long.MAX_VALUE, Optional.of("max"));
-    
+
     VarLongMap original = new VarLongMap(map);
-    
+
     var buffer = ByteBuffer.allocate(1024);
     pickler.serialize(buffer, original);
     buffer.flip();
-    
+
     VarLongMap deserialized = pickler.deserialize(buffer);
     assertEquals(original, deserialized);
   }
@@ -1278,51 +1283,51 @@ public class RefactorTests {
   @Test
   void testManySimpleTypesMap() {
     var pickler = Pickler.forClass(ManySimpleTypes.class);
-    
+
     Map<Boolean, String> boolMap = new HashMap<>();
     boolMap.put(true, "yes");
     boolMap.put(false, "no");
-    
+
     Map<Byte, Integer> byteMap = new HashMap<>();
-    byteMap.put((byte)1, 100);
-    byteMap.put((byte)2, 200);
-    
+    byteMap.put((byte) 1, 100);
+    byteMap.put((byte) 2, 200);
+
     Map<Short, Long> shortMap = new HashMap<>();
-    shortMap.put((short)10, 1000L);
-    
+    shortMap.put((short) 10, 1000L);
+
     Map<Character, Float> charMap = new HashMap<>();
     charMap.put('A', 1.1f);
     charMap.put('B', 2.2f);
-    
+
     Map<Integer, Double> intMap = new HashMap<>();
     intMap.put(42, 3.14);
-    
+
     Map<Long, String> longMap = new HashMap<>();
     longMap.put(999L, "nine nine nine");
-    
+
     Map<Float, List<String>> floatMap = new HashMap<>();
     floatMap.put(1.5f, List.of("one", "two", "three"));
-    
+
     Map<Double, Optional<Integer>> doubleMap = new HashMap<>();
     doubleMap.put(2.5, Optional.of(25));
     doubleMap.put(3.5, Optional.empty());
-    
+
     Map<String, String[]> stringMap = new HashMap<>();
     stringMap.put("array", new String[]{"a", "b", "c"});
-    
+
     Map<UUID, List<Optional<String>>> uuidMap = new HashMap<>();
     UUID uuid = UUID.randomUUID();
     uuidMap.put(uuid, List.of(Optional.of("present"), Optional.empty()));
-    
+
     ManySimpleTypes original = new ManySimpleTypes(
-      boolMap, byteMap, shortMap, charMap, intMap, 
-      longMap, floatMap, doubleMap, stringMap, uuidMap
+        boolMap, byteMap, shortMap, charMap, intMap,
+        longMap, floatMap, doubleMap, stringMap, uuidMap
     );
-    
+
     var buffer = ByteBuffer.allocate(4096);
     pickler.serialize(buffer, original);
     buffer.flip();
-    
+
     ManySimpleTypes deserialized = pickler.deserialize(buffer);
     assertEquals(original.boolMap(), deserialized.boolMap());
     assertEquals(original.byteMap(), deserialized.byteMap());
@@ -1339,56 +1344,60 @@ public class RefactorTests {
   @Test
   void testEmptyMap() {
     var pickler = Pickler.forClass(SimpleMap.class);
-    
+
     SimpleMap original = new SimpleMap(new HashMap<>());
-    
+
     var buffer = ByteBuffer.allocate(256);
     pickler.serialize(buffer, original);
     buffer.flip();
-    
+
     SimpleMap deserialized = pickler.deserialize(buffer);
     assertEquals(original, deserialized);
     assertTrue(deserialized.value().isEmpty());
   }
 
   // Sealed interface that permits both record and enum - LinkedList example
-  public sealed interface Link permits LinkedRecord, LinkEnd {}
-  public record LinkedRecord(int value, Link next) implements Link {}
-  public enum LinkEnd implements Link { END }
+  public sealed interface Link permits LinkedRecord, LinkEnd {
+  }
+
+  public record LinkedRecord(int value, Link next) implements Link {
+  }
+
+  public enum LinkEnd implements Link {END}
 
   @Test
   void testSealedInterfaceWithRecordAndEnum() {
     // Test sealed interface that has both record and enum permits
     var pickler = Pickler.forClass(Link.class);
-    
+
     // Create a linked list: 1 -> 2 -> END
     Link list = new LinkedRecord(1, new LinkedRecord(2, LinkEnd.END));
-    
+
     ByteBuffer buffer = ByteBuffer.allocate(1024);
     pickler.serialize(buffer, list);
     buffer.flip();
-    
+
     Link deserialized = pickler.deserialize(buffer);
     assertEquals(list, deserialized);
-    
+
     // Also test serializing just the enum
     buffer.clear();
     pickler.serialize(buffer, LinkEnd.END);
     buffer.flip();
-    
+
     Link deserializedEnd = pickler.deserialize(buffer);
     assertEquals(LinkEnd.END, deserializedEnd);
   }
 
   // Recursive containers are valid to any depth
   @Test
-  void testNestedArrayUsingModelNestedArray(){
-    
+  void testNestedArrayUsingModelNestedArray() {
+
     // Create a record with nested array structures of different depths
     NestedArrayExample original = new NestedArrayExample(
-        new int[][] {{1, 2}, {3, 4}}, // 2D int array
-        new String[][] {{"A", "B"}, {"C", "D"}}, // 2D String array
-        new TestEnum[][][] { // 3D enum array
+        new int[][]{{1, 2}, {3, 4}}, // 2D int array
+        new String[][]{{"A", "B"}, {"C", "D"}}, // 2D String array
+        new TestEnum[][][]{ // 3D enum array
             {{TestEnum.FIRST, TestEnum.SECOND}, {TestEnum.THIRD}},
             {{TestEnum.SECOND}, {TestEnum.FIRST, TestEnum.THIRD}}
         }
@@ -1411,11 +1420,11 @@ public class RefactorTests {
     // Verify the 2D int array
     assertArrayEquals(original.nestedIntArray()[0], deserialized.nestedIntArray()[0]);
     assertArrayEquals(original.nestedIntArray()[1], deserialized.nestedIntArray()[1]);
-    
+
     // Verify the 2D string array
     assertArrayEquals(original.nestedStringArray()[0], deserialized.nestedStringArray()[0]);
     assertArrayEquals(original.nestedStringArray()[1], deserialized.nestedStringArray()[1]);
-    
+
     // Verify the 3D enum array
     for (int i = 0; i < original.nested3DEnumArray().length; i++) {
       for (int j = 0; j < original.nested3DEnumArray()[i].length; j++) {
@@ -1423,5 +1432,4 @@ public class RefactorTests {
       }
     }
   }
-  
 }

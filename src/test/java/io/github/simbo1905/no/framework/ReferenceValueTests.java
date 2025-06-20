@@ -92,7 +92,7 @@ public class ReferenceValueTests {
       LOGGER.fine("Component is UUID");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.UUID);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = RecordPickler.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -108,14 +108,14 @@ public class ReferenceValueTests {
       buffer.flip();
       LOGGER.fine("Successfully wrote UUID to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = RecordPickler.buildValueReader(node.type());
       final UUID result = (UUID) reader.apply(buffer);
 
       LOGGER.fine("Read UUID: " + result);
       assertThat(result).isEqualTo(referenceValueRecord.uuidValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(referenceValueRecord);
 
       LOGGER.fine("Bytes written: " + bytesWritten + ", Sizer returned: " + size);
@@ -133,7 +133,7 @@ public class ReferenceValueTests {
       LOGGER.fine("Component is String");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.STRING);
 
-      final var writer = PicklerUsingAst.buildValueWriter(node.type(), accessor);
+      final var writer = RecordPickler.buildValueWriter(node.type(), accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -149,14 +149,14 @@ public class ReferenceValueTests {
       buffer.flip();
       LOGGER.fine("Successfully wrote String to buffer");
 
-      final var reader = PicklerUsingAst.buildValueReader(node.type());
+      final var reader = RecordPickler.buildValueReader(node.type());
       final String result = (String) reader.apply(buffer);
 
       LOGGER.fine("Read String: " + result);
       assertThat(result).isEqualTo(referenceValueRecord.stringValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(referenceValueRecord);
 
       LOGGER.fine("Bytes written: " + bytesWritten + ", Sizer returned: " + size);
@@ -174,7 +174,7 @@ public class ReferenceValueTests {
       LOGGER.fine("Component is Enum");
       assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.ENUM);
 
-      final var writer = PicklerUsingAst.buildEnumWriter(classTypeInfoMap, accessor);
+      final var writer = RecordPickler.buildEnumWriter(classTypeInfoMap, accessor);
       assertThat(writer).isNotNull();
 
       final var buffer = ByteBuffer.allocate(1024);
@@ -190,14 +190,14 @@ public class ReferenceValueTests {
       buffer.flip();
       LOGGER.fine("Successfully wrote Enum to buffer");
 
-      final var reader = PicklerUsingAst.buildEnumReader(classTypeInfoMap);
+      final var reader = RecordPickler.buildEnumReader(classTypeInfoMap);
       final TestEnum result = (TestEnum) reader.apply(buffer);
 
       LOGGER.fine("Read Enum: " + result);
       assertThat(result).isEqualTo(referenceValueRecord.enumValue());
 
       final int bytesWritten = buffer.position();
-      final var sizer = PicklerUsingAst.buildValueSizer(node.type(), accessor);
+      final var sizer = RecordPickler.buildValueSizer(node.type(), accessor);
       final int size = sizer.applyAsInt(referenceValueRecord);
 
       LOGGER.fine("Bytes written: " + bytesWritten + ", Sizer returned: " + size);
