@@ -13,7 +13,7 @@ import static io.github.simbo1905.no.framework.PicklerImpl.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits PicklerImpl, PicklerRoot, RecordPickler {
+public sealed interface Pickler<T> permits PicklerImpl, PicklerRoot, RecordPickler, NilPickler {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
 

@@ -4,7 +4,10 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 final class PicklerRoot<T> implements Pickler<T> {
@@ -14,31 +17,84 @@ final class PicklerRoot<T> implements Pickler<T> {
 
   final Class<?>[] userTypes;
   final RecordPickler<?>[] picklers;
+  final Map<Integer, RecordPickler<?>> recordToPicklerOrdinal;
+  final Map<Class<?>, Integer> classToRecorPicklerOrdinal;
 
   public PicklerRoot(Class<?>[] sortedUserTypes) {
     this.userTypes = sortedUserTypes;
     this.picklers = new RecordPickler<?>[sortedUserTypes.length];
-    for (Class<?> clazz : sortedUserTypes) {
-      REGISTRY.computeIfAbsent(clazz, aClass -> {
+    final Map<Integer, RecordPickler<?>> recordToPicklerOrdinal = new HashMap<>();
+    final Map<Class<?>, Integer> classToRecorPicklerOrdinal = new HashMap<>();
+    // To avoid null picklers in the array, we use NilPickler for non-record types
+    Arrays.setAll(this.picklers, i -> {
+      final var clazz = sortedUserTypes[i];
+      if (clazz == null) {
+        throw new IllegalArgumentException("User type cannot be null at index " + i);
+      }
+      if (!clazz.isRecord()) {
+        return NilPickler.INSTANCE;
+      } else {
+        // Only create a given RecordPickler once per class and cache it.
         //noinspection rawtypes,unchecked
-        return new RecordPickler(aClass, sortedUserTypes);
-      });
-    }
+        final var p = REGISTRY.computeIfAbsent(clazz, aClass -> new RecordPickler(aClass, sortedUserTypes));
+        recordToPicklerOrdinal.put(i, (RecordPickler<?>) p);
+        classToRecorPicklerOrdinal.put(clazz, i);
+        return p;
+      }
+    });
+    this.recordToPicklerOrdinal = Map.copyOf(recordToPicklerOrdinal);
+    this.classToRecorPicklerOrdinal = Map.copyOf(classToRecorPicklerOrdinal);
     LOGGER.info(() -> "PicklerRoot construction complete - ready for high-performance serialization");
   }
 
   @Override
   public int serialize(ByteBuffer buffer, T record) {
-    return 0;
+    Objects.requireNonNull(buffer, "Buffer must not be null");
+    Objects.requireNonNull(record, "Record must not be null");
+    if (!record.getClass().isRecord()) {
+      throw new IllegalArgumentException("Record must be a record type: " + record.getClass());
+    }
+    final var pickler = REGISTRY.getOrDefault(record.getClass(), NilPickler.INSTANCE);
+    if (pickler == NilPickler.INSTANCE) {
+      throw new IllegalArgumentException("No pickler registered for record type: " + record.getClass());
+    }
+    // Write out the ordinal of the record type to the buffer
+    final Integer ordinal = classToRecorPicklerOrdinal.get(record.getClass());
+    if (ordinal == null) {
+      throw new IllegalArgumentException("No ordinal found for record type: " + record.getClass());
+    }
+    ZigZagEncoding.putInt(buffer, ordinal);
+    //noinspection unchecked
+    return pickler.serialize(buffer, record);
   }
 
   @Override
   public T deserialize(ByteBuffer buffer) {
-    return null;
+    Objects.requireNonNull(buffer, "Buffer must not be null");
+    // Read the ordinal of the record type from the buffer
+    final int ordinal = ZigZagEncoding.getInt(buffer);
+    if (ordinal < 0 || ordinal >= picklers.length) {
+      throw new IllegalArgumentException("Invalid ordinal: " + ordinal + ". Must be between 0 and " + (picklers.length - 1));
+    }
+    final var pickler = recordToPicklerOrdinal.get(ordinal);
+    if (pickler == null) {
+      throw new IllegalArgumentException("No pickler found for ordinal: " + ordinal);
+    }
+    //noinspection unchecked
+    return (T) pickler.deserialize(buffer);
   }
 
   @Override
   public int maxSizeOf(T record) {
-    return 0;
+    Objects.requireNonNull(record);
+    if (!record.getClass().isRecord()) {
+      throw new IllegalArgumentException("Record must be a record type: " + record.getClass());
+    }
+    final var pickler = REGISTRY.getOrDefault(record.getClass(), NilPickler.INSTANCE);
+    if (pickler == NilPickler.INSTANCE) {
+      throw new IllegalArgumentException("No pickler registered for record type: " + record.getClass());
+    }
+    //noinspection unchecked
+    return pickler.maxSizeOf(record);
   }
 }

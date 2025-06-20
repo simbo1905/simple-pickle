@@ -829,7 +829,7 @@ final class RecordPickler<T> implements Pickler<T> {
           return Integer.BYTES + Long.BYTES;
         } else if (userType instanceof Record record) {
           //return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record);
-          throw new AssertionError("not implemented: meed to lookup ad deelgat to Record sizer for record: " + record.getClass().getSimpleName());
+          throw new AssertionError("not implemented: meed to lookup and delegate to Record sizer for record: " + record.getClass().getSimpleName());
         } else {
           throw new IllegalArgumentException("Unsupported interface type: " + userType.getClass().getSimpleName());
         }
