@@ -28,13 +28,14 @@ import static io.github.simbo1905.no.framework.PicklerImpl.*;
 import static io.github.simbo1905.no.framework.Tag.INTEGER;
 
 final class RecordPickler<T> implements Pickler<T> {
+  static final CompatibilityMode COMPATIBILITY_MODE = CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
 
   public static final String SHA_256 = "SHA-256";
   static final int SAMPLE_SIZE = 32;
   static final int CLASS_SIG_BYTES = Long.BYTES;
-  static final CompatibilityMode COMPATIBILITY_MODE = CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
   // Global lookup tables indexed by ordinal - the core of the unified architecture
   final Class<?> userType;
+  final Class<?>[] sortedUserTypes; // Sorted user types for ordinal lookup
   final int ordinal; // Ordinal in the sorted user types array
   final long typeSignature;    // CLASS_SIG_BYTES SHA256 signatures for backwards compatibility checking
   final MethodHandle recordConstructor;      // Constructor direct method handle
@@ -49,6 +50,7 @@ final class RecordPickler<T> implements Pickler<T> {
     this.ordinal = sortedUserTypes.length > 0
         ? Arrays.asList(sortedUserTypes).indexOf(userType)
         : 0; // Ordinal is the index in the sorted user types array
+    this.sortedUserTypes = sortedUserTypes;
 
     LOGGER.finer(() -> "RecordPickler construction starting for " + userType.getSimpleName() + " with ordinal " + ordinal);
 
@@ -818,14 +820,16 @@ final class RecordPickler<T> implements Pickler<T> {
       };
       case RECORD -> (Object obj) -> {
         Record record = (Record) obj;
-        return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record);
+        //return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record);
+        throw new AssertionError("not implemented: meed to lookup ad deelgat to Record sizer for record: " + record.getClass().getSimpleName());
       };
       case INTERFACE -> (Object userType) -> {
         if (userType instanceof Enum<?> ignored) {
           // For enums, we store the ordinal and type signature
           return Integer.BYTES + Long.BYTES;
         } else if (userType instanceof Record record) {
-          return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record);
+          //return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record);
+          throw new AssertionError("not implemented: meed to lookup ad deelgat to Record sizer for record: " + record.getClass().getSimpleName());
         } else {
           throw new IllegalArgumentException("Unsupported interface type: " + userType.getClass().getSimpleName());
         }
@@ -833,16 +837,11 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static int maxSizeOfRecordComponents(Record record) {
-    // FIXME we need to access to the global cache of other RecordPicklers to resovl the sizer by ordinal
-    ToIntFunction<Object>[] sizers = null; // componentSizers[ordinal];
-    //assert sizers != null : "No sizers for ordinal: " + ordinal;
-
+  int maxSizeOfRecordComponents(Record record) {
     int totalSize = 0;
-    for (ToIntFunction<Object> sizer : sizers) {
+    for (ToIntFunction<Object> sizer : this.componentSizers) {
       totalSize += sizer.applyAsInt(record);
     }
-
     return totalSize;
   }
 
@@ -854,6 +853,7 @@ final class RecordPickler<T> implements Pickler<T> {
   public int serialize(ByteBuffer buffer, T record) {
     Objects.requireNonNull(buffer, "buffer cannot be null");
     Objects.requireNonNull(record, "record cannot be null");
+    buffer.order(ByteOrder.BIG_ENDIAN);
     if (!this.userType.isAssignableFrom(record.getClass())) {
       throw new IllegalArgumentException("Expected a record type " + this.userType.getName() +
           " but got: " + record.getClass().getName());
@@ -861,11 +861,20 @@ final class RecordPickler<T> implements Pickler<T> {
     buffer.order(ByteOrder.BIG_ENDIAN);
     final var startPosition = buffer.position();
 
+    // write the signature first as it is a cryptographic hash of the class name and component metadata and fixed size
+    buffer.putLong(typeSignature);
+
     // Write ordinal marker (1-indexed on wire)
+    final var marker = ordinal + 1;
     ZigZagEncoding.putInt(buffer, ordinal + 1);
 
-    LOGGER.finer(() -> "Writing signature 0x" + Long.toHexString(typeSignature) + " for " + record.getClass().getSimpleName());
-    buffer.putLong(typeSignature);
+
+    LOGGER.finer(() -> "Serializing record  " + record.getClass().getSimpleName() + " position " +
+        startPosition + " typeSignature 0x" + Long.toHexString(typeSignature) +
+        " marker: " + marker +
+        " buffer remaining bytes: " + buffer.remaining() + " limit: " +
+        buffer.limit() + " capacity: " + buffer.capacity()
+    );
     serializeRecordComponents(buffer, record);
 
     final var totalBytes = buffer.position() - startPosition;
@@ -886,9 +895,24 @@ final class RecordPickler<T> implements Pickler<T> {
 
   @Override
   public T deserialize(ByteBuffer buffer) {
-    LOGGER.finer(() -> "Deserializing " + this.userType + " components at position " + buffer.position());
-    LOGGER.finer(() -> "Buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
-
+    Objects.requireNonNull(buffer);
+    buffer.order(ByteOrder.BIG_ENDIAN);
+    final int typeSigPosition = buffer.position();
+    // read the type signature first as it is a cryptographic hash of the class name and component metadata and fixed size
+    final long signature = buffer.getLong();
+    LOGGER.finer(() -> "Deserializing record " + this.userType.getSimpleName() + " position " +
+        typeSigPosition + " signature 0x" + Long.toHexString(signature) +
+        " buffer remaining bytes: " + buffer.remaining() + " limit: " +
+        buffer.limit() + " capacity: " + buffer.capacity());
+    if (signature != this.typeSignature) {
+      throw new IllegalStateException("Expected type signature 0x" + Long.toHexString(this.typeSignature) +
+          " but got: 0x" + Long.toHexString(signature) + " at position: " + typeSigPosition);
+    }
+    final int markerPosition = buffer.position();
+    final int marker = ZigZagEncoding.getInt(buffer); // 1-indexed on wire, convert to 0-indexed ordinal
+    if (marker - 1 != this.ordinal) {
+      throw new IllegalStateException("Expected type ordinal " + this.ordinal + " but got: " + ordinal + " at position: " + markerPosition);
+    }
     Object[] components = new Object[componentReaders.length];
     IntStream.range(0, componentReaders.length).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
@@ -902,7 +926,7 @@ final class RecordPickler<T> implements Pickler<T> {
 
     // Invoke constructor
     try {
-      LOGGER.finer(() -> "Constructing record at poistion " + buffer.position() + " with components: " + Arrays.toString(components));
+      LOGGER.finer(() -> "Constructing record at position " + buffer.position() + " with components: " + Arrays.toString(components));
       //noinspection unchecked we know by static inspection that this is safe
       return (T) this.recordConstructor.invokeWithArguments(components);
     } catch (Throwable e) {
@@ -912,6 +936,13 @@ final class RecordPickler<T> implements Pickler<T> {
 
   @Override
   public int maxSizeOf(T record) {
-    return 0;
+    Objects.requireNonNull(record);
+    if (!this.userType.isAssignableFrom(record.getClass())) {
+      throw new IllegalArgumentException("Expected a record type " + this.userType.getName() +
+          " but got: " + record.getClass().getName());
+    }
+    int size = CLASS_SIG_BYTES + Integer.BYTES; // signature bytes then ordinal marker
+    size += maxSizeOfRecordComponents((Record) record);
+    return size;
   }
 }

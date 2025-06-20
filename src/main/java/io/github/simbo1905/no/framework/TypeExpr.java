@@ -327,6 +327,7 @@ sealed interface TypeExpr permits
   record PrimitiveValueNode(PrimitiveValueType type, Type javaType) implements TypeExpr {
     public PrimitiveValueNode {
       Objects.requireNonNull(type, "Primitive type cannot be null");
+      Objects.requireNonNull(javaType, "Java type cannot be null");
     }
 
     @Override
