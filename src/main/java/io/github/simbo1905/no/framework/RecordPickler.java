@@ -376,16 +376,18 @@ final class RecordPickler<T> implements Pickler<T> {
         yield (ByteBuffer buffer, Object record) -> {
           try {
             int result = (int) methodHandle.invokeWithArguments(record);
+            LOGGER.finer(() -> "INTEGER writer: value=" + result + " position=" + buffer.position() + " zigzag_size=" + ZigZagEncoding.sizeOf(result));
             if (ZigZagEncoding.sizeOf(result) < Integer.BYTES) {
-              LOGGER.fine(() -> "Writing INTEGER_VAR for value: " + result + " at position: " + buffer.position());
+              LOGGER.finer(() -> "Writing INTEGER_VAR marker=" + Constants.INTEGER_VAR.marker() + " at position: " + buffer.position());
               ZigZagEncoding.putInt(buffer, Constants.INTEGER_VAR.marker());
+              LOGGER.finer(() -> "Writing INTEGER_VAR value=" + result + " at position: " + buffer.position());
               ZigZagEncoding.putInt(buffer, result);
             } else {
-              LOGGER.fine(() -> "Writing INTEGER for value: " + result + " at position: " + buffer.position());
+              LOGGER.finer(() -> "Writing INTEGER marker=" + Constants.INTEGER.marker() + " at position: " + buffer.position());
               ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
+              LOGGER.finer(() -> "Writing INTEGER value=" + result + " at position: " + buffer.position());
               buffer.putInt(result);
             }
-            buffer.putInt((int) result);
           } catch (Throwable e) {
             throw new RuntimeException(e.getMessage(), e);
           }
@@ -434,11 +436,17 @@ final class RecordPickler<T> implements Pickler<T> {
       case DOUBLE -> ByteBuffer::getDouble;
       case INTEGER -> (buffer) -> {
         final var position = buffer.position();
+        LOGGER.finer(() -> "INTEGER reader: starting at position=" + position);
         final int marker = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "INTEGER reader: read marker=" + marker + " INTEGER_VAR.marker=" + Constants.INTEGER_VAR.marker() + " INTEGER.marker=" + Constants.INTEGER.marker() + " at position=" + position);
         if (marker == Constants.INTEGER_VAR.marker()) {
-          return ZigZagEncoding.getInt(buffer);
+          int value = ZigZagEncoding.getInt(buffer);
+          LOGGER.finer(() -> "INTEGER reader: read INTEGER_VAR value=" + value + " at position=" + buffer.position());
+          return value;
         } else if (marker == Constants.INTEGER.marker()) {
-          return buffer.getInt();
+          int value = buffer.getInt();
+          LOGGER.finer(() -> "INTEGER reader: read INTEGER value=" + value + " at position=" + buffer.position());
+          return value;
         } else throw new IllegalStateException(
             "Expected INTEGER or INTEGER_VAR marker but got: " + marker + " at position: " + position);
       };
@@ -879,14 +887,17 @@ final class RecordPickler<T> implements Pickler<T> {
   @Override
   public T deserialize(ByteBuffer buffer) {
     LOGGER.finer(() -> "Deserializing " + this.userType + " components at position " + buffer.position());
+    LOGGER.finer(() -> "Buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
 
     Object[] components = new Object[componentReaders.length];
     IntStream.range(0, componentReaders.length).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
-      LOGGER.finer(() -> "Reading component " + componentIndex + " at position " + buffer.position());
+      final int beforePosition = buffer.position();
+      LOGGER.finer(() -> "Reading component " + componentIndex + " at position " + beforePosition);
       components[i] = componentReaders[i].apply(buffer);
       final Object componentValue = components[i]; // final for lambda capture
-      LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " at position " + buffer.position());
+      final int afterPosition = buffer.position();
+      LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " moved from position " + beforePosition + " to " + afterPosition);
     });
 
     // Invoke constructor
